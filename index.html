@@ -8,19 +8,66 @@
   </head>
   <body>
     <main class="shell">
-      <canvas id="game" width="320" height="180" aria-label="3D factory puzzle room"></canvas>
+      <canvas id="game" width="320" height="180" aria-label="watch painting workshop"></canvas>
+
       <div class="hud">
         <div class="title">
           <h1>Factory Line</h1>
-          <p>WASD to move. Mouse to look. Click to interact.</p>
+          <p>Click the workers, the wall clock, or the back bench to work.</p>
         </div>
+
+        <div class="shift-panel">
+          <p id="dayLabel">MONDAY - DAY 1</p>
+          <p id="timeLabel">Shift not started</p>
+          <p id="dialLabel">Dials painted: 0</p>
+          <p id="earningsLabel">Due today: $0.00</p>
+        </div>
+
         <div class="status">
-          <p id="hint">Click the scene to enter the factory floor.</p>
-          <p id="subhint">A dormant production line cuts through the middle of the room.</p>
+          <p id="hint">Click the scene to enter the watch room.</p>
+          <p id="subhint">Clock in at the wall clock, then sit at a bench to paint the dials.</p>
         </div>
       </div>
+
       <div class="reticle" aria-hidden="true"></div>
+
+      <section class="title-card visible" id="titleCard" aria-live="polite">
+        <p id="titleCardText">MONDAY - DAY 1</p>
+      </section>
+
+      <section class="dialog-overlay hidden" id="dialogOverlay" aria-live="polite">
+        <div class="dialog-box">
+          <p id="dialogTitle">Shift manager</p>
+          <p id="dialogBody">Good evening.</p>
+          <button id="dialogButton" type="button">Continue</button>
+        </div>
+      </section>
+
+      <section class="minigame-overlay hidden" id="minigameOverlay" aria-live="polite">
+        <div class="minigame-panel">
+          <div class="minigame-copy">
+            <h2>Watch Painting</h2>
+            <p id="paintPrompt">
+              Build the mixture at your station, then bring each numeral up to radiance.
+            </p>
+            <p id="mixPrompt">Three unlabeled vessels sit beside the watch. Learn how they behave.</p>
+            <p id="paintStats">Mix quality 0%. Dials ready 0/12. Corrections needed 0. Tool brush. Brush fine tip.</p>
+            <div class="tool-actions">
+              <button id="brushButton" class="station-button" type="button">Pick up brush</button>
+              <button id="correctButton" class="station-button hidden" type="button">Switch to fingernails</button>
+              <button id="lickButton" class="station-button" type="button">Lick brush / mouth point</button>
+              <button id="submitButton" class="station-button" type="button">Send watch in</button>
+              <button id="mixResetButton" class="station-button" type="button">Empty the dish</button>
+            </div>
+          </div>
+
+          <div class="watch-stage">
+            <canvas id="paintCanvas" width="640" height="640" aria-label="watch painting table"></canvas>
+          </div>
+        </div>
+      </section>
     </main>
+
     <script src="./game.js"></script>
   </body>
 </html>

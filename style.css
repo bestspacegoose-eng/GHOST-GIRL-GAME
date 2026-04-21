@@ -1,0 +1,122 @@
+:root {
+  --bg: #0e0a08;
+  --panel: rgba(24, 17, 13, 0.88);
+  --line: rgba(229, 194, 128, 0.2);
+  --text: #f3ddbd;
+  --muted: #c5ab86;
+  --accent: #d88e3b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at top, rgba(178, 103, 43, 0.16), transparent 30%),
+    linear-gradient(180deg, #19110d 0%, #0e0a08 100%);
+  color: var(--text);
+  font-family: "Trebuchet MS", "Verdana", sans-serif;
+}
+
+.shell {
+  position: relative;
+  width: min(100vw, 1280px);
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  background: #090706;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.hud {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+  padding: 18px;
+}
+
+.title,
+.status {
+  width: min(460px, 100%);
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+}
+
+.title h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.3rem, 2vw, 1.8rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title p,
+.status p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.status p + p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.reticle::before,
+.reticle::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 240, 216, 0.92);
+}
+
+.reticle::before {
+  left: 8px;
+  top: 0;
+  width: 2px;
+  height: 18px;
+}
+
+.reticle::after {
+  top: 8px;
+  left: 0;
+  width: 18px;
+  height: 2px;
+}
+
+@media (max-width: 720px) {
+  .hud {
+    padding: 12px;
+  }
+
+  .title,
+  .status {
+    width: 100%;
+    padding: 10px 12px;
+  }
+}

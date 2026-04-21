@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Factory Line</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <canvas id="game" width="320" height="180" aria-label="3D factory puzzle room"></canvas>
+      <div class="hud">
+        <div class="title">
+          <h1>Factory Line</h1>
+          <p>WASD to move. Mouse to look. Click to interact.</p>
+        </div>
+        <div class="status">
+          <p id="hint">Click the scene to enter the factory floor.</p>
+          <p id="subhint">A dormant production line cuts through the middle of the room.</p>
+        </div>
+      </div>
+      <div class="reticle" aria-hidden="true"></div>
+    </main>
+    <script src="./game.js"></script>
+  </body>
+</html>

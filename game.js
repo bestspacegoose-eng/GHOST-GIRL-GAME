@@ -906,28 +906,18 @@ function wrapThoughtText(text, maxWidth) {
 }
 
 function fitThoughtText(text, frame) {
-  const minFontSize = 10;
-  const maxFontSize = 16;
-  let chosen = {
-    fontSize: minFontSize,
-    lineHeight: 14,
-    lines: [text],
-  };
-
+  const fontSize = 14;
+  const lineHeight = 18;
+  let lines = [text];
+  let maxLineWidth = 0;
   paintCtx.save();
-  for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 1) {
-    paintCtx.font = `${fontSize}px Georgia`;
-    const lines = wrapThoughtText(text, frame.w);
-    const lineHeight = Math.round(fontSize * 1.3);
-    if (lines.length * lineHeight <= frame.h) {
-      chosen = { fontSize, lineHeight, lines };
-      break;
-    }
-    chosen = { fontSize, lineHeight, lines };
+  paintCtx.font = `${fontSize}px Georgia`;
+  lines = wrapThoughtText(text, frame.w);
+  for (const line of lines) {
+    maxLineWidth = Math.max(maxLineWidth, paintCtx.measureText(line).width);
   }
   paintCtx.restore();
-
-  return chosen;
+  return { fontSize, lineHeight, lines, maxLineWidth };
 }
 
 function thoughtPopupAspect() {
@@ -961,11 +951,21 @@ function spawnThoughtPopup() {
   const pool = currentThoughtPool();
   const text = pool[Math.floor(Math.random() * pool.length)];
   const dark = gameState.hiddenStats.health < 50;
-  const width = dark ? 312 : 292;
   const aspect = thoughtPopupAspect();
-  const baseHeight = Math.max(212, width / aspect);
-  const fitted = fitThoughtText(text, { w: width - 20, h: baseHeight - 20 });
-  const height = Math.max(baseHeight, fitted.lines.length * fitted.lineHeight + 20);
+  let width = dark ? 352 : 328;
+  let height = Math.max(236, width / aspect);
+  let fitted = fitThoughtText(text, { w: width - 20, h: height - 20 });
+
+  while (
+    (fitted.lines.length * fitted.lineHeight > height - 20 || fitted.maxLineWidth > width - 20) &&
+    width < 520
+  ) {
+    width += 20;
+    height = Math.max(236, width / aspect);
+    fitted = fitThoughtText(text, { w: width - 20, h: height - 20 });
+  }
+
+  height = Math.max(height, fitted.lines.length * fitted.lineHeight + 20);
   const x = Math.max(24, Math.min(paintCanvas.width - width - 24, Math.random() * Math.max(1, paintCanvas.width - width - 48) + 24));
   const y = Math.max(24, Math.min(paintCanvas.height - height - 24, Math.random() * Math.max(1, paintCanvas.height - height - 48) + 24));
   const dial = activeDial();

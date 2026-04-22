@@ -3094,7 +3094,7 @@ function paintingDriftStrength() {
 }
 
 function applyPaintingDrift(position) {
-  if (!paintState.active || !paintState.isPainting || paintState.tool !== "brush") {
+  if (!paintState.active || paintState.mode !== "watch") {
     return position;
   }
 
@@ -3102,7 +3102,8 @@ function applyPaintingDrift(position) {
   if (severity <= 0) return position;
 
   const now = performance.now();
-  const radius = 3 + severity * 15;
+  const strokeBoost = paintState.isPainting && paintState.tool === "brush" ? 1.18 : 1;
+  const radius = (4 + severity * 18) * strokeBoost;
   const driftX =
     Math.sin(now * 0.008 + paintState.watchIndex * 0.71) * radius * 0.72 +
     Math.cos(now * 0.017 + paintState.activeDialIndex * 1.11) * radius * 0.36;

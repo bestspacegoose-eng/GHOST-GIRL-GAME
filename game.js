@@ -941,8 +941,18 @@ function thoughtPopupFrame(popup) {
   };
 }
 
-function thoughtTextFrame(popup) {
+function thoughtPanelFrame(popup) {
   const frame = thoughtPopupFrame(popup);
+  return {
+    x: frame.x + frame.w * 0.145,
+    y: frame.y + frame.h * 0.225,
+    w: frame.w * 0.62,
+    h: frame.h * 0.56,
+  };
+}
+
+function thoughtTextFrame(popup) {
+  const frame = thoughtPanelFrame(popup);
   return {
     x: frame.x + 10,
     y: frame.y + 10,
@@ -958,18 +968,22 @@ function spawnThoughtPopup(forcedText = null) {
   const aspect = thoughtPopupAspect();
   let width = dark ? 352 : 328;
   let height = Math.max(236, width / aspect);
-  let fitted = fitThoughtText(text, { w: width - 20, h: height - 20 });
+  let fitted = fitThoughtText(text, thoughtTextFrame({ x: 0, y: 0, w: width, h: height }));
 
   while (
-    (fitted.lines.length * fitted.lineHeight > height - 20 || fitted.maxLineWidth > width - 20) &&
-    width < 520
+    (
+      fitted.lines.length * fitted.lineHeight > thoughtTextFrame({ x: 0, y: 0, w: width, h: height }).h ||
+      fitted.maxLineWidth > thoughtTextFrame({ x: 0, y: 0, w: width, h: height }).w
+    ) &&
+    width < 640
   ) {
     width += 20;
     height = Math.max(236, width / aspect);
-    fitted = fitThoughtText(text, { w: width - 20, h: height - 20 });
+    fitted = fitThoughtText(text, thoughtTextFrame({ x: 0, y: 0, w: width, h: height }));
   }
 
-  height = Math.max(height, fitted.lines.length * fitted.lineHeight + 20);
+  const finalTextFrame = thoughtTextFrame({ x: 0, y: 0, w: width, h: height });
+  height = Math.max(height, ((fitted.lines.length * fitted.lineHeight) + 20) / (finalTextFrame.h / height));
   const x = Math.max(24, Math.min(paintCanvas.width - width - 24, Math.random() * Math.max(1, paintCanvas.width - width - 48) + 24));
   const y = Math.max(24, Math.min(paintCanvas.height - height - 24, Math.random() * Math.max(1, paintCanvas.height - height - 48) + 24));
   const dial = activeDial();

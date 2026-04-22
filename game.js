@@ -2080,6 +2080,8 @@ function bowlUnderCursor(x, y) {
 function addIngredient(region) {
   if (region.index === 3) {
     paintState.paintLoaded = MAX_PAINT_LOAD;
+    paintState.tool = "brush";
+    paintState.correcting = false;
     paintPrompt.textContent = "You dip the brush back into the paint dish at your side.";
     updatePaintStats();
     return;
@@ -2400,8 +2402,16 @@ function wipeNearestDial() {
     return;
   }
 
+  const preservedBrushSize = paintState.brushSize;
+  const preservedPaintLoad = paintState.paintLoaded;
+  const preservedTool = paintState.tool;
+  const preservedCorrecting = paintState.correcting;
   spendHealth(2);
   perfectDial(target);
+  paintState.brushSize = preservedBrushSize;
+  paintState.paintLoaded = preservedPaintLoad;
+  paintState.tool = preservedTool;
+  paintState.correcting = preservedCorrecting;
   updateCoverage();
   creditCompletedDials();
   updatePaintStats();

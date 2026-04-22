@@ -1432,6 +1432,8 @@ function endShift(reason) {
     showEnding(
       "Dismissed",
       "Three bad days in a row are enough. Before another shift can begin, the bench is given to someone else. You came in to work the next morning, only to find a new worker already sitting at your place.",
+      "Ending one: Dismissed",
+      "It feels awful, at first. It feels like an end to your early career, your early journey. It's not until the later years, after the lawsuits and the slow disintegration of your coworkers, that you understand. You were lucky to have been let go when you were, before the radiation had a chance to settle too deeply into your bones. You find other work, and though the pay is never as good, you are able to keep your health and your life for many more years."
     );
     updateHud();
     return;
@@ -1836,7 +1838,7 @@ function enterDialZoom(index) {
   drawWatchMinigame();
 }
 
-function exitDialZoom(message = "You pull back from the numeral and return to the full watch face.") {
+function exitDialZoom(message = "You pull back from the numeral to survey the full watch face.") {
   paintState.zoomedDialIndex = -1;
   moveCursorToActiveDial();
   paintPrompt.textContent = message;
@@ -1899,8 +1901,8 @@ function openFracturePuzzle(message) {
   initializeFracturePieces();
   setStationControlsHidden(true);
   minigameOverlay.classList.remove("hidden");
-  paintPrompt.textContent = "The watch face comes apart in your hands, bloodied and wrong, as if the week itself has split open.";
-  mixPrompt.textContent = "Drag the pieces back into place. When the clock is whole again, the next day can begin.";
+  paintPrompt.textContent = "The watch face comes apart in your hands, bloodied and wrong. Time itself has fractured in your hands.";
+  mixPrompt.textContent = "Drag the pieces back into place. Put the clock back together-- and your own dwindling psyche.";
   paintStats.textContent = "Shattered face 0/20 restored.";
   setMessage(
     `${DAY_NAMES[gameState.currentDay]} waits behind the lamps.`,
@@ -2028,7 +2030,7 @@ function switchToNailMode(source = "toggle") {
   paintState.tool = "nail";
   paintState.correcting = true;
   if (source === "toggle") {
-    paintPrompt.textContent = "Use your fingernails to lift only the excess paint around the numeral, a small area at a time.";
+    paintPrompt.textContent = "Use your fingernails to lift only the excess paint around the numeral, wiping only a small area at a time.";
   }
   updatePaintStats();
   drawWatchMinigame();
@@ -2135,7 +2137,7 @@ function addIngredient(region) {
   } else if (region.index === 1) {
     paintPrompt.textContent = "The middle vessel thickens the dish with a sticky pull.";
   } else {
-    paintPrompt.textContent = "The lower vessel thins the dish and darkens the surface reflection.";
+    paintPrompt.textContent = "The lower vessel thins the dish and lightens the surface reflection.";
   }
 
   updatePaintStats();
@@ -2243,7 +2245,7 @@ function paintAt(x, y) {
   }
 
   if (paintState.paintLoaded <= 0) {
-    paintPrompt.textContent = "The brush runs dry. Press Escape to pull back and gather more paint from the dish.";
+    paintPrompt.textContent = "The brush runs dry. Press Escape to pull back and gather more paint from the dish, or dip brush directly.";
     return;
   }
 
@@ -2434,7 +2436,7 @@ function correctAt(x, y) {
 
   if (allDialsReady() && correctionCount() === 0) {
     if (strokeLimitedDialCount() > 0) {
-      paintPrompt.textContent = "The edges are clean, but some numerals are over the stroke limit and still need direct wiping.";
+      paintPrompt.textContent = "The edges are clean, but some numerals are too shaky and still need direct wiping.";
     } else {
       paintPrompt.textContent = "The ragged edges are cleaned away. This watch can go in at full pay.";
     }
@@ -2465,7 +2467,7 @@ function wipeNearestDial() {
   updateCoverage();
   creditCompletedDials();
   updatePaintStats();
-  paintPrompt.textContent = "You wipe the ragged excess away and leave the numeral clean again.";
+  paintPrompt.textContent = "You wipe the ragged excess away with your hands and leave the numeral clean again.";
 }
 
 function registerBrushStroke(dial) {

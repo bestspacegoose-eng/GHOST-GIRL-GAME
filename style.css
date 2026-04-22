@@ -21,7 +21,7 @@ body {
     radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 28%),
     linear-gradient(180deg, #161616 0%, #060606 100%);
   color: var(--text);
-  font-family: "Trebuchet MS", "Verdana", sans-serif;
+  font-family: "Georgia", "Times New Roman", serif;
 }
 
 .shell {
@@ -74,6 +74,16 @@ canvas {
 .status p {
   margin: 0;
   line-height: 1.4;
+}
+
+.youtube-player-host {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  left: -9999px;
+  top: -9999px;
+  border: 0;
 }
 
 .shift-panel {
@@ -277,6 +287,11 @@ canvas {
 .station-button.active {
   background: #3a3a24;
   border-color: rgba(217, 245, 122, 0.42);
+}
+
+.station-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .station-button.hidden {

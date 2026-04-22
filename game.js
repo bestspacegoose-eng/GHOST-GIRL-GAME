@@ -44,6 +44,7 @@ const SHIFT_DURATION_SECONDS = SHIFT_HOURS * SECONDS_PER_HOUR;
 const PAY_PER_DIAL_CENTS = 8;
 const IGNORE_CORRECTION_FINE_CENTS = 10;
 const DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
+const NUMERAL_STROKE_LIMITS = [6, 5, 5, 4, 4, 3, 3];
 const DEFAULT_BRUSH_SIZE = 0.22;
 const WATCH_FACE_ASPECT = 1536 / 1024;
 const WATCH_CENTER_X = 409;
@@ -904,6 +905,31 @@ function wrapThoughtText(text, maxWidth) {
   return lines;
 }
 
+function fitThoughtText(text, frame) {
+  const minFontSize = 10;
+  const maxFontSize = 16;
+  let chosen = {
+    fontSize: minFontSize,
+    lineHeight: 14,
+    lines: [text],
+  };
+
+  paintCtx.save();
+  for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 1) {
+    paintCtx.font = `${fontSize}px Georgia`;
+    const lines = wrapThoughtText(text, frame.w);
+    const lineHeight = Math.round(fontSize * 1.3);
+    if (lines.length * lineHeight <= frame.h) {
+      chosen = { fontSize, lineHeight, lines };
+      break;
+    }
+    chosen = { fontSize, lineHeight, lines };
+  }
+  paintCtx.restore();
+
+  return chosen;
+}
+
 function thoughtPopupAspect() {
   const image = assetImages.thoughtPopup;
   return imageReady(image) ? image.naturalWidth / image.naturalHeight : 1.5;
@@ -936,15 +962,10 @@ function spawnThoughtPopup() {
   const text = pool[Math.floor(Math.random() * pool.length)];
   const dark = gameState.hiddenStats.health < 50;
   const width = dark ? 312 : 292;
-  const lines = (() => {
-    paintCtx.save();
-    paintCtx.font = "14px Georgia";
-    const wrapped = wrapThoughtText(text, width - 20);
-    paintCtx.restore();
-    return wrapped;
-  })();
   const aspect = thoughtPopupAspect();
-  const height = Math.max(212, width / aspect, 20 + lines.length * 22);
+  const baseHeight = Math.max(212, width / aspect);
+  const fitted = fitThoughtText(text, { w: width - 20, h: baseHeight - 20 });
+  const height = Math.max(baseHeight, fitted.lines.length * fitted.lineHeight + 20);
   const x = Math.max(24, Math.min(paintCanvas.width - width - 24, Math.random() * Math.max(1, paintCanvas.width - width - 48) + 24));
   const y = Math.max(24, Math.min(paintCanvas.height - height - 24, Math.random() * Math.max(1, paintCanvas.height - height - 48) + 24));
   const dial = activeDial();
@@ -1504,6 +1525,7 @@ function buildDialState() {
     const y = WATCH_CENTER_Y + Math.sin(angle) * NUMERAL_RADIUS;
     dials.push({
       label: labels[i],
+      angle,
       x,
       y,
       targetPoints: buildNumeralPoints(labels[i], x, y, angle),
@@ -1513,6 +1535,8 @@ function buildDialState() {
       mess: 0,
       corrected: false,
       credited: false,
+      strokeCount: 0,
+      directWipeUsed: false,
     });
   }
 
@@ -1945,7 +1969,7 @@ function closeMinigame() {
 }
 
 function allDialsReady() {
-  return paintState.dials.length > 0 && paintState.dials.every((dial) => dial.coverage >= 0.96);
+  return paintState.dials.length > 0 && paintState.dials.every(dialCountsAsPainted);
 }
 
 function dialNeedsCorrection(dial) {
@@ -1956,22 +1980,38 @@ function correctionCount() {
   return paintState.dials.filter(dialNeedsCorrection).length;
 }
 
+function numeralStrokeLimit() {
+  return NUMERAL_STROKE_LIMITS[Math.min(gameState.currentDay, NUMERAL_STROKE_LIMITS.length - 1)];
+}
+
+function dialWithinStrokeLimit(dial) {
+  return dial.strokeCount <= numeralStrokeLimit() || dial.directWipeUsed;
+}
+
+function strokeLimitedDialCount() {
+  return paintState.dials.filter((dial) => dial.coverage >= 0.96 && !dialNeedsCorrection(dial) && !dialWithinStrokeLimit(dial)).length;
+}
+
 function updatePaintStats() {
   const finished = paintState.dials.filter((dial) => dial.coverage >= 1).length;
   const correctionNeeded = correctionCount();
+  const strokeLimited = strokeLimitedDialCount();
   const mixPercent = Math.round(paintState.mixQuality * 100);
   const brushState =
     paintState.brushSize <= 0.7 ? "fine tip" :
     paintState.brushSize <= 1.2 ? "slightly soft" :
     paintState.brushSize <= 1.8 ? "fanning" :
     "splayed";
+  const currentDial = activeDial();
+  const currentDialText = currentDial
+    ? ` Numeral ${currentDial.label} strokes ${currentDial.strokeCount}/${numeralStrokeLimit()}${currentDial.directWipeUsed ? " wiped" : ""}.`
+    : "";
   paintStats.textContent =
-    `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.`;
+    `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Stroke-limited ${strokeLimited}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}`;
   mixPrompt.textContent = mixTextureFeedback();
   brushButton.classList.toggle("active", paintState.tool === "brush");
   correctButton.classList.toggle("active", paintState.tool === "nail");
-  const currentDial = activeDial();
-  wipeButton.disabled = paintState.zoomedDialIndex === -1 || !currentDial || !dialNeedsCorrection(currentDial);
+  wipeButton.disabled = paintState.zoomedDialIndex === -1 || !currentDial || (!dialNeedsCorrection(currentDial) && dialWithinStrokeLimit(currentDial));
   submitButton.textContent = correctionNeeded > 0 ? "Send watch in anyway" : "Send watch in";
 }
 
@@ -2102,7 +2142,7 @@ function addIngredient(region) {
 }
 
 function dialCountsAsPainted(dial) {
-  return dial.coverage >= 0.96 && !dialNeedsCorrection(dial);
+  return dial.coverage >= 0.96 && !dialNeedsCorrection(dial) && dialWithinStrokeLimit(dial);
 }
 
 function creditCompletedDials() {
@@ -2236,6 +2276,8 @@ function paintAt(x, y) {
     return;
   }
 
+  hit.dial.directWipeUsed = false;
+
   const hitRadius = paintState.zoomedDialIndex === -1
     ? Math.max(12, paintState.brushSize * 10)
     : Math.max(32, paintState.brushSize * 58);
@@ -2295,6 +2337,9 @@ function paintAt(x, y) {
     if (correctionNeeded > 0) {
       paintPrompt.textContent =
         "Some numerals are too thick or ragged. Use your fingernails to correct them, or send the watch in for reduced pay.";
+    } else if (strokeLimitedDialCount() > 0) {
+      paintPrompt.textContent =
+        "Some numerals are over the stroke limit. Wipe them directly if you want them to count.";
     } else {
       paintPrompt.textContent = "All twelve numerals hold their glow. You can send this watch in.";
     }
@@ -2378,6 +2423,7 @@ function correctAt(x, y) {
   if (messReduction <= 0) {
     paintPrompt.textContent = "Your fingernail grazes the edge, but lifts almost nothing.";
   } else {
+    target.dial.directWipeUsed = false;
     target.dial.mess = Math.max(0, target.dial.mess - messReduction);
     target.dial.corrected = true;
     paintPrompt.textContent = "You lift away a narrow patch of excess paint without cutting into the numeral itself.";
@@ -2387,7 +2433,11 @@ function correctAt(x, y) {
   creditCompletedDials();
 
   if (allDialsReady() && correctionCount() === 0) {
-    paintPrompt.textContent = "The ragged edges are cleaned away. This watch can go in at full pay.";
+    if (strokeLimitedDialCount() > 0) {
+      paintPrompt.textContent = "The edges are clean, but some numerals are over the stroke limit and still need direct wiping.";
+    } else {
+      paintPrompt.textContent = "The ragged edges are cleaned away. This watch can go in at full pay.";
+    }
   }
 
   updatePaintStats();
@@ -2396,8 +2446,8 @@ function correctAt(x, y) {
 function wipeNearestDial() {
   const target = paintState.zoomedDialIndex === -1 ? null : activeDial();
 
-  if (!target || !dialNeedsCorrection(target)) {
-    paintPrompt.textContent = "Only the numeral you are actively correcting can be wiped, and only when it needs correction.";
+  if (!target || (dialWithinStrokeLimit(target) && !dialNeedsCorrection(target))) {
+    paintPrompt.textContent = "Direct wiping only helps when the open numeral needs cleanup or has gone over the stroke limit.";
     return;
   }
 
@@ -2407,6 +2457,7 @@ function wipeNearestDial() {
   const preservedCorrecting = paintState.correcting;
   spendHealth(2);
   perfectDial(target);
+  target.directWipeUsed = true;
   paintState.brushSize = preservedBrushSize;
   paintState.paintLoaded = preservedPaintLoad;
   paintState.tool = preservedTool;
@@ -2415,6 +2466,12 @@ function wipeNearestDial() {
   creditCompletedDials();
   updatePaintStats();
   paintPrompt.textContent = "You wipe the ragged excess away and leave the numeral clean again.";
+}
+
+function registerBrushStroke(dial) {
+  if (!dial) return;
+  dial.strokeCount += 1;
+  dial.directWipeUsed = false;
 }
 
 function updateCoverage() {
@@ -2426,8 +2483,11 @@ function updateCoverage() {
 }
 
 function sendCurrentWatch() {
+  const strokeLimited = strokeLimitedDialCount();
   if (!allDialsReady()) {
-    paintPrompt.textContent = "Not every numeral is luminous yet. The watch is not ready to send in.";
+    paintPrompt.textContent = strokeLimited > 0
+      ? "Some numerals went over the stroke limit. Wipe them directly or redo the watch before sending it in."
+      : "Not every numeral is luminous yet. The watch is not ready to send in.";
     return;
   }
 
@@ -2576,6 +2636,19 @@ function drawDialMarker(dial) {
       : "rgba(190, 190, 190, 0.5)";
   paintCtx.lineWidth = dial === activeDial() ? 2.6 : 1.5;
   paintCtx.strokeRect(left, top, markerWidth, markerHeight);
+
+  const counterDistance = 22;
+  const counterX = dial.x + Math.cos(dial.angle) * counterDistance;
+  const counterY = dial.y + Math.sin(dial.angle) * counterDistance;
+  paintCtx.fillStyle = dialWithinStrokeLimit(dial) ? "rgba(214, 214, 214, 0.76)" : "rgba(255, 112, 112, 0.96)";
+  paintCtx.font = "9px Georgia";
+  paintCtx.textAlign = "center";
+  paintCtx.textBaseline = "middle";
+  paintCtx.fillText(
+    dial.directWipeUsed ? `W/${numeralStrokeLimit()}` : `${dial.strokeCount}/${numeralStrokeLimit()}`,
+    counterX,
+    counterY,
+  );
 }
 
 function drawFracturePuzzle() {
@@ -2734,12 +2807,8 @@ function drawZoomedDialView() {
   paintCtx.font = "18px Georgia";
   paintCtx.fillText(`NUMERAL ${dial.label}`, w / 2, 40);
   paintCtx.fillStyle = "rgba(255,255,255,0.42)";
+  paintCtx.fillText(`Strokes ${dial.strokeCount}/${numeralStrokeLimit()}${dial.directWipeUsed ? " - direct wipe counted" : ""}`, w / 2, 66);
   paintCtx.fillText("Press Escape to pull back from the numeral.", w / 2, h - 28);
-
-  const zoomFaceImage = currentWatchFaceImage();
-  if (imageReady(zoomFaceImage)) {
-    drawAssetCentered(zoomFaceImage, ZOOM_CENTER_X, ZOOM_CENTER_Y, WATCH_DRAW_WIDTH * ZOOM_SCALE, WATCH_DRAW_HEIGHT * ZOOM_SCALE, 0.2);
-  }
 
   if (imageReady(assetImages.mixedPaint)) {
     drawAssetContained(assetImages.mixedPaint, STATION_LAYOUT.zoomPaint.x, STATION_LAYOUT.zoomPaint.y, STATION_LAYOUT.zoomPaint.w, STATION_LAYOUT.zoomPaint.h, 1);
@@ -2837,15 +2906,18 @@ function drawThoughtPopup() {
     paintCtx.stroke();
   }
 
-  paintCtx.fillStyle = popup.dark ? "#f0dede" : "#111";
-  paintCtx.font = "14px Georgia";
+  const fitted = fitThoughtText(popup.text, textFrame);
+  paintCtx.fillStyle = "#f7f7f7";
+  paintCtx.font = `${fitted.fontSize}px Georgia`;
   paintCtx.textAlign = "center";
   paintCtx.textBaseline = "middle";
-  const lines = wrapThoughtText(popup.text, textFrame.w);
-  const lineHeight = 21;
-  const startY = textFrame.y + textFrame.h / 2 - ((lines.length - 1) * lineHeight) / 2;
-  lines.forEach((line, index) => {
-    paintCtx.fillText(line, textFrame.x + textFrame.w / 2, startY + index * lineHeight);
+  paintCtx.shadowColor = "rgba(0, 0, 0, 0.7)";
+  paintCtx.shadowBlur = 2;
+  paintCtx.shadowOffsetX = 0;
+  paintCtx.shadowOffsetY = 1;
+  const startY = textFrame.y + textFrame.h / 2 - ((fitted.lines.length - 1) * fitted.lineHeight) / 2;
+  fitted.lines.forEach((line, index) => {
+    paintCtx.fillText(line, textFrame.x + textFrame.w / 2, startY + index * fitted.lineHeight);
   });
   paintCtx.restore();
 }
@@ -3137,6 +3209,10 @@ paintCanvas.addEventListener("mousedown", (event) => {
     return;
   }
 
+  if (paintState.zoomedDialIndex !== -1) {
+    registerBrushStroke(activeDial());
+    updatePaintStats();
+  }
   paintState.isPainting = true;
   paintAt(position.x, position.y);
   drawWatchMinigame();

@@ -1812,9 +1812,8 @@ function enterDialZoom(index) {
   drawWatchMinigame();
 }
 
-function exitDialZoom(message = "You pull back from the numeral and reload the brush from the dish.") {
+function exitDialZoom(message = "You pull back from the numeral and return to the full watch face.") {
   paintState.zoomedDialIndex = -1;
-  paintState.paintLoaded = 0;
   moveCursorToActiveDial();
   paintPrompt.textContent = message;
   updatePaintStats();
@@ -3020,10 +3019,11 @@ correctButton.addEventListener("click", () => {
 lickButton.addEventListener("click", () => {
   gameState.hiddenStats.brushLicks += 1;
   spendHealth(2);
+  const preservedPaintLoad = paintState.paintLoaded;
   paintState.tool = "brush";
   paintState.correcting = false;
   paintState.brushSize = DEFAULT_BRUSH_SIZE;
-  paintState.paintLoaded = MAX_PAINT_LOAD;
+  paintState.paintLoaded = preservedPaintLoad;
   paintPrompt.textContent = "You mouth-point the brush before tracing the next strokes. The tip narrows back into working shape.";
   updatePaintStats();
   drawWatchMinigame();

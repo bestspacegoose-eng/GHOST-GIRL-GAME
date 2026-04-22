@@ -741,9 +741,15 @@ const interactables = [
     x: 8.2,
     y: 4.15,
     prompt() {
-      return "She glances sideways without stopping her hand.";
+      return !gameState.shiftActive && !gameState.shiftEnded
+        ? "She looks like she might explain the work if you ask before the bell."
+        : "She glances sideways without stopping her hand.";
     },
     interact() {
+      if (!gameState.shiftActive && !gameState.shiftEnded) {
+        showBenchTutorial();
+        return;
+      }
       setMessage("You're the new girl, right? Is that why you're dilly dallying?");
     },
   },
@@ -818,6 +824,7 @@ const interactables = [
 ];
 
 for (const entry of interactables) {
+  if (entry.id === "worker-3") continue;
   if (entry.kind !== "worker") continue;
   entry.prompt = () => workerPromptText(entry.id);
   entry.interact = () => {
@@ -913,6 +920,16 @@ function thoughtPopupFrame(popup) {
   };
 }
 
+function thoughtTextFrame(popup) {
+  const frame = thoughtPopupFrame(popup);
+  return {
+    x: frame.x + 10,
+    y: frame.y + 10,
+    w: frame.w - 20,
+    h: frame.h - 20,
+  };
+}
+
 function spawnThoughtPopup() {
   const pool = currentThoughtPool();
   const text = pool[Math.floor(Math.random() * pool.length)];
@@ -921,12 +938,12 @@ function spawnThoughtPopup() {
   const lines = (() => {
     paintCtx.save();
     paintCtx.font = "14px Georgia";
-    const wrapped = wrapThoughtText(text, width - 112);
+    const wrapped = wrapThoughtText(text, width - 20);
     paintCtx.restore();
     return wrapped;
   })();
   const aspect = thoughtPopupAspect();
-  const height = Math.max(212, width / aspect, 104 + lines.length * 22);
+  const height = Math.max(212, width / aspect, 20 + lines.length * 22);
   const x = Math.max(24, Math.min(paintCanvas.width - width - 24, Math.random() * Math.max(1, paintCanvas.width - width - 48) + 24));
   const y = Math.max(24, Math.min(paintCanvas.height - height - 24, Math.random() * Math.max(1, paintCanvas.height - height - 48) + 24));
   const dial = activeDial();
@@ -1342,6 +1359,16 @@ function showDayOneIntro() {
   dialogButton.textContent = "Begin shift";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "day-one-intro";
+}
+
+function showBenchTutorial() {
+  resetDialogButtons();
+  dialogTitle.textContent = "Center Bench Tutorial";
+  dialogBody.textContent =
+    "The girl at the center bench finally looks up. 'Listen closely. First, clock in at the wall clock to begin the shift. When you sit at a bench, use Pick up brush to paint, Switch to fingernails to clean up only the excess around a numeral, Sharpen brush to restore a fine point, Wipe paint directly if the open numeral needs a full clean correction, Send watch in once all twelve numerals are painted cleanly, and Empty the dish if your mixture goes bad. The three vessels build the paint: powder, tar, and water. In the main watch view, click a gray numeral marker to open it. In the zoomed view, paint inside the guide lines until the numeral is clean enough to count. If the edges get ragged, correct them before you send the watch in. Then clock out at the wall when you're finished.'";
+  dialogButton.textContent = "Understood";
+  dialogOverlay.classList.remove("hidden");
+  gameState.dialogMode = "bench-tutorial";
 }
 
 function showDayFiveCutscene() {
@@ -2629,10 +2656,6 @@ function drawWatchMinigame() {
   paintCtx.clearRect(0, 0, w, h);
   paintCtx.fillStyle = "#000";
   paintCtx.fillRect(0, 0, w, h);
-  paintCtx.strokeStyle = "rgba(255,255,255,0.12)";
-  paintCtx.lineWidth = 1;
-  paintCtx.strokeRect(22, 22, 144, 596);
-  paintCtx.strokeRect(centerX - WATCH_DRAW_WIDTH / 2 - 10, centerY - WATCH_DRAW_HEIGHT / 2 - 10, WATCH_DRAW_WIDTH + 20, WATCH_DRAW_HEIGHT + 20);
 
   paintCtx.save();
   paintCtx.imageSmoothingEnabled = true;
@@ -2688,9 +2711,6 @@ function drawZoomedDialView() {
   paintCtx.fillRect(0, 0, w, h);
 
   const points = dialRenderPoints(dial);
-  paintCtx.strokeStyle = "rgba(255,255,255,0.12)";
-  paintCtx.strokeRect(18, 18, w - 36, h - 36);
-  paintCtx.strokeRect(28, 28, 140, 160);
   paintCtx.textAlign = "center";
   paintCtx.textBaseline = "middle";
   paintCtx.fillStyle = "rgba(255,255,255,0.68)";
@@ -2760,6 +2780,7 @@ function drawThoughtPopup() {
   if (!popup) return;
 
   const frame = thoughtPopupFrame(popup);
+  const textFrame = thoughtTextFrame(popup);
   const close = thoughtCloseHitbox();
   paintCtx.save();
   const image = assetImages.thoughtPopup;
@@ -2773,12 +2794,6 @@ function drawThoughtPopup() {
     paintCtx.fillRect(frame.x, frame.y, frame.w, frame.h);
     paintCtx.strokeRect(frame.x, frame.y, frame.w, frame.h);
   }
-
-  paintCtx.fillStyle = popup.dark ? "#f1dddd" : "#f5f5f5";
-  paintCtx.font = "14px Georgia";
-  paintCtx.textAlign = "center";
-  paintCtx.textBaseline = "middle";
-  paintCtx.fillText("thought", frame.x + frame.w / 2 - 26, frame.y + 28);
 
   if (close) {
     paintCtx.fillStyle = popup.dark ? "rgba(120, 0, 0, 0.96)" : "rgba(255,255,255,0.98)";
@@ -2802,9 +2817,13 @@ function drawThoughtPopup() {
 
   paintCtx.fillStyle = popup.dark ? "#f0dede" : "#111";
   paintCtx.font = "14px Georgia";
-  const lines = wrapThoughtText(popup.text, frame.w - 114);
+  paintCtx.textAlign = "center";
+  paintCtx.textBaseline = "middle";
+  const lines = wrapThoughtText(popup.text, textFrame.w);
+  const lineHeight = 21;
+  const startY = textFrame.y + textFrame.h / 2 - ((lines.length - 1) * lineHeight) / 2;
   lines.forEach((line, index) => {
-    paintCtx.fillText(line, frame.x + frame.w / 2, frame.y + 84 + index * 21);
+    paintCtx.fillText(line, textFrame.x + textFrame.w / 2, startY + index * lineHeight);
   });
   paintCtx.restore();
 }
@@ -2944,6 +2963,15 @@ dialogButton.addEventListener("click", () => {
     gameState.dayFiveCutsceneSeen = true;
     gameState.joinedWorkers = true;
     showSolidarityEnding();
+    return;
+  }
+  if (gameState.dialogMode === "bench-tutorial") {
+    dialogOverlay.classList.add("hidden");
+    resetDialogButtons();
+    setMessage(
+      "The center worker has shown you the process.",
+      "Clock in at the wall clock when you're ready to start the shift.",
+    );
     return;
   }
   continueAfterDialog();

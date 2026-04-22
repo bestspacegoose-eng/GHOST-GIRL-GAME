@@ -189,7 +189,6 @@ canvas {
 .dialog-box,
 .minigame-panel {
   width: min(96%, 1120px);
-  border: 1px solid var(--line);
   background: rgba(10, 10, 10, 0.96);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
 }
@@ -246,7 +245,6 @@ canvas {
 
 .minigame-copy {
   padding: 12px;
-  border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -304,7 +302,6 @@ canvas {
   place-items: center;
   min-height: 0;
   padding: 4px;
-  border: 1px solid var(--line);
   background: #000;
   cursor: none;
   overflow: hidden;

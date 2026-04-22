@@ -76,6 +76,7 @@ const ASSET_PATHS = {
   cursorBrush: "./assets/cursor-brush.png",
   cursorNail: "./assets/cursor-nail.png",
   watchFace: "./assets/watch-face.png",
+  completedWatchFace: "./assets/completed-watch-face.png",
   brokenClockPhoto: "./assets/broken-clock-photo.png",
   fractureOverlay: "./assets/fracture-overlay.png",
   factoryPatchPhoto: "./assets/factory-patch-photo.jpg",
@@ -2537,6 +2538,13 @@ function drawAssetContained(image, x, y, boxWidth, boxHeight, alpha = 1) {
   return { x: x - width / 2, y: y - height / 2, w: width, h: height };
 }
 
+function currentWatchFaceImage() {
+  if (allDialsReady() && imageReady(assetImages.completedWatchFace)) {
+    return assetImages.completedWatchFace;
+  }
+  return assetImages.watchFace;
+}
+
 function drawDialMarker(dial) {
   const markerWidth = dial.label.length === 2 ? 28 : 20;
   const markerHeight = 14;
@@ -2662,7 +2670,7 @@ function drawWatchMinigame() {
   drawAssetContained(assetImages.yellowPowder, STATION_LAYOUT.powder.x, STATION_LAYOUT.powder.y, STATION_LAYOUT.powder.w, STATION_LAYOUT.powder.h, paintState.mix[0] > 0 ? 0.98 : 0.58);
   drawAssetContained(assetImages.gumArabic, STATION_LAYOUT.gum.x, STATION_LAYOUT.gum.y, STATION_LAYOUT.gum.w, STATION_LAYOUT.gum.h, paintState.mix[1] > 0 ? 0.98 : 0.58);
   drawAssetContained(assetImages.waterPlate, STATION_LAYOUT.water.x, STATION_LAYOUT.water.y, STATION_LAYOUT.water.w, STATION_LAYOUT.water.h, paintState.mix[2] > 0 ? 0.98 : 0.58);
-  const drewWatchFace = drawAssetCentered(assetImages.watchFace, centerX, centerY, WATCH_DRAW_WIDTH, WATCH_DRAW_HEIGHT, 1);
+  const drewWatchFace = drawAssetCentered(currentWatchFaceImage(), centerX, centerY, WATCH_DRAW_WIDTH, WATCH_DRAW_HEIGHT, 1);
   paintCtx.restore();
   drawMixDish(STATION_LAYOUT.dish.x, STATION_LAYOUT.dish.y);
   if (!drewWatchFace) {
@@ -2718,6 +2726,11 @@ function drawZoomedDialView() {
   paintCtx.fillText(`NUMERAL ${dial.label}`, w / 2, 40);
   paintCtx.fillStyle = "rgba(255,255,255,0.42)";
   paintCtx.fillText("Press Escape to pull back from the numeral.", w / 2, h - 28);
+
+  const zoomFaceImage = currentWatchFaceImage();
+  if (imageReady(zoomFaceImage)) {
+    drawAssetCentered(zoomFaceImage, ZOOM_CENTER_X, ZOOM_CENTER_Y, WATCH_DRAW_WIDTH * ZOOM_SCALE, WATCH_DRAW_HEIGHT * ZOOM_SCALE, 0.2);
+  }
 
   if (imageReady(assetImages.mixedPaint)) {
     drawAssetContained(assetImages.mixedPaint, STATION_LAYOUT.zoomPaint.x, STATION_LAYOUT.zoomPaint.y, STATION_LAYOUT.zoomPaint.w, STATION_LAYOUT.zoomPaint.h, 1);

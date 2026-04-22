@@ -44,7 +44,9 @@ const SHIFT_DURATION_SECONDS = SHIFT_HOURS * SECONDS_PER_HOUR;
 const PAY_PER_DIAL_CENTS = 8;
 const IGNORE_CORRECTION_FINE_CENTS = 10;
 const DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
-const NUMERAL_STROKE_LIMITS = [6, 5, 5, 4, 4, 3, 3];
+const NUMERAL_STROKE_LIMITS = [null, 7, 6, 5, 4, 4, 3];
+const HEALTH_DRIFT_THRESHOLD = 80;
+const GUARANTEED_THRESHOLD_THOUGHT = "Why does my hand feel unsteady already? It shouldn't be this hard to hold a straight line.";
 const DEFAULT_BRUSH_SIZE = 0.22;
 const WATCH_FACE_ASPECT = 1536 / 1024;
 const WATCH_CENTER_X = 409;
@@ -125,6 +127,8 @@ const gameState = {
     brushLicks: 0,
     fingernailUses: 0,
   },
+  thresholdThoughtQueued: false,
+  thresholdThoughtShown: false,
   savedBenchWork: {},
 };
 
@@ -947,9 +951,9 @@ function thoughtTextFrame(popup) {
   };
 }
 
-function spawnThoughtPopup() {
+function spawnThoughtPopup(forcedText = null) {
   const pool = currentThoughtPool();
-  const text = pool[Math.floor(Math.random() * pool.length)];
+  const text = forcedText || pool[Math.floor(Math.random() * pool.length)];
   const dark = gameState.hiddenStats.health < 50;
   const aspect = thoughtPopupAspect();
   let width = dark ? 352 : 328;
@@ -1003,6 +1007,14 @@ function updateThoughtPopups(dt) {
         closeThoughtPopup();
       }
     }
+    return;
+  }
+
+  if (gameState.thresholdThoughtQueued && !gameState.thresholdThoughtShown) {
+    spawnThoughtPopup(GUARANTEED_THRESHOLD_THOUGHT);
+    gameState.thresholdThoughtQueued = false;
+    gameState.thresholdThoughtShown = true;
+    paintState.nextThoughtTimer = nextThoughtDelay();
     return;
   }
 
@@ -1377,7 +1389,7 @@ function showDayOneIntro() {
   resetDialogButtons();
   dialogTitle.textContent = "Day 1 - New Hire";
   dialogBody.textContent =
-    "You've heard talk of it for weeks, months now; this lucrative new job where skillful work translates directly to high pay. Its one of the few jobs you could have taken; between being a woman, and one as young as you are. Unlike most other jobs, both attributes make you the perfect hire: young deft hands for this delicate work, and one of the few people left behind while the men valiantly fight for your country. You are a full-blown patriot now, a hero of your family and your country. ou come to the factory with the kind of hope that only grows when money has been short for too long. At home, there are six siblings and too much need to go around, and as the middle child you have learned how often duty lands in the hands of the one who can least refuse it. So you take your place at the bench telling yourself this is what luck looks like at last. Everyone talks about the paint as if it belongs to the future: luminous, fashionable, and made with the same remarkable material turning up in all the newest products. You have even heard it said that it is good for the health. By the time the shift is ready to begin, you want very badly to believe every word of it.";
+    "You've heard talk of it for weeks, months now; this lucrative new job where skill translates directly to high pay. Its one of the few jobs you could have taken-- as a woman, and one as young as you are. Unlike most other jobs, both attributes make you the perfect hire: young deft hands for this delicate work, and one of the few people left behind while the men valiantly fight for your country. You are a full-blown patriot now, a hero of your family and your country. oo long. At home, there are six siblings and too much need to go around, and as the middle child you have learned how often duty lands in the hands of the one who can least refuse it. So you take your place at the bench telling yourself this is what luck looks like at last. Everyone talks about the paint as if it belongs to the future: luminous, fashionable, and made with the same remarkable material turning up in all the newest products. You have even heard it said that it is good for the health. By the time the shift is ready to begin, you want very badly to believe every word of it.";
   dialogButton.textContent = "Begin shift";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "day-one-intro";
@@ -1507,6 +1519,8 @@ function resetWeek() {
   gameState.hiddenStats.health = 100;
   gameState.hiddenStats.brushLicks = 0;
   gameState.hiddenStats.fingernailUses = 0;
+  gameState.thresholdThoughtQueued = false;
+  gameState.thresholdThoughtShown = false;
   gameState.savedBenchWork = {};
   paintState.active = false;
   showTitleCard();
@@ -1987,10 +2001,12 @@ function numeralStrokeLimit() {
 }
 
 function dialWithinStrokeLimit(dial) {
-  return dial.strokeCount <= numeralStrokeLimit() || dial.directWipeUsed;
+  const limit = numeralStrokeLimit();
+  return limit == null || dial.strokeCount <= limit || dial.directWipeUsed;
 }
 
 function strokeLimitedDialCount() {
+  if (numeralStrokeLimit() == null) return 0;
   return paintState.dials.filter((dial) => dial.coverage >= 0.96 && !dialNeedsCorrection(dial) && !dialWithinStrokeLimit(dial)).length;
 }
 
@@ -1999,6 +2015,7 @@ function updatePaintStats() {
   const correctionNeeded = correctionCount();
   const strokeLimited = strokeLimitedDialCount();
   const mixPercent = Math.round(paintState.mixQuality * 100);
+  const strokeLimit = numeralStrokeLimit();
   const brushState =
     paintState.brushSize <= 0.7 ? "fine tip" :
     paintState.brushSize <= 1.2 ? "slightly soft" :
@@ -2006,10 +2023,10 @@ function updatePaintStats() {
     "splayed";
   const currentDial = activeDial();
   const currentDialText = currentDial
-    ? ` Numeral ${currentDial.label} strokes ${currentDial.strokeCount}/${numeralStrokeLimit()}${currentDial.directWipeUsed ? " wiped" : ""}.`
+    ? ` Numeral ${currentDial.label} strokes ${strokeLimit == null ? `${currentDial.strokeCount}/free` : `${currentDial.strokeCount}/${strokeLimit}`}${currentDial.directWipeUsed ? " wiped" : ""}.`
     : "";
   paintStats.textContent =
-    `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Stroke-limited ${strokeLimited}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}`;
+    `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}.${strokeLimit == null ? " No stroke cap today." : ` Stroke-limited ${strokeLimited}.`} Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}`;
   mixPrompt.textContent = mixTextureFeedback();
   brushButton.classList.toggle("active", paintState.tool === "brush");
   correctButton.classList.toggle("active", paintState.tool === "nail");
@@ -2018,7 +2035,15 @@ function updatePaintStats() {
 }
 
 function spendHealth(amount) {
+  const previousHealth = gameState.hiddenStats.health;
   gameState.hiddenStats.health = Math.max(0, gameState.hiddenStats.health - amount);
+  if (
+    previousHealth > HEALTH_DRIFT_THRESHOLD &&
+    gameState.hiddenStats.health <= HEALTH_DRIFT_THRESHOLD &&
+    !gameState.thresholdThoughtShown
+  ) {
+    gameState.thresholdThoughtQueued = true;
+  }
 }
 
 function switchToNailMode(source = "toggle") {
@@ -2647,7 +2672,7 @@ function drawDialMarker(dial) {
   paintCtx.textAlign = "center";
   paintCtx.textBaseline = "middle";
   paintCtx.fillText(
-    dial.directWipeUsed ? `W/${numeralStrokeLimit()}` : `${dial.strokeCount}/${numeralStrokeLimit()}`,
+    numeralStrokeLimit() == null ? `${dial.strokeCount}/-` : (dial.directWipeUsed ? `W/${numeralStrokeLimit()}` : `${dial.strokeCount}/${numeralStrokeLimit()}`),
     counterX,
     counterY,
   );
@@ -2809,7 +2834,11 @@ function drawZoomedDialView() {
   paintCtx.font = "18px Georgia";
   paintCtx.fillText(`NUMERAL ${dial.label}`, w / 2, 40);
   paintCtx.fillStyle = "rgba(255,255,255,0.42)";
-  paintCtx.fillText(`Strokes ${dial.strokeCount}/${numeralStrokeLimit()}${dial.directWipeUsed ? " - direct wipe counted" : ""}`, w / 2, 66);
+  paintCtx.fillText(
+    `Strokes ${numeralStrokeLimit() == null ? `${dial.strokeCount}/free` : `${dial.strokeCount}/${numeralStrokeLimit()}`}${dial.directWipeUsed ? " - direct wipe counted" : ""}`,
+    w / 2,
+    66,
+  );
   paintCtx.fillText("Press Escape to pull back from the numeral.", w / 2, h - 28);
 
   if (imageReady(assetImages.mixedPaint)) {

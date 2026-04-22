@@ -216,6 +216,10 @@ canvas {
   cursor: pointer;
 }
 
+#dialogAltButton.hidden {
+  display: none;
+}
+
 .dialog-box button:hover,
 .station-button:hover {
   background: #2b2b2b;
@@ -223,9 +227,9 @@ canvas {
 
 .minigame-panel {
   display: grid;
-  grid-template-columns: minmax(236px, 276px) minmax(0, 1fr);
-  gap: 16px;
-  padding: 16px;
+  grid-template-columns: minmax(220px, 248px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
   max-height: calc(100vh - 28px);
   align-items: stretch;
 }
@@ -284,17 +288,15 @@ canvas {
   display: grid;
   place-items: center;
   min-height: 0;
-  padding: 10px;
+  padding: 4px;
   border: 1px solid var(--line);
-  background:
-    radial-gradient(circle at 50% 30%, rgba(255, 244, 193, 0.09), transparent 32%),
-    linear-gradient(180deg, #2d261d 0%, #17120d 100%);
+  background: #000;
   cursor: none;
   overflow: hidden;
 }
 
 #paintCanvas {
-  width: min(100%, 720px);
+  width: min(100%, 760px);
   height: auto;
   aspect-ratio: 1 / 1;
   cursor: none;

@@ -11,6 +11,7 @@ const titleCardText = document.getElementById("titleCardText");
 const dialogOverlay = document.getElementById("dialogOverlay");
 const dialogTitle = document.getElementById("dialogTitle");
 const dialogBody = document.getElementById("dialogBody");
+const dialogAltButton = document.getElementById("dialogAltButton");
 const dialogButton = document.getElementById("dialogButton");
 const minigameOverlay = document.getElementById("minigameOverlay");
 const paintCanvas = document.getElementById("paintCanvas");
@@ -21,6 +22,7 @@ const paintStats = document.getElementById("paintStats");
 const brushButton = document.getElementById("brushButton");
 const correctButton = document.getElementById("correctButton");
 const lickButton = document.getElementById("lickButton");
+const wipeButton = document.getElementById("wipeButton");
 const submitButton = document.getElementById("submitButton");
 const mixResetButton = document.getElementById("mixResetButton");
 
@@ -37,17 +39,31 @@ const PLAYER_RADIUS = 0.2;
 const MAX_PITCH = HALF_HEIGHT * 0.72;
 
 const SHIFT_HOURS = 7;
-const SECONDS_PER_HOUR = 20;
+const SECONDS_PER_HOUR = 60;
 const SHIFT_DURATION_SECONDS = SHIFT_HOURS * SECONDS_PER_HOUR;
 const PAY_PER_DIAL_CENTS = 8;
 const IGNORE_CORRECTION_FINE_CENTS = 10;
 const DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
-const DEFAULT_BRUSH_SIZE = 4;
-const WATCH_CENTER_X = 390;
-const WATCH_CENTER_Y = 270;
-const NUMERAL_RADIUS = 168;
-const WATCH_DRAW_WIDTH = 536;
-const WATCH_DRAW_HEIGHT = 396;
+const DEFAULT_BRUSH_SIZE = 0.22;
+const WATCH_CENTER_X = 438;
+const WATCH_CENTER_Y = 256;
+const NUMERAL_RADIUS = 194;
+const WATCH_DRAW_WIDTH = 592;
+const WATCH_DRAW_HEIGHT = 472;
+const ZOOM_CENTER_X = paintCanvas.width / 2;
+const ZOOM_CENTER_Y = paintCanvas.height / 2;
+const ZOOM_SCALE = 4.35;
+const MAX_PAINT_LOAD = 1;
+const PAINT_DRAIN_PER_STROKE = 0.012;
+const STATION_LAYOUT = {
+  powder: { x: 98, y: 210, w: 118, h: 156, rx: 44, ry: 48 },
+  gum: { x: 170, y: 352, w: 112, h: 86, rx: 42, ry: 28 },
+  water: { x: 58, y: 362, w: 112, h: 84, rx: 42, ry: 28 },
+  dish: { x: 112, y: 504, w: 156, h: 116, rx: 52, ry: 34 },
+  zoomPaint: { x: 96, y: 108, w: 122, h: 90, rx: 44, ry: 30 },
+  brushProp: { x: 236, y: 460, r: 48 },
+  nailProp: { x: 252, y: 338, r: 30 },
+};
 const ASSET_PATHS = {
   backgroundRoom: "./assets/background-radium-girls.jpg",
   roomClock: "./assets/room-clock.png",
@@ -55,9 +71,13 @@ const ASSET_PATHS = {
   cursorBrush: "./assets/cursor-brush.png",
   cursorNail: "./assets/cursor-nail.png",
   watchFace: "./assets/watch-face.png",
+  brokenClockPhoto: "./assets/broken-clock-photo.png",
+  factoryPatchPhoto: "./assets/factory-patch-photo.jpg",
   yellowPowder: "./assets/yellow-powder.png",
   gumArabic: "./assets/gum-arabic.png",
   waterPlate: "./assets/water-plate.png",
+  mixedPaint: "./assets/mixed-paint.png",
+  thoughtPopup: "./assets/thought-popup.png",
 };
 
 const keys = new Set();
@@ -86,6 +106,9 @@ const gameState = {
   dialogMode: "",
   lastShiftProgress: 0,
   lowPayDaysInRow: 0,
+  dayOneIntroSeen: false,
+  dayFiveCutsceneSeen: false,
+  joinedWorkers: false,
   warnedLowHealth: false,
   fracturePending: false,
   fractureResolved: false,
@@ -109,13 +132,40 @@ const paintState = {
   mix: [0, 0, 0],
   mixQuality: 0,
   dials: [],
+  activeDialIndex: 0,
+  zoomedDialIndex: -1,
+  paintLoaded: 0,
   readyToSubmit: false,
   mode: "watch",
   fracturePieces: [],
   draggedPieceIndex: -1,
   dragOffsetX: 0,
   dragOffsetY: 0,
+  thoughtPopup: null,
+  nextThoughtTimer: 9,
 };
+
+const THOUGHTS_LIGHT = [
+  "I wonder how Elly's doing in school right now.",
+  "Did Mom remember to pack her lunch today?",
+  "I have to pick Denny up later.",
+  "I hope the rent money stretches this week.",
+  "If I keep this job, maybe things will ease up at home.",
+  "I should mend that hem tonight before it tears clean through.",
+  "I bet the little ones are squabbling over supper already.",
+  "I need to remember the grocer before he closes.",
+];
+
+const THOUGHTS_DARK = [
+  "I wonder what will happen to me...",
+  "They said it's normal. Just trust them. Keep your head down. Keep working.",
+  "What if this ache doesn't go away?",
+  "Don't think about your teeth. Just finish the dial.",
+  "If I stop now, what happens to everyone at home?",
+  "Something is wrong. Keep working anyway.",
+  "Maybe everyone feels this bad and no one says it aloud.",
+  "If I make enough today, I can ignore this for one more night.",
+];
 
 const roomState = {
   cursorX: WIDTH / 2,
@@ -131,22 +181,22 @@ const assetImages = Object.fromEntries(
 );
 
 const componentRegions = [
-  { index: 0, x: 112, y: 504, rx: 52, ry: 34 },
-  { index: 1, x: 208, y: 496, rx: 42, ry: 34 },
-  { index: 2, x: 160, y: 584, rx: 64, ry: 28 },
+  { index: 0, x: STATION_LAYOUT.powder.x, y: STATION_LAYOUT.powder.y, rx: STATION_LAYOUT.powder.rx, ry: STATION_LAYOUT.powder.ry },
+  { index: 1, x: STATION_LAYOUT.gum.x, y: STATION_LAYOUT.gum.y, rx: STATION_LAYOUT.gum.rx, ry: STATION_LAYOUT.gum.ry },
+  { index: 2, x: STATION_LAYOUT.water.x, y: STATION_LAYOUT.water.y, rx: STATION_LAYOUT.water.rx, ry: STATION_LAYOUT.water.ry },
 ];
 const ROOM_HOTSPOTS = [
   { id: "clock", x: 4, y: 18, w: 54, h: 146 },
-  { id: "bench-center", x: 110, y: 62, w: 56, h: 36 },
-  { id: "worker-1", x: 0, y: 82, w: 28, h: 54 },
-  { id: "worker-2", x: 50, y: 84, w: 28, h: 46 },
-  { id: "worker-5", x: 92, y: 77, w: 28, h: 46 },
-  { id: "worker-6", x: 120, y: 75, w: 28, h: 44 },
-  { id: "worker-3", x: 132, y: 72, w: 44, h: 84 },
-  { id: "worker-7", x: 182, y: 77, w: 34, h: 58 },
-  { id: "worker-4", x: 214, y: 76, w: 40, h: 66 },
-  { id: "worker-8", x: 252, y: 78, w: 30, h: 54 },
-  { id: "worker-9", x: 278, y: 80, w: 30, h: 50 },
+  { id: "bench-center", x: 114, y: 64, w: 46, h: 28 },
+  { id: "worker-1", x: 4, y: 86, w: 20, h: 46 },
+  { id: "worker-2", x: 54, y: 86, w: 20, h: 42 },
+  { id: "worker-5", x: 95, y: 80, w: 20, h: 40 },
+  { id: "worker-6", x: 123, y: 78, w: 20, h: 38 },
+  { id: "worker-3", x: 140, y: 74, w: 28, h: 74 },
+  { id: "worker-7", x: 187, y: 80, w: 22, h: 50 },
+  { id: "worker-4", x: 220, y: 79, w: 28, h: 58 },
+  { id: "worker-8", x: 255, y: 81, w: 22, h: 48 },
+  { id: "worker-9", x: 282, y: 82, w: 22, h: 44 },
 ];
 const REMOVED_WORKER_ORDER = ["worker-9", "worker-8", "worker-4", "worker-7", "worker-3", "worker-6", "worker-5", "worker-2", "worker-1"];
 const ROOM_REMOVAL_PATCHES = [
@@ -163,10 +213,14 @@ const ROOM_REMOVAL_PATCHES = [
 const WORKER_PROFILES = {
   "worker-1": {
     description: ["stiff-backed", "careful-handed", "powder-dusted"],
-    warmth: [
-      ["Not right now.", "She turns back to her tray before the last word lands."],
-      ["I have my own count to keep.", "Her voice is still clipped, but not quite as cold."],
-      ["Keep your wrist loose and you'll waste less paint.", "She says it without looking up, which is warmer than yesterday."],
+    dailyDialogue: [
+      ["I need this tray right the first time.", "She keeps her eyes on the numerals."],
+      ["Count your strokes before you trust your hand.", "It sounds like instruction, not dismissal."],
+      ["If your wrist locks, breathe once and start again.", "She spares you a quick glance."],
+      ["You settle faster when you stop fighting the curve.", "Her tone has softened a little."],
+      ["Leave the dish heavier and the paint will listen.", "She nudges her own tray toward you for a second."],
+      ["You're doing steadier work than you did on Monday.", "She almost sounds proud to say it."],
+      ["Sit beside me if the lamp on your bench starts acting up.", "The offer is quiet and sincere."],
     ],
     appearance: [
       "Her hair is pinned tight and her apron is still clean at the hem.",
@@ -178,10 +232,14 @@ const WORKER_PROFILES = {
   },
   "worker-2": {
     description: ["narrow-eyed", "precise", "restless at the shoulders"],
-    warmth: [
-      ["What do you want.", "Her brush never pauses."],
-      ["If you're going to ask, make it quick.", "The edge is still there, but less sharp."],
-      ["You are getting faster.", "She sounds almost surprised to hear herself admit it."],
+    dailyDialogue: [
+      ["Ask quick. I am on my ninth face already.", "Her brush keeps moving."],
+      ["Keep your line lighter on the ones and tens.", "She says it like a correction, but she still says it."],
+      ["Don't flood the stroke. Let the tip do the work.", "The advice comes before she can stop herself."],
+      ["You are wasting less paint today.", "She sounds grudgingly impressed."],
+      ["If your hand shakes, rest it against the rim first.", "She demonstrates with two fingers."],
+      ["You picked this up faster than most new girls do.", "She lets the compliment stand."],
+      ["Take the seat by the brighter lamp tomorrow if you need it.", "Her voice is gentle now."],
     ],
     appearance: [
       "She still sits perfectly straight, but keeps rolling her jaw as if testing it.",
@@ -193,10 +251,14 @@ const WORKER_PROFILES = {
   },
   "worker-3": {
     description: ["quick-fingered", "watchful", "half-amused by everyone else"],
-    warmth: [
-      ["You're the new girl, right? Is that why you're dilly dallying?", "She says it with a sideways glance."],
-      ["Still here? Then sit down and keep up.", "The tease lands more like rough camaraderie now."],
-      ["You can have my lamp after supper if yours keeps flickering.", "It is the closest thing to kindness you have heard from her."],
+    dailyDialogue: [
+      ["New girl, if you keep staring at the dial it won't paint itself.", "The tease lands sharp."],
+      ["You're still here, so I suppose you mean to learn.", "She smirks without looking up."],
+      ["Your sixes are cleaner than yesterday's.", "She says it like a challenge met."],
+      ["Try pulling the second digit later on the elevens.", "Her hand sketches the motion in the air."],
+      ["You can borrow my spare rag if yours is already stiff.", "The joke is gone from her voice."],
+      ["I've been watching. You're not the slowest hand in this row anymore.", "That is practically affection from her."],
+      ["If the manager presses you, send him to me.", "She says it like a promise."],
     ],
     appearance: [
       "Her sleeves are rolled neatly and she still moves with practiced speed.",
@@ -208,10 +270,14 @@ const WORKER_PROFILES = {
   },
   "worker-4": {
     description: ["steady", "already half-finished", "confident in her tray work"],
-    warmth: [
-      ["3 handfuls powder, 2 handfuls tar, one dash of water...", "She recites it as though she is too tired to argue."],
-      ["Keep the powder heavy. Thin paint wastes your whole hour.", "She taps her dish once with the brush handle."],
-      ["You're not spoiling every face anymore.", "She almost smiles before looking away."],
+    dailyDialogue: [
+      ["Three measures thick, one measure thin. That is all you need to remember.", "She speaks like she has said it a hundred times."],
+      ["The paint should drag a little. If it runs, you have already lost the face.", "She taps her bowl with the brush handle."],
+      ["Hold the edge on the tens a heartbeat longer.", "Her tray stays half-finished even while she advises you."],
+      ["That last watch of yours looked almost respectable.", "She permits herself a brief smile."],
+      ["You are finally painting like someone who expects to be paid for it.", "The line is dry, but not cruel."],
+      ["Here, look at the weight on my twelves.", "She turns the dial toward you."],
+      ["I knew you'd make yourself useful if you stayed long enough.", "It sounds warmer than she intends."],
     ],
     appearance: [
       "Her tray is already half done and her hair is still smoothed back tight.",
@@ -223,10 +289,14 @@ const WORKER_PROFILES = {
   },
   "worker-5": {
     description: ["silent", "head-down", "all concentration and no spare motion"],
-    warmth: [
-      ["Not right now.", "She keeps her head bent close to the dial."],
-      ["Ask me after the bell, if you still mean to.", "The refusal is quieter today."],
-      ["Leave your brush a little sharper than you think you need.", "She murmurs it without lifting her eyes."],
+    dailyDialogue: [
+      ["Not now. I have to finish this face clean.", "Her head stays bent low."],
+      ["If you're asking how to start, start smaller.", "She barely lifts her voice."],
+      ["Keep the brush sharper than seems reasonable.", "She says it as though passing along a secret."],
+      ["You can fix more with less paint than you think.", "Her tone has turned patient."],
+      ["I noticed you stopped overfilling the lower strokes.", "She sounds almost relieved for you."],
+      ["When you panic, slow the second pass instead of the first.", "The advice comes softly."],
+      ["You've got a worker's hand now. That's hard won.", "She finally looks up when she says it."],
     ],
     appearance: [
       "She keeps her head down over the bench, hiding most of her face.",
@@ -238,10 +308,14 @@ const WORKER_PROFILES = {
   },
   "worker-6": {
     description: ["lamp-lit", "tense at the jaw", "methodical in each stroke"],
-    warmth: [
-      ["What do you want.", "She does not stop counting under her breath."],
-      ["If you spoil the edge, scrape it back and try again.", "The advice slips out before she can stop herself."],
-      ["Here, watch the curve on the sixes.", "She turns the tray a fraction toward you."],
+    dailyDialogue: [
+      ["What is it. I am counting.", "She never loses the rhythm under her breath."],
+      ["If the edge blooms, scrape it back before it hardens.", "The correction comes automatically."],
+      ["Watch the curve on the sixes. Don't force the turn.", "She turns the tray a fraction toward you."],
+      ["Your hand is steadier under this lamp than under the far one.", "She notices more than she admits."],
+      ["You don't have to rush every stroke just because the room does.", "Her voice has softened."],
+      ["Sit here a moment and watch the way I pull the twos.", "She makes space beside her tray."],
+      ["You remind me of how I sounded my first week.", "She says it with an ache of fondness."],
     ],
     appearance: [
       "She sits directly under the lamp, her face bright and expressionless.",
@@ -253,10 +327,14 @@ const WORKER_PROFILES = {
   },
   "worker-7": {
     description: ["efficient", "impatient", "moving in short practiced strokes"],
-    warmth: [
-      ["You're the new girl, right? Is that why you're dilly dallying?", "She sounds bored more than cruel."],
-      ["At least you're not freezing up at the bench anymore.", "The jab lands softer than it used to."],
-      ["If the manager walks by, keep your hands moving.", "It sounds like a warning given on your behalf."],
+    dailyDialogue: [
+      ["If you're going to linger, at least pretend you're working.", "She does not look up."],
+      ["You froze less today. That's an improvement.", "The jab lands lighter than yesterday."],
+      ["Keep your hand moving if the manager comes down this row.", "The warning is clearly for your sake."],
+      ["Don't let the first stroke bully the second one.", "She flicks her brush at the air."],
+      ["You're starting to look like you belong at the bench.", "She says it briskly, but means it."],
+      ["If your dish turns thin, steal a touch more powder and say nothing.", "Her mouth tightens around the advice."],
+      ["I'd rather have you on this row than most of the girls they've lost.", "It is the kindest thing she has said all week."],
     ],
     appearance: [
       "Her hands move in short, practiced strokes and her collar is still neatly fastened.",
@@ -268,10 +346,14 @@ const WORKER_PROFILES = {
   },
   "worker-8": {
     description: ["rhythmic", "self-contained", "keeping time with the tray"],
-    warmth: [
-      ["3 handfuls powder, 2 handfuls tar, one dash of water...", "She offers it without turning her head."],
-      ["The watch faces go dull if the water gets ahead of you.", "She says it like someone passing along a superstition."],
-      ["You're still standing. That's worth something.", "It is not much, but it is meant kindly."],
+    dailyDialogue: [
+      ["If the water gets ahead of you, the whole face goes dead.", "She speaks without breaking rhythm."],
+      ["Listen to the paint. It tells on itself when the mix is wrong.", "Her voice is low and even."],
+      ["You don't have to press so hard to make it bright.", "She nods toward your brush hand."],
+      ["That's a cleaner nine than you gave me yesterday.", "Her approval is subtle but real."],
+      ["You are still standing, and that counts for something here.", "The line carries more kindness now."],
+      ["Take a breath before the twelves. Everybody crowds them.", "She says it like a sister would."],
+      ["I save the seat near me when I think you'll need the room.", "She finally says it plainly."],
     ],
     appearance: [
       "She keeps painting without breaking rhythm, though her shoulders look tight.",
@@ -283,10 +365,14 @@ const WORKER_PROFILES = {
   },
   "worker-9": {
     description: ["guarded", "quick to glance away", "trying not to be noticed"],
-    warmth: [
-      ["Not right now.", "She flinches a little at her own sharpness."],
-      ["You can sit here if the other bench is crowded.", "She offers it like she hopes you will not make a thing of it."],
-      ["Tell me if your hand starts shaking. Mine did that first.", "The warning is quiet and sincere."],
+    dailyDialogue: [
+      ["Not now. I'm trying not to lose this one.", "She glances away as soon as she says it."],
+      ["If the other benches crowd you, there's room here.", "The offer is shy and quickly given."],
+      ["Tell me if your hand starts shaking. Mine did that first.", "She watches your face when she says it."],
+      ["Use less paint on the inside edge and it won't bunch.", "She taps the air with one finger."],
+      ["I kept an extra clean rag in case you needed one.", "She slides it over without fanfare."],
+      ["You don't have to prove yourself every second anymore.", "The reassurance comes awkwardly but honestly."],
+      ["I'm glad you stayed.", "She says it so quietly you almost miss it."],
     ],
     appearance: [
       "She only spares you a glance, but still looks almost untouched by the week.",
@@ -297,7 +383,6 @@ const WORKER_PROFILES = {
     ],
   },
 };
-
 const spritePalettes = {
   clock: {
     ".": null,
@@ -458,7 +543,8 @@ function workerPromptText(id) {
 function workerDialogueLines(id) {
   const profile = WORKER_PROFILES[id];
   if (!profile) return ["Not right now.", ""];
-  return profile.warmth[warmStage()];
+  const dayIndex = Math.min(6, gameState.currentDay);
+  return profile.dailyDialogue[dayIndex];
 }
 
 const interactables = [
@@ -695,7 +781,123 @@ function update(dt) {
     }
   }
 
+  updateThoughtPopups(dt);
+
   updateHud();
+}
+
+function workingAtBench() {
+  return paintState.active && paintState.mode === "watch";
+}
+
+function currentThoughtPool() {
+  return gameState.hiddenStats.health < 50 ? THOUGHTS_DARK : THOUGHTS_LIGHT;
+}
+
+function nextThoughtDelay() {
+  if (gameState.currentDay <= 2) return 60;
+  const healthFactor = 1 - Math.max(0, Math.min(100, gameState.hiddenStats.health)) / 100;
+  return Math.max(9, 42 - healthFactor * 24);
+}
+
+function wrapThoughtText(text, maxWidth) {
+  const words = text.split(" ");
+  const lines = [];
+  let line = "";
+
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (paintCtx.measureText(candidate).width <= maxWidth || !line) {
+      line = candidate;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+
+  if (line) lines.push(line);
+  return lines;
+}
+
+function spawnThoughtPopup() {
+  const pool = currentThoughtPool();
+  const text = pool[Math.floor(Math.random() * pool.length)];
+  const dark = gameState.hiddenStats.health < 50;
+  const width = dark ? 218 : 206;
+  const lines = (() => {
+    paintCtx.save();
+    paintCtx.font = "14px Trebuchet MS";
+    const wrapped = wrapThoughtText(text, width - 46);
+    paintCtx.restore();
+    return wrapped;
+  })();
+  const height = Math.max(144, 56 + lines.length * 20);
+  const x = Math.max(24, Math.min(paintCanvas.width - width - 24, Math.random() * (paintCanvas.width - width - 48) + 24));
+  const y = Math.max(24, Math.min(paintCanvas.height - height - 24, Math.random() * (paintCanvas.height - height - 48) + 24));
+  const dial = activeDial();
+  const requiresDismiss = Boolean(
+    dial &&
+    paintState.zoomedDialIndex !== -1 &&
+    x < ZOOM_CENTER_X + 132 &&
+    x + width > ZOOM_CENTER_X - 132 &&
+    y < ZOOM_CENTER_Y + 132 &&
+    y + height > ZOOM_CENTER_Y - 132
+  );
+
+  paintState.thoughtPopup = {
+    text,
+    dark,
+    x,
+    y,
+    w: width,
+    h: height,
+    closeSize: 28,
+    requiresDismiss,
+    ttl: requiresDismiss ? Infinity : 8.5,
+  };
+}
+
+function updateThoughtPopups(dt) {
+  if (!workingAtBench() || !gameState.shiftActive || !dialogOverlay.classList.contains("hidden") || paintState.mode === "fracture") {
+    return;
+  }
+
+  if (paintState.thoughtPopup) {
+    if (!paintState.thoughtPopup.requiresDismiss) {
+      paintState.thoughtPopup.ttl -= dt;
+      if (paintState.thoughtPopup.ttl <= 0) {
+        closeThoughtPopup();
+      }
+    }
+    return;
+  }
+
+  paintState.nextThoughtTimer -= dt;
+  if (paintState.nextThoughtTimer > 0) return;
+
+  spawnThoughtPopup();
+  paintState.nextThoughtTimer = nextThoughtDelay();
+}
+
+function closeThoughtPopup() {
+  paintState.thoughtPopup = null;
+  paintState.nextThoughtTimer = nextThoughtDelay();
+}
+
+function thoughtCloseHitbox() {
+  if (!paintState.thoughtPopup) return null;
+  return {
+    x: paintState.thoughtPopup.x + paintState.thoughtPopup.w - paintState.thoughtPopup.closeSize - 10,
+    y: paintState.thoughtPopup.y + 10,
+    w: paintState.thoughtPopup.closeSize,
+    h: paintState.thoughtPopup.closeSize,
+  };
+}
+
+function pointInsideThoughtClose(x, y) {
+  const close = thoughtCloseHitbox();
+  if (!close) return false;
+  return x >= close.x && x <= close.x + close.w && y >= close.y && y <= close.y + close.h;
 }
 
 function applyShade(color, shade) {
@@ -823,6 +1025,12 @@ function refreshHint() {
     return;
   }
 
+  if (paintState.active && paintState.mode === "fracture") {
+    hint.textContent = "The broken clock waits under your hands.";
+    subhint.textContent = "Drag each piece back into place so the next day can start.";
+    return;
+  }
+
   if (paintState.active) {
     hint.textContent = "Mix, paint, and inspect the numerals.";
     subhint.textContent = "The station has three unlabeled vessels and a watch face waiting under the lamp.";
@@ -836,6 +1044,11 @@ function refreshHint() {
   }
 
   if (!gameState.shiftActive && !gameState.shiftEnded) {
+    if (gameState.currentDay === 4 && !gameState.dayFiveCutsceneSeen) {
+      hint.textContent = "The girls are gathering before the bell.";
+      subhint.textContent = "Click the wall clock to decide whether to stand with them or return to the bench.";
+      return;
+    }
     hint.textContent = "Clock in when you're ready.";
     subhint.textContent = "Click the wall clock or the back bench in the workshop image.";
     return;
@@ -869,6 +1082,7 @@ function setStationControlsHidden(hidden) {
   brushButton.classList.toggle("hidden", hidden);
   correctButton.classList.toggle("hidden", hidden);
   lickButton.classList.toggle("hidden", hidden);
+  wipeButton.classList.toggle("hidden", hidden);
   submitButton.classList.toggle("hidden", hidden);
   mixResetButton.classList.toggle("hidden", hidden);
 }
@@ -890,7 +1104,17 @@ function sendToDayStart(message) {
   );
 }
 
-function startShift() {
+function startShift(force = false) {
+  if (!force && gameState.currentDay === 0 && !gameState.dayOneIntroSeen) {
+    showDayOneIntro();
+    return;
+  }
+
+  if (!force && gameState.currentDay === 4 && !gameState.dayFiveCutsceneSeen && !gameState.joinedWorkers) {
+    showDayFiveCutscene();
+    return;
+  }
+
   fadeTitleCard();
   gameState.shiftActive = true;
   gameState.shiftEnded = false;
@@ -901,7 +1125,7 @@ function startShift() {
   gameState.dayEarningsCents = 0;
   setMessage(
     "The shift whistle kicks the room awake.",
-    "Each hour now lasts 20 seconds. Every finished dial is worth 8 cents.",
+    "Each hour now lasts 1 real minute. Every finished dial is worth 8 cents.",
   );
 }
 
@@ -920,6 +1144,32 @@ function managerLineForDay() {
   }
 
   return line;
+}
+
+function endOfDayReflection() {
+  const health = gameState.hiddenStats.health;
+  const day = gameState.currentDay;
+
+  const opening = day === 0
+    ? "On the way home, you still try to believe this factory might be the answer you were promised."
+    : "On the way home, the weight of the day follows you even after the lamps are behind you.";
+
+  let body;
+  if (health >= 80) {
+    body =
+      "You think about your family first: six siblings, too many hungry mouths, and you in the middle of them trying to turn one of the few jobs available to women into something steady and respectable. The pay still feels worth chasing. Any soreness in your hand or jaw is easy enough to dismiss as the cost of learning skilled work.";
+  } else if (health >= 60) {
+    body =
+      "A little unease has begun to trail you home. Your mouth feels tender and your body more tired than it should after sitting at a bench all day, but you keep folding those thoughts away. Your family needs the wage more than you need certainty, and you tell yourself that modern paint and respectable pay cannot possibly be the danger some small frightened part of you imagines.";
+  } else if (health >= 35) {
+    body =
+      "The defects are harder to ignore now. Your gums ache, your strength ebbs faster, and you catch yourself wondering whether the glow has left something inside you that will not come back out. Even so, you think of the family depending on you and make the same bargain again: one more day, one more shift, one more envelope of pay before you allow yourself to be afraid.";
+  } else {
+    body =
+      "The damage is unmistakable now, and some part of you knows it. Still, the thought of leaving the work feels worse than the pain because the family at home still needs what this bench brings in. You swallow the fear, refuse to name what is happening to your body, and decide to report again in the morning so long as you can still stand.";
+  }
+
+  return `${opening} ${body}`;
 }
 
 function finalEndingForHealth() {
@@ -948,7 +1198,14 @@ function finalEndingForHealth() {
   };
 }
 
+function resetDialogButtons() {
+  dialogAltButton.classList.add("hidden");
+  dialogAltButton.textContent = "Alternative";
+  dialogButton.textContent = "Continue";
+}
+
 function showEnding(title, body) {
+  resetDialogButtons();
   dialogTitle.textContent = title;
   dialogBody.textContent = body;
   dialogButton.textContent = "Try again?";
@@ -957,12 +1214,45 @@ function showEnding(title, body) {
 }
 
 function showLowHealthWarning() {
+  resetDialogButtons();
   dialogTitle.textContent = "On The Way Home";
   dialogBody.textContent =
     "On the walk home, you begin to notice something horribly wrong. Your teeth feel loose in your gums, though they should be fully grown and set. When you touch them, two come free at once and land in your palm.";
   dialogButton.textContent = "Continue";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "low-health-warning";
+}
+
+function showDayOneIntro() {
+  resetDialogButtons();
+  dialogTitle.textContent = "Day 1 - New Hire";
+  dialogBody.textContent =
+    "The job feels like a miracle when you first arrive. Watch-painting is spoken of as one of the best-paying positions a woman can get, and you come to the factory with the kind of hope that only grows when money has been short for too long. At home, there are six siblings and too much need to go around, and as the middle child you have learned how often duty lands in the hands of the one who can least refuse it. So you take your place at the bench telling yourself this is what luck looks like at last. Everyone talks about the paint as if it belongs to the future: luminous, fashionable, and made with the same remarkable material turning up in all the newest products. You have even heard it said that it is good for the health. By the time the shift is ready to begin, you want very badly to believe every word of it.";
+  dialogButton.textContent = "Begin shift";
+  dialogOverlay.classList.remove("hidden");
+  gameState.dialogMode = "day-one-intro";
+}
+
+function showDayFiveCutscene() {
+  resetDialogButtons();
+  dialogTitle.textContent = "Day 5 - Before The Bell";
+  dialogBody.textContent =
+    "The remaining girls gather before the shift whistle. They speak in hushed bursts about the dial painters who came together in real life to demand compensation: the New Jersey women led by Grace Fryer, and later the Illinois workers who kept pressing their claims even while their health failed. The room goes still while they decide whether to stand together now, or let the benches swallow another day.";
+  dialogAltButton.textContent = "Return to the bench";
+  dialogAltButton.classList.remove("hidden");
+  dialogButton.textContent = "Stand with the girls";
+  dialogOverlay.classList.remove("hidden");
+  gameState.dialogMode = "day-five-choice";
+}
+
+function showSolidarityEnding() {
+  resetDialogButtons();
+  dialogTitle.textContent = "Stand Together";
+  dialogBody.textContent =
+    "You step away from the bench and join the others. In the years that follow, women like Grace Fryer in New Jersey and Catherine Donohue in Illinois force the poison in the dial rooms into court records, headlines, and public memory. The companies are pushed into settlements, medical payments, and legal accountability; the cases help strengthen occupational disease law and become part of the longer fight that reshapes workplace safety in the United States. You still die years later from the damage already done inside your body, but your refusal to stay quiet helps leave behind stronger labor protections than the factory ever meant to allow.";
+  dialogButton.textContent = "Try again?";
+  dialogOverlay.classList.remove("hidden");
+  gameState.dialogMode = "restart";
 }
 
 function endShift(reason) {
@@ -1004,7 +1294,7 @@ function endShift(reason) {
   dialogTitle.textContent = `Shift manager - ${DAY_NAMES[gameState.currentDay]}`;
   dialogBody.textContent =
     `${reason === "timeout" ? "The bell cuts off the shift." : "The manager calls the day."} ` +
-    managerLineForDay();
+    `${managerLineForDay()} ${endOfDayReflection()}`;
   dialogButton.textContent = "Next day";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "next-day";
@@ -1013,27 +1303,21 @@ function endShift(reason) {
 
 function continueAfterDialog() {
   dialogOverlay.classList.add("hidden");
+  resetDialogButtons();
 
   if (gameState.dialogMode === "next-day") {
     gameState.currentDay += 1;
     gameState.shiftEnded = false;
     gameState.shiftElapsed = 0;
     gameState.lastShiftProgress = 0;
-    showTitleCard();
-    setMessage(
-      `${DAY_NAMES[gameState.currentDay]} waits behind the lamps.`,
-      "Clock in again when the title card fades away.",
-    );
+    sendToDayStart("Clock in again when the title card fades away.");
   } else if (gameState.dialogMode === "low-health-warning") {
     gameState.currentDay += 1;
     gameState.shiftEnded = false;
     gameState.shiftElapsed = 0;
     gameState.lastShiftProgress = 0;
-    showTitleCard();
-    setMessage(
-      `${DAY_NAMES[gameState.currentDay]} waits behind the lamps.`,
-      "Something is wrong now, even away from the bench.",
-    );
+    gameState.fracturePending = true;
+    sendToDayStart("Something is wrong now, even away from the bench.");
   } else if (gameState.dialogMode === "restart") {
     resetWeek();
   }
@@ -1052,7 +1336,12 @@ function resetWeek() {
   gameState.totalEarningsCents = 0;
   gameState.totalDialsPainted = 0;
   gameState.lowPayDaysInRow = 0;
+  gameState.dayOneIntroSeen = false;
+  gameState.dayFiveCutsceneSeen = false;
+  gameState.joinedWorkers = false;
   gameState.warnedLowHealth = false;
+  gameState.fracturePending = false;
+  gameState.fractureResolved = false;
   gameState.hiddenStats.health = 100;
   gameState.hiddenStats.brushLicks = 0;
   gameState.hiddenStats.fingernailUses = 0;
@@ -1077,11 +1366,12 @@ function buildDialState() {
       label: labels[i],
       x,
       y,
-      targetPoints: buildNumeralPoints(labels[i], x, y),
+      targetPoints: buildNumeralPoints(labels[i], x, y, angle),
       paintedMask: [],
       coverage: 0,
       mess: 0,
       corrected: false,
+      credited: false,
     });
   }
 
@@ -1090,6 +1380,24 @@ function buildDialState() {
   }
 
   paintState.dials = dials;
+  paintState.activeDialIndex = 0;
+}
+
+function leadingPointForDial(index = paintState.activeDialIndex) {
+  const dial = paintState.dials[index];
+  if (!dial || dial.targetPoints.length === 0) return { x: WATCH_CENTER_X, y: WATCH_CENTER_Y };
+  return dial.targetPoints[Math.floor(dial.targetPoints.length / 2)];
+}
+
+function moveCursorToActiveDial() {
+  const point = leadingPointForDial();
+  paintState.cursorX = point.x;
+  paintState.cursorY = point.y;
+}
+
+function updateActiveDialIndex() {
+  const nextIndex = paintState.dials.findIndex((dial) => dial.coverage < 0.74 || dialNeedsCorrection(dial));
+  paintState.activeDialIndex = nextIndex === -1 ? 0 : nextIndex;
 }
 
 function digitSegments(digit) {
@@ -1119,8 +1427,8 @@ function pushLinePoints(points, x1, y1, x2, y2, steps = 8) {
 
 function buildDigitPoints(digit, offsetX, offsetY, scale) {
   const segments = digitSegments(Number(digit));
-  const w = 16 * scale;
-  const h = 28 * scale;
+  const w = 20 * scale;
+  const h = 34 * scale;
   const left = offsetX - w / 2;
   const top = offsetY - h / 2;
   const right = left + w;
@@ -1129,27 +1437,33 @@ function buildDigitPoints(digit, offsetX, offsetY, scale) {
   const points = [];
 
   for (const segment of segments) {
-    if (segment === "a") pushLinePoints(points, left, top, right, top, 8);
-    if (segment === "b") pushLinePoints(points, right, top, right, midY, 8);
-    if (segment === "c") pushLinePoints(points, right, midY, right, bottom, 8);
-    if (segment === "d") pushLinePoints(points, left, bottom, right, bottom, 8);
-    if (segment === "e") pushLinePoints(points, left, midY, left, bottom, 8);
-    if (segment === "f") pushLinePoints(points, left, top, left, midY, 8);
-    if (segment === "g") pushLinePoints(points, left, midY, right, midY, 8);
+    if (segment === "a") pushLinePoints(points, left, top, right, top, 10);
+    if (segment === "b") pushLinePoints(points, right, top, right, midY, 10);
+    if (segment === "c") pushLinePoints(points, right, midY, right, bottom, 10);
+    if (segment === "d") pushLinePoints(points, left, bottom, right, bottom, 10);
+    if (segment === "e") pushLinePoints(points, left, midY, left, bottom, 10);
+    if (segment === "f") pushLinePoints(points, left, top, left, midY, 10);
+    if (segment === "g") pushLinePoints(points, left, midY, right, midY, 10);
   }
 
   return points;
 }
 
-function buildNumeralPoints(label, centerX, centerY) {
+function buildNumeralPoints(label, centerX, centerY, angle) {
   const points = [];
   const chars = label.split("");
-  const spacing = chars.length === 1 ? 0 : 16;
-  const startX = centerX - ((chars.length - 1) * spacing) / 2;
+  const tangentX = -Math.sin(angle);
+  const tangentY = Math.cos(angle);
+  const radialX = Math.cos(angle);
+  const radialY = Math.sin(angle);
+  const spacing = chars.length === 1 ? 0 : 32;
+  const inwardOffset = chars.length === 1 ? 0 : -14;
 
   chars.forEach((char, index) => {
-    const digitX = startX + index * spacing;
-    const digitPoints = buildDigitPoints(char, digitX, centerY, chars.length === 1 ? 1.24 : 1.08);
+    const tangentOffset = chars.length === 1 ? 0 : (index - (chars.length - 1) / 2) * spacing;
+    const digitX = centerX + tangentX * tangentOffset + radialX * inwardOffset;
+    const digitY = centerY + tangentY * tangentOffset + radialY * inwardOffset;
+    const digitPoints = buildDigitPoints(char, digitX, digitY, chars.length === 1 ? 1.45 : 0.92);
     points.push(...digitPoints);
   });
 
@@ -1187,9 +1501,50 @@ function mixTextureFeedback() {
 
 function currentStationMode() {
   if (paintState.tool === "nail") return "nail";
-  const total = paintState.mix[0] + paintState.mix[1] + paintState.mix[2];
-  if (total === 0) return "mix";
+  if (paintState.zoomedDialIndex === -1) return "mix";
   return "brush";
+}
+
+function activeDial() {
+  return paintState.dials[paintState.zoomedDialIndex] || paintState.dials[paintState.activeDialIndex] || null;
+}
+
+function dialRenderPoints(dial) {
+  if (!dial) return [];
+  if (paintState.zoomedDialIndex === -1) return dial.targetPoints;
+  return dial.targetPoints.map((point) => ({
+    x: ZOOM_CENTER_X + (point.x - dial.x) * ZOOM_SCALE,
+    y: ZOOM_CENTER_Y + (point.y - dial.y) * ZOOM_SCALE,
+  }));
+}
+
+function zoomCursorToDial(index) {
+  const dial = paintState.dials[index];
+  if (!dial) return;
+  const points = dialRenderPoints(dial);
+  const point = points[Math.floor(points.length / 2)] || { x: ZOOM_CENTER_X, y: ZOOM_CENTER_Y };
+  paintState.cursorX = point.x;
+  paintState.cursorY = point.y;
+}
+
+function enterDialZoom(index) {
+  const dial = paintState.dials[index];
+  if (!dial) return;
+  paintState.zoomedDialIndex = index;
+  paintState.paintLoaded = MAX_PAINT_LOAD;
+  zoomCursorToDial(index);
+  paintPrompt.textContent = `The ${dial.label} fills the dark. Paint inside the faint guide while the brush still holds paint.`;
+  updatePaintStats();
+  drawWatchMinigame();
+}
+
+function exitDialZoom(message = "You pull back from the numeral and reload the brush from the dish.") {
+  paintState.zoomedDialIndex = -1;
+  paintState.paintLoaded = 0;
+  moveCursorToActiveDial();
+  paintPrompt.textContent = message;
+  updatePaintStats();
+  drawWatchMinigame();
 }
 
 function imageReady(image) {
@@ -1200,6 +1555,9 @@ function initializeFracturePieces() {
   paintState.fracturePieces = [];
   const cols = 5;
   const rows = 4;
+  const fractureImage = imageReady(assetImages.brokenClockPhoto) ? assetImages.brokenClockPhoto : assetImages.watchFace;
+  const sourceWidth = imageReady(fractureImage) ? fractureImage.naturalWidth : WATCH_DRAW_WIDTH;
+  const sourceHeight = imageReady(fractureImage) ? fractureImage.naturalHeight : WATCH_DRAW_HEIGHT;
   const watchLeft = WATCH_CENTER_X - WATCH_DRAW_WIDTH / 2;
   const watchTop = WATCH_CENTER_Y - WATCH_DRAW_HEIGHT / 2;
   const pieceWidth = WATCH_DRAW_WIDTH / cols;
@@ -1217,10 +1575,10 @@ function initializeFracturePieces() {
       const scatterY = 34 + row * 128 + (col % 2) * 18;
 
       paintState.fracturePieces.push({
-        sx: col * (assetImages.watchFace.naturalWidth / cols),
-        sy: row * (assetImages.watchFace.naturalHeight / rows),
-        sw: assetImages.watchFace.naturalWidth / cols,
-        sh: assetImages.watchFace.naturalHeight / rows,
+        sx: col * (sourceWidth / cols),
+        sy: row * (sourceHeight / rows),
+        sw: sourceWidth / cols,
+        sh: sourceHeight / rows,
         x: scatterX,
         y: scatterY,
         w: pieceWidth,
@@ -1271,22 +1629,25 @@ function openMinigame(label) {
   paintState.active = true;
   paintState.mode = "watch";
   paintState.tableLabel = label;
-  paintState.cursorX = paintCanvas.width / 2;
-  paintState.cursorY = paintCanvas.height / 2;
   paintState.isPainting = false;
   paintState.correcting = false;
   paintState.tool = "brush";
   paintState.watchIndex += 1;
   paintState.brushSize = DEFAULT_BRUSH_SIZE;
+  paintState.paintLoaded = 0;
+  paintState.zoomedDialIndex = -1;
+  paintState.thoughtPopup = null;
+  paintState.nextThoughtTimer = nextThoughtDelay();
   paintState.readyToSubmit = false;
   resetMix();
   buildDialState();
+  moveCursorToActiveDial();
   setStationControlsHidden(false);
   minigameOverlay.classList.remove("hidden");
   document.exitPointerLock();
 
   paintPrompt.textContent =
-    "Combine something workable in the dish, then bring each numeral up to radiance. Poor mixes will need extra passes.";
+    "Mix the paint in the dish, then click a numeral on the watch to open it in close view and paint inside the faint guide lines.";
   mixPrompt.textContent = mixTextureFeedback();
   updatePaintStats();
   drawWatchMinigame();
@@ -1298,6 +1659,9 @@ function closeMinigame() {
   paintState.correcting = false;
   paintState.tool = "brush";
   paintState.mode = "watch";
+  paintState.zoomedDialIndex = -1;
+  paintState.paintLoaded = 0;
+  paintState.thoughtPopup = null;
   paintState.fracturePieces = [];
   paintState.draggedPieceIndex = -1;
   setStationControlsHidden(false);
@@ -1305,11 +1669,11 @@ function closeMinigame() {
 }
 
 function allDialsReady() {
-  return paintState.dials.length > 0 && paintState.dials.every((dial) => dial.coverage >= 1);
+  return paintState.dials.length > 0 && paintState.dials.every((dial) => dial.coverage >= 0.74);
 }
 
 function dialNeedsCorrection(dial) {
-  return dial.coverage >= 1 && (dial.mess > 0.36 || dial.coverage > 1.22);
+  return dial.coverage >= 0.74 && (dial.mess > 0.26 || dial.coverage > 1.08);
 }
 
 function correctionCount() {
@@ -1320,13 +1684,14 @@ function updatePaintStats() {
   const finished = paintState.dials.filter((dial) => dial.coverage >= 1).length;
   const correctionNeeded = correctionCount();
   const mixPercent = Math.round(paintState.mixQuality * 100);
+  const paintPercent = Math.round(paintState.paintLoaded * 100);
   const brushState =
-    paintState.brushSize <= 6.2 ? "fine tip" :
-    paintState.brushSize <= 7.2 ? "slightly soft" :
-    paintState.brushSize <= 8.5 ? "fanning" :
+    paintState.brushSize <= 0.7 ? "fine tip" :
+    paintState.brushSize <= 1.2 ? "slightly soft" :
+    paintState.brushSize <= 1.8 ? "fanning" :
     "splayed";
   paintStats.textContent =
-    `Mix quality ${mixPercent}%. Dials ready ${finished}/12. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.`;
+    `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}. Paint ${paintPercent}%.`;
   mixPrompt.textContent = mixTextureFeedback();
   correctButton.classList.toggle("hidden", correctionNeeded === 0);
   brushButton.classList.toggle("active", paintState.tool === "brush");
@@ -1364,10 +1729,15 @@ function switchToBrushMode(message = "You pick the brush back up and return to t
 function prepareNextWatch(message) {
   paintState.correcting = false;
   paintState.tool = "brush";
+  paintState.zoomedDialIndex = -1;
   paintState.readyToSubmit = false;
   resetMix();
   buildDialState();
+  moveCursorToActiveDial();
   paintState.brushSize = DEFAULT_BRUSH_SIZE;
+  paintState.paintLoaded = 0;
+  paintState.thoughtPopup = null;
+  paintState.nextThoughtTimer = nextThoughtDelay();
   paintPrompt.textContent = message;
   updatePaintStats();
   drawWatchMinigame();
@@ -1375,12 +1745,18 @@ function prepareNextWatch(message) {
 
 function findNearestDial(x, y) {
   let best = null;
+  const dialSet = paintState.zoomedDialIndex === -1
+    ? paintState.dials
+    : [activeDial()].filter(Boolean);
 
-  for (const dial of paintState.dials) {
-    const distance = Math.hypot(dial.x - x, dial.y - y);
-    if (distance > 48) continue;
-    if (!best || distance < best.distance) {
-      best = { dial, distance };
+  for (const dial of dialSet) {
+    const dialX = paintState.zoomedDialIndex === -1 ? dial.x : ZOOM_CENTER_X;
+    const dialY = paintState.zoomedDialIndex === -1 ? dial.y : ZOOM_CENTER_Y;
+    const referenceDistance = Math.hypot(dialX - x, dialY - y);
+    const limit = paintState.zoomedDialIndex === -1 ? 62 : 220;
+    if (referenceDistance > limit) continue;
+    if (!best || referenceDistance < best.distance) {
+      best = { dial, distance: referenceDistance };
     }
   }
 
@@ -1390,11 +1766,17 @@ function findNearestDial(x, y) {
 function findNearestTracePoint(x, y) {
   let best = null;
 
-  for (const dial of paintState.dials) {
-    for (let i = 0; i < dial.targetPoints.length; i += 1) {
-      const point = dial.targetPoints[i];
+  const dialSet = paintState.zoomedDialIndex === -1
+    ? paintState.dials
+    : [activeDial()].filter(Boolean);
+
+  for (const dial of dialSet) {
+    const renderPoints = dialRenderPoints(dial);
+    for (let i = 0; i < renderPoints.length; i += 1) {
+      const point = renderPoints[i];
       const distance = Math.hypot(point.x - x, point.y - y);
-      if (distance > 36) continue;
+      const limit = paintState.zoomedDialIndex === -1 ? 52 : 84;
+      if (distance > limit) continue;
       if (!best || distance < best.distance) {
         best = { dial, index: i, point, distance };
       }
@@ -1405,7 +1787,11 @@ function findNearestTracePoint(x, y) {
 }
 
 function bowlUnderCursor(x, y) {
-  for (const region of componentRegions) {
+  const regions = paintState.zoomedDialIndex === -1
+    ? componentRegions
+    : [{ index: 3, x: STATION_LAYOUT.zoomPaint.x, y: STATION_LAYOUT.zoomPaint.y, rx: STATION_LAYOUT.zoomPaint.rx, ry: STATION_LAYOUT.zoomPaint.ry }];
+
+  for (const region of regions) {
     const dx = (x - region.x) / region.rx;
     const dy = (y - region.y) / region.ry;
     if (dx * dx + dy * dy <= 1) return region;
@@ -1414,8 +1800,16 @@ function bowlUnderCursor(x, y) {
 }
 
 function addIngredient(region) {
+  if (region.index === 3) {
+    paintState.paintLoaded = MAX_PAINT_LOAD;
+    paintPrompt.textContent = "You dip the brush back into the paint dish at your side.";
+    updatePaintStats();
+    return;
+  }
+
   paintState.mix[region.index] += 1;
   paintState.mixQuality = computeMixQuality();
+  paintState.paintLoaded = MAX_PAINT_LOAD;
 
   if (region.index === 0) {
     paintPrompt.textContent = "The left vessel leaves a yellow dust in the dish.";
@@ -1428,30 +1822,65 @@ function addIngredient(region) {
   updatePaintStats();
 }
 
+function dialCountsAsPainted(dial) {
+  return dial.coverage >= 0.74 && !dialNeedsCorrection(dial);
+}
+
+function creditCompletedDials() {
+  let creditedNow = 0;
+  for (const dial of paintState.dials) {
+    if (dial.credited || !dialCountsAsPainted(dial)) continue;
+    dial.credited = true;
+    creditedNow += 1;
+  }
+
+  if (creditedNow > 0) {
+    gameState.dialsPaintedToday += creditedNow;
+    gameState.dayEarningsCents += creditedNow * PAY_PER_DIAL_CENTS;
+    gameState.totalEarningsCents += creditedNow * PAY_PER_DIAL_CENTS;
+    gameState.totalDialsPainted += creditedNow;
+    updateHud();
+  }
+}
+
 function paintAt(x, y) {
   if (paintState.mixQuality <= 0) {
     paintPrompt.textContent = "The brush drags dry. Nothing useful has been mixed yet.";
     return;
   }
 
+  if (paintState.paintLoaded <= 0) {
+    paintPrompt.textContent = "The brush runs dry. Press Escape to pull back and gather more paint from the dish.";
+    return;
+  }
+
   const hit = findNearestTracePoint(x, y);
   if (!hit) {
-    paintPrompt.textContent = "Paint slips away from the numerals and wastes itself on the face.";
-    for (const dial of paintState.dials) {
-      const dialDistance = Math.hypot(dial.x - x, dial.y - y);
-      if (dialDistance < 50) {
+    paintPrompt.textContent = "The stroke slips outside the guide and leaves a visible mistake.";
+    const relevantDials = paintState.zoomedDialIndex === -1
+      ? paintState.dials
+      : [activeDial()].filter(Boolean);
+    for (const dial of relevantDials) {
+      const dialCenterX = paintState.zoomedDialIndex === -1 ? dial.x : ZOOM_CENTER_X;
+      const dialCenterY = paintState.zoomedDialIndex === -1 ? dial.y : ZOOM_CENTER_Y;
+      const dialDistance = Math.hypot(dialCenterX - x, dialCenterY - y);
+      if (dialDistance < (paintState.zoomedDialIndex === -1 ? 58 : 220)) {
         dial.mess += 0.025 + (1 - paintState.mixQuality) * 0.09;
       }
     }
+    paintState.paintLoaded = Math.max(0, paintState.paintLoaded - PAINT_DRAIN_PER_STROKE);
     updateCoverage();
     return;
   }
 
-  const hitRadius = Math.max(14, paintState.brushSize * 1.7);
+  const hitRadius = paintState.zoomedDialIndex === -1
+    ? Math.max(12, paintState.brushSize * 10)
+    : Math.max(24, paintState.brushSize * 42);
   let paintedPoints = 0;
-  for (let i = 0; i < hit.dial.targetPoints.length; i += 1) {
+  const renderPoints = dialRenderPoints(hit.dial);
+  for (let i = 0; i < renderPoints.length; i += 1) {
     if (hit.dial.paintedMask[i]) continue;
-    const point = hit.dial.targetPoints[i];
+    const point = renderPoints[i];
     const distance = Math.hypot(point.x - x, point.y - y);
     if (distance <= hitRadius) {
       hit.dial.paintedMask[i] = true;
@@ -1459,14 +1888,16 @@ function paintAt(x, y) {
     }
   }
 
-  const centerFactor = Math.max(0.58, 1 - hit.distance / 36);
+  const centerFactor = Math.max(0.78, 1 - hit.distance / (paintState.zoomedDialIndex === -1 ? 52 : 84));
   if (paintedPoints > 0) {
     hit.dial.mess += 0.006 + (1 - paintState.mixQuality) * 0.05 + (1 - centerFactor) * 0.03;
   } else {
     hit.dial.mess += 0.035 + (1 - paintState.mixQuality) * 0.08;
   }
 
+  paintState.paintLoaded = Math.max(0, paintState.paintLoaded - PAINT_DRAIN_PER_STROKE);
   updateCoverage();
+  creditCompletedDials();
 
   if (allDialsReady()) {
     const correctionNeeded = correctionCount();
@@ -1481,6 +1912,41 @@ function paintAt(x, y) {
   updatePaintStats();
 }
 
+function smoothDialMask(dial) {
+  let paintedCount = dial.paintedMask.filter(Boolean).length;
+  const targetCount = Math.ceil(dial.targetPoints.length * 0.92);
+  if (paintedCount <= targetCount) return;
+
+  for (let i = dial.paintedMask.length - 1; i >= 0 && paintedCount > targetCount; i -= 1) {
+    if (!dial.paintedMask[i]) continue;
+    if (i % 2 === 0 || paintedCount - targetCount > 6) {
+      dial.paintedMask[i] = false;
+      paintedCount -= 1;
+    }
+  }
+}
+
+function cleanDial(dial, amount) {
+  dial.mess = Math.max(0, dial.mess - amount);
+  smoothDialMask(dial);
+  const minimumCoverage = Math.ceil(dial.targetPoints.length * 0.9);
+  let paintedCount = dial.paintedMask.filter(Boolean).length;
+  for (let i = 0; i < dial.paintedMask.length && paintedCount < minimumCoverage; i += 1) {
+    if (dial.paintedMask[i]) continue;
+    dial.paintedMask[i] = true;
+    paintedCount += 1;
+  }
+  dial.corrected = true;
+}
+
+function perfectDial(dial) {
+  dial.mess = 0;
+  dial.corrected = true;
+  for (let i = 0; i < dial.paintedMask.length; i += 1) {
+    dial.paintedMask[i] = true;
+  }
+}
+
 function correctAt(x, y) {
   const target = findNearestDial(x, y);
   if (!target) {
@@ -1489,26 +1955,25 @@ function correctAt(x, y) {
   }
 
   let erased = 0;
-  for (let i = 0; i < target.dial.targetPoints.length; i += 1) {
-    if (!target.dial.paintedMask[i]) continue;
-    const point = target.dial.targetPoints[i];
+  const renderPoints = dialRenderPoints(target.dial);
+  for (let i = 0; i < renderPoints.length; i += 1) {
+    const point = renderPoints[i];
     const distance = Math.hypot(point.x - x, point.y - y);
-    if (distance <= 3) {
+    if (distance <= (paintState.zoomedDialIndex === -1 ? 14 : 28) && target.dial.paintedMask[i]) {
       target.dial.paintedMask[i] = false;
       erased += 1;
     }
   }
 
   if (erased === 0) {
-    target.dial.mess = Math.max(0, target.dial.mess - 0.04);
     paintPrompt.textContent = "Your fingernail grazes the edge, but lifts almost nothing.";
   } else {
-    target.dial.mess = Math.max(0, target.dial.mess - 0.18);
-    target.dial.corrected = true;
-    paintPrompt.textContent = "You scrape away some of the paint, erasing the numeral back toward a clean edge.";
+    target.dial.mess = Math.max(0, target.dial.mess - erased * 0.018);
+    paintPrompt.textContent = "You scrape away only the paint under your nail, leaving a thinner edge behind.";
   }
 
   updateCoverage();
+  creditCompletedDials();
 
   if (allDialsReady() && correctionCount() === 0) {
     paintPrompt.textContent = "The ragged edges are cleaned away. This watch can go in at full pay.";
@@ -1517,12 +1982,35 @@ function correctAt(x, y) {
   updatePaintStats();
 }
 
+function wipeNearestDial() {
+  const hovered = findNearestDial(paintState.cursorX, paintState.cursorY)?.dial;
+  const roughDials = paintState.dials.filter((dial) => dialNeedsCorrection(dial));
+  const target = hovered && dialNeedsCorrection(hovered)
+    ? hovered
+    : roughDials.length > 0
+      ? roughDials.sort((a, b) => b.mess - a.mess)[0]
+      : null;
+
+  if (!target) {
+    paintPrompt.textContent = "There is no rough dial close enough to wipe clean.";
+    return;
+  }
+
+  spendHealth(2);
+  perfectDial(target);
+  updateCoverage();
+  creditCompletedDials();
+  updatePaintStats();
+  paintPrompt.textContent = "You wipe only the ragged excess away, leaving the numeral complete and clean at a cost to your health.";
+}
+
 function updateCoverage() {
   for (const dial of paintState.dials) {
     const painted = dial.paintedMask.filter(Boolean).length;
     dial.coverage = dial.targetPoints.length === 0 ? 0 : painted / dial.targetPoints.length;
     if (dial.coverage > 1.18) dial.mess += 0.02;
   }
+  updateActiveDialIndex();
 }
 
 function sendCurrentWatch() {
@@ -1531,19 +2019,15 @@ function sendCurrentWatch() {
     return;
   }
 
-  const uncorrected = correctionCount();
-  const pay = 12 * PAY_PER_DIAL_CENTS - uncorrected * IGNORE_CORRECTION_FINE_CENTS;
-  gameState.dialsPaintedToday += 12;
+  const paidNow = paintState.dials.filter((dial) => dial.credited).length;
+  const missed = 12 - paidNow;
   gameState.watchesSubmittedToday += 1;
-  gameState.dayEarningsCents += pay;
-  gameState.totalEarningsCents += pay;
-  gameState.totalDialsPainted += 12;
 
-  if (uncorrected > 0) {
+  if (missed > 0) {
     paintPrompt.textContent =
-      `The watch goes in with ${uncorrected} rough numeral${uncorrected === 1 ? "" : "s"}. Pay for this face: ${formatCurrency(pay)}.`;
+      `The watch is sent in. ${paidNow} dial${paidNow === 1 ? "" : "s"} on this face counted toward pay; ${missed} still needed cleaner work.`;
   } else {
-    paintPrompt.textContent = `The watch goes in clean. Pay for this face: ${formatCurrency(pay)}.`;
+    paintPrompt.textContent = "The watch is sent in with every dial counted toward pay.";
   }
 
   updateHud();
@@ -1598,43 +2082,23 @@ function drawMosaicCrucible(cx, cy, rx, ry, palette, fillLevel, materialTint) {
 
 function drawMixDish(centerX, centerY) {
   const total = paintState.mix[0] + paintState.mix[1] + paintState.mix[2];
-  paintCtx.fillStyle = "#b7a285";
-  paintCtx.beginPath();
-  paintCtx.ellipse(centerX, centerY, 78, 44, 0, 0, Math.PI * 2);
-  paintCtx.fill();
-
-  paintCtx.fillStyle = "#eadac6";
-  paintCtx.beginPath();
-  paintCtx.ellipse(centerX, centerY, 68, 35, 0, 0, Math.PI * 2);
-  paintCtx.fill();
-
-  if (total > 0) {
-    const yellow = paintState.mix[0] / total;
-    const amber = paintState.mix[1] / total;
-    const blue = paintState.mix[2] / total;
-    const mixColor = [
-      Math.floor(184 + yellow * 45 - blue * 18),
-      Math.floor(163 + yellow * 35 - amber * 12),
-      Math.floor(95 + amber * 28 + blue * 35),
-    ];
-
-    paintCtx.fillStyle = `rgb(${mixColor[0]}, ${mixColor[1]}, ${mixColor[2]})`;
+  const dish = STATION_LAYOUT.dish;
+  if (total > 0 && imageReady(assetImages.mixedPaint)) {
+    drawAssetContained(assetImages.mixedPaint, centerX, centerY, dish.w, dish.h, 0.98);
+  } else {
+    paintCtx.strokeStyle = "rgba(255,255,255,0.16)";
+    paintCtx.lineWidth = 2;
     paintCtx.beginPath();
-    paintCtx.ellipse(centerX, centerY + 4, 48, 20, 0, 0, Math.PI * 2);
-    paintCtx.fill();
-
-    paintCtx.fillStyle = `rgba(245, 245, 180, ${0.14 + paintState.mixQuality * 0.35})`;
-    paintCtx.beginPath();
-    paintCtx.ellipse(centerX - 10, centerY, 16, 8, -0.2, 0, Math.PI * 2);
-    paintCtx.fill();
+    paintCtx.ellipse(centerX, centerY, dish.rx, dish.ry, 0, 0, Math.PI * 2);
+    paintCtx.stroke();
   }
 }
 
 function fanBrush(messageBase) {
-  paintState.brushSize = Math.min(14, paintState.brushSize + 0.3);
-  if (paintState.brushSize > 5.5) {
+  paintState.brushSize = Math.min(6, paintState.brushSize + 0.3);
+  if (paintState.brushSize > 2.2) {
     paintPrompt.textContent = `${messageBase} The brush has started to splay.`;
-  } else if (paintState.brushSize > 4) {
+  } else if (paintState.brushSize > 1.1) {
     paintPrompt.textContent = `${messageBase} The brush is beginning to fan.`;
   } else {
     paintPrompt.textContent = messageBase;
@@ -1650,43 +2114,127 @@ function drawAssetCentered(image, x, y, width, height, alpha = 1) {
   return true;
 }
 
+function drawAssetContained(image, x, y, boxWidth, boxHeight, alpha = 1) {
+  if (!imageReady(image)) return null;
+  const scale = Math.min(boxWidth / image.naturalWidth, boxHeight / image.naturalHeight);
+  const width = image.naturalWidth * scale;
+  const height = image.naturalHeight * scale;
+  paintCtx.save();
+  paintCtx.globalAlpha = alpha;
+  paintCtx.drawImage(image, x - width / 2, y - height / 2, width, height);
+  paintCtx.restore();
+  return { x: x - width / 2, y: y - height / 2, w: width, h: height };
+}
+
+function drawFracturePuzzle() {
+  const w = paintCanvas.width;
+  const h = paintCanvas.height;
+  paintCtx.clearRect(0, 0, w, h);
+
+  const bgGradient = paintCtx.createLinearGradient(0, 0, w, h);
+  bgGradient.addColorStop(0, "#100203");
+  bgGradient.addColorStop(0.55, "#270709");
+  bgGradient.addColorStop(1, "#040404");
+  paintCtx.fillStyle = bgGradient;
+  paintCtx.fillRect(0, 0, w, h);
+
+  paintCtx.fillStyle = "rgba(140, 10, 16, 0.22)";
+  for (let i = 0; i < 36; i += 1) {
+    const x = (i * 43) % w;
+    const y = (i * 97) % h;
+    paintCtx.beginPath();
+    paintCtx.arc(x, y, 14 + (i % 5) * 6, 0, Math.PI * 2);
+    paintCtx.fill();
+  }
+
+  paintCtx.strokeStyle = "rgba(255,255,255,0.08)";
+  paintCtx.setLineDash([4, 5]);
+  paintCtx.strokeRect(WATCH_CENTER_X - WATCH_DRAW_WIDTH / 2, WATCH_CENTER_Y - WATCH_DRAW_HEIGHT / 2, WATCH_DRAW_WIDTH, WATCH_DRAW_HEIGHT);
+  paintCtx.setLineDash([]);
+
+  const restored = paintState.fracturePieces.filter((piece) => piece.placed).length;
+  paintStats.textContent = `Shattered face ${restored}/${paintState.fracturePieces.length} restored.`;
+
+  for (const piece of paintState.fracturePieces) {
+    paintCtx.save();
+    paintCtx.beginPath();
+    paintCtx.rect(piece.x, piece.y, piece.w, piece.h);
+    paintCtx.clip();
+    const fractureImage = imageReady(assetImages.brokenClockPhoto) ? assetImages.brokenClockPhoto : assetImages.watchFace;
+    if (imageReady(fractureImage)) {
+      paintCtx.drawImage(
+        fractureImage,
+        piece.sx,
+        piece.sy,
+        piece.sw,
+        piece.sh,
+        piece.x,
+        piece.y,
+        piece.w,
+        piece.h,
+      );
+    } else {
+      paintCtx.fillStyle = "#f0f0f0";
+      paintCtx.fillRect(piece.x, piece.y, piece.w, piece.h);
+    }
+
+    paintCtx.fillStyle = "rgba(138, 0, 0, 0.26)";
+    paintCtx.fillRect(piece.x, piece.y, piece.w, piece.h);
+    paintCtx.strokeStyle = "rgba(35,0,0,0.9)";
+    paintCtx.lineWidth = 2;
+    paintCtx.beginPath();
+    paintCtx.moveTo(piece.x + 4, piece.y + 4);
+    paintCtx.lineTo(piece.x + piece.w - 6, piece.y + piece.h - 8);
+    paintCtx.moveTo(piece.x + piece.w * 0.3, piece.y + 3);
+    paintCtx.lineTo(piece.x + piece.w * 0.75, piece.y + piece.h - 3);
+    paintCtx.stroke();
+    paintCtx.restore();
+
+    paintCtx.strokeStyle = piece.placed ? "rgba(245, 236, 200, 0.55)" : "rgba(12, 8, 8, 0.92)";
+    paintCtx.lineWidth = 2;
+    paintCtx.strokeRect(piece.x, piece.y, piece.w, piece.h);
+  }
+
+  drawImageCursor("nail");
+}
+
 function drawWatchMinigame() {
+  if (paintState.mode === "fracture") {
+    drawFracturePuzzle();
+    return;
+  }
+
+  if (paintState.zoomedDialIndex !== -1) {
+    drawZoomedDialView();
+    return;
+  }
+
   const w = paintCanvas.width;
   const h = paintCanvas.height;
   const centerX = WATCH_CENTER_X;
   const centerY = WATCH_CENTER_Y;
-  const darkShift = getShiftProgress();
-  const stationLight = 1 - Math.max(0, darkShift - 0.5) * 1.25;
-  const faceGlowActive = watchesGlowInDark();
   const stationMode = currentStationMode();
 
   paintCtx.clearRect(0, 0, w, h);
-
-  const tableGradient = paintCtx.createRadialGradient(centerX, centerY, 60, centerX, centerY, 360);
-  tableGradient.addColorStop(0, "#6e5840");
-  tableGradient.addColorStop(1, "#231b14");
-  paintCtx.fillStyle = tableGradient;
+  paintCtx.fillStyle = "#000";
   paintCtx.fillRect(0, 0, w, h);
+  paintCtx.strokeStyle = "rgba(255,255,255,0.12)";
+  paintCtx.lineWidth = 1;
+  paintCtx.strokeRect(22, 22, 144, 596);
+  paintCtx.strokeRect(centerX - WATCH_DRAW_WIDTH / 2 - 10, centerY - WATCH_DRAW_HEIGHT / 2 - 10, WATCH_DRAW_WIDTH + 20, WATCH_DRAW_HEIGHT + 20);
 
-  paintCtx.fillStyle = "rgba(0, 0, 0, 0.18)";
-  paintCtx.fillRect(0, 0, 270, h);
-
-  drawAssetCentered(assetImages.yellowPowder, 112, 504, 112, 154, paintState.mix[0] > 0 ? 1 : 0.42);
-  drawAssetCentered(assetImages.gumArabic, 208, 496, 110, 82, paintState.mix[1] > 0 ? 1 : 0.42);
-  drawAssetCentered(assetImages.waterPlate, 160, 584, 138, 84, paintState.mix[2] > 0 ? 1 : 0.42);
-  drawMixDish(166, 418);
-
+  paintCtx.save();
+  paintCtx.imageSmoothingEnabled = true;
+  drawAssetContained(assetImages.yellowPowder, STATION_LAYOUT.powder.x, STATION_LAYOUT.powder.y, STATION_LAYOUT.powder.w, STATION_LAYOUT.powder.h, paintState.mix[0] > 0 ? 0.98 : 0.58);
+  drawAssetContained(assetImages.gumArabic, STATION_LAYOUT.gum.x, STATION_LAYOUT.gum.y, STATION_LAYOUT.gum.w, STATION_LAYOUT.gum.h, paintState.mix[1] > 0 ? 0.98 : 0.58);
+  drawAssetContained(assetImages.waterPlate, STATION_LAYOUT.water.x, STATION_LAYOUT.water.y, STATION_LAYOUT.water.w, STATION_LAYOUT.water.h, paintState.mix[2] > 0 ? 0.98 : 0.58);
   const drewWatchFace = drawAssetCentered(assetImages.watchFace, centerX, centerY, WATCH_DRAW_WIDTH, WATCH_DRAW_HEIGHT, 1);
+  paintCtx.restore();
+  drawMixDish(STATION_LAYOUT.dish.x, STATION_LAYOUT.dish.y);
   if (!drewWatchFace) {
-    paintCtx.fillStyle = "#c5b08d";
-    paintCtx.beginPath();
-    paintCtx.arc(centerX, centerY, 246, 0, Math.PI * 2);
-    paintCtx.fill();
-
-    paintCtx.fillStyle = "#f7f1e5";
-    paintCtx.beginPath();
-    paintCtx.arc(centerX, centerY, 214, 0, Math.PI * 2);
-    paintCtx.fill();
+    paintCtx.strokeStyle = "rgba(255,255,255,0.18)";
+    paintCtx.lineWidth = 2;
+    paintCtx.strokeRect(centerX - WATCH_DRAW_WIDTH / 2, centerY - WATCH_DRAW_HEIGHT / 2, WATCH_DRAW_WIDTH, WATCH_DRAW_HEIGHT);
   }
 
   paintCtx.textAlign = "center";
@@ -1694,16 +2242,7 @@ function drawWatchMinigame() {
   paintCtx.font = "24px Trebuchet MS";
 
   for (const dial of paintState.dials) {
-    const glow = Math.min(1.2, dial.coverage);
-    const radius = 14 + glow * 10;
-
-    if (glow > 0) {
-      const darknessBoost = faceGlowActive ? 0.22 + (darkShift - 0.5) * 0.45 : 0;
-      paintCtx.fillStyle = `rgba(233, 255, 134, ${0.12 + glow * 0.36 + darknessBoost})`;
-      paintCtx.beginPath();
-      paintCtx.arc(dial.x, dial.y, radius + (faceGlowActive ? 4 : 0), 0, Math.PI * 2);
-      paintCtx.fill();
-    }
+    const radius = 14 + Math.min(1.2, dial.coverage) * 10;
 
     if (dialNeedsCorrection(dial)) {
       paintCtx.strokeStyle = paintState.correcting ? "#ffcf7a" : "#c04a3b";
@@ -1713,7 +2252,7 @@ function drawWatchMinigame() {
       paintCtx.stroke();
     }
 
-    paintCtx.strokeStyle = "rgba(190, 190, 190, 0.18)";
+    paintCtx.strokeStyle = "rgba(200, 200, 200, 0.2)";
     paintCtx.lineWidth = 2.3;
     paintCtx.lineJoin = "round";
     paintCtx.lineCap = "round";
@@ -1730,7 +2269,7 @@ function drawWatchMinigame() {
     for (let i = 0; i < dial.targetPoints.length; i += 1) {
       if (!dial.paintedMask[i]) continue;
       const point = dial.targetPoints[i];
-      paintCtx.fillStyle = faceGlowActive ? "rgba(237,255,150,0.95)" : "rgba(201,229,95,0.92)";
+      paintCtx.fillStyle = `rgba(230, 214, 118, ${0.72 + Math.min(0.24, dial.coverage * 0.18)})`;
       paintCtx.beginPath();
       paintCtx.arc(point.x, point.y, 3.8, 0, Math.PI * 2);
       paintCtx.fill();
@@ -1742,47 +2281,138 @@ function drawWatchMinigame() {
     paintCtx.beginPath();
     paintCtx.arc(centerX, centerY, 14, 0, Math.PI * 2);
     paintCtx.fill();
-
-    paintCtx.fillStyle = "rgba(250, 244, 202, 0.18)";
-    paintCtx.beginPath();
-    paintCtx.ellipse(centerX - 60, centerY - 78, 100, 36, -0.35, 0, Math.PI * 2);
-    paintCtx.fill();
   }
 
-  if (faceGlowActive) {
-    paintCtx.fillStyle = `rgba(215, 255, 132, ${0.08 + (darkShift - 0.5) * 0.22})`;
-    paintCtx.beginPath();
-    paintCtx.arc(centerX, centerY, 252, 0, Math.PI * 2);
-    paintCtx.fill();
-  }
-
-  paintCtx.fillStyle = "#d0b893";
-  paintCtx.fillRect(246, 498, 16, 86);
-  paintCtx.fillStyle = "#f0eeaa";
+  const previewRadius = paintState.tool === "nail" ? 14 : Math.max(5, paintState.brushSize * 8);
+  paintCtx.save();
+  paintCtx.strokeStyle = paintState.tool === "nail" ? "rgba(255, 132, 132, 0.92)" : "rgba(245, 245, 190, 0.92)";
+  paintCtx.fillStyle = paintState.tool === "nail" ? "rgba(170, 0, 0, 0.12)" : "rgba(245, 245, 190, 0.12)";
+  paintCtx.lineWidth = 2;
   paintCtx.beginPath();
-  paintCtx.arc(254, 490, Math.max(3, paintState.brushSize * 0.55), 0, Math.PI * 2);
+  paintCtx.arc(paintState.cursorX, paintState.cursorY, previewRadius, 0, Math.PI * 2);
   paintCtx.fill();
-
-  paintCtx.fillStyle = paintState.tool === "brush" ? "#f4f1c1" : "#b9aa8a";
-  paintCtx.fillRect(258, 422, 20, 90);
-  paintCtx.fillStyle = paintState.tool === "brush" ? "#ccb38b" : "#8d785c";
-  paintCtx.fillRect(264, 416, 8, 16);
-
-  paintCtx.fillStyle = paintState.tool === "nail" ? "#f7d9b8" : "#8e7a67";
-  paintCtx.beginPath();
-  paintCtx.ellipse(280, 340, 28, 16, -0.4, 0, Math.PI * 2);
-  paintCtx.fill();
-  paintCtx.fillStyle = paintState.tool === "nail" ? "#fff0d6" : "#bba78d";
-  paintCtx.beginPath();
-  paintCtx.ellipse(288, 334, 10, 5, -0.4, 0, Math.PI * 2);
-  paintCtx.fill();
+  paintCtx.stroke();
+  paintCtx.restore();
 
   drawImageCursor(stationMode);
+}
 
-  if (gameState.shiftActive || gameState.shiftEnded) {
-    paintCtx.fillStyle = `rgba(0, 0, 0, ${Math.max(0, 1 - stationLight) * 0.62})`;
-    paintCtx.fillRect(0, 0, w, h);
+function drawZoomedDialView() {
+  const w = paintCanvas.width;
+  const h = paintCanvas.height;
+  const dial = activeDial();
+  if (!dial) return;
+
+  paintCtx.clearRect(0, 0, w, h);
+  paintCtx.fillStyle = "#000";
+  paintCtx.fillRect(0, 0, w, h);
+
+  const points = dialRenderPoints(dial);
+  paintCtx.strokeStyle = "rgba(255,255,255,0.12)";
+  paintCtx.strokeRect(18, 18, w - 36, h - 36);
+  paintCtx.strokeRect(28, 28, 140, 160);
+  paintCtx.textAlign = "center";
+  paintCtx.textBaseline = "middle";
+  paintCtx.fillStyle = "rgba(255,255,255,0.68)";
+  paintCtx.font = "18px Trebuchet MS";
+  paintCtx.fillText(`NUMERAL ${dial.label}`, w / 2, 40);
+  paintCtx.fillStyle = "rgba(255,255,255,0.42)";
+  paintCtx.fillText("Press Escape to pull back from the numeral.", w / 2, h - 28);
+
+  if (imageReady(assetImages.mixedPaint)) {
+    drawAssetContained(assetImages.mixedPaint, STATION_LAYOUT.zoomPaint.x, STATION_LAYOUT.zoomPaint.y, STATION_LAYOUT.zoomPaint.w, STATION_LAYOUT.zoomPaint.h, 1);
   }
+  paintCtx.fillStyle = "rgba(255,255,255,0.56)";
+  paintCtx.font = "13px Trebuchet MS";
+  paintCtx.fillText("dip brush", STATION_LAYOUT.zoomPaint.x, 170);
+
+  paintCtx.strokeStyle = "rgba(185, 185, 185, 0.28)";
+  paintCtx.lineWidth = 8;
+  paintCtx.lineJoin = "round";
+  paintCtx.lineCap = "round";
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const next = points[i];
+    if (Math.hypot(prev.x - next.x, prev.y - next.y) > 84) continue;
+    paintCtx.beginPath();
+    paintCtx.moveTo(prev.x, prev.y);
+    paintCtx.lineTo(next.x, next.y);
+    paintCtx.stroke();
+  }
+
+  for (let i = 0; i < points.length; i += 1) {
+    if (!dial.paintedMask[i]) continue;
+    const point = points[i];
+    paintCtx.fillStyle = "rgba(228, 209, 109, 0.94)";
+    paintCtx.beginPath();
+    paintCtx.arc(point.x, point.y, 11, 0, Math.PI * 2);
+    paintCtx.fill();
+  }
+
+  const paintMeterWidth = 180;
+  paintCtx.strokeStyle = "rgba(255,255,255,0.28)";
+  paintCtx.lineWidth = 2;
+  paintCtx.strokeRect(w - 212, 28, paintMeterWidth, 16);
+  paintCtx.fillStyle = "rgba(229, 208, 109, 0.95)";
+  paintCtx.fillRect(w - 211, 29, (paintMeterWidth - 2) * paintState.paintLoaded, 14);
+  paintCtx.fillStyle = "rgba(255,255,255,0.58)";
+  paintCtx.font = "14px Trebuchet MS";
+  paintCtx.fillText("paint on brush", w - 122, 58);
+
+  const previewRadius = paintState.tool === "nail" ? 8 : Math.max(5, paintState.brushSize * 28);
+  paintCtx.save();
+  paintCtx.strokeStyle = paintState.tool === "nail" ? "rgba(255, 122, 122, 0.96)" : "rgba(245, 245, 190, 0.96)";
+  paintCtx.fillStyle = paintState.tool === "nail" ? "rgba(170, 0, 0, 0.12)" : "rgba(245, 245, 190, 0.08)";
+  paintCtx.lineWidth = 3;
+  paintCtx.beginPath();
+  paintCtx.arc(paintState.cursorX, paintState.cursorY, previewRadius, 0, Math.PI * 2);
+  paintCtx.fill();
+  paintCtx.stroke();
+  paintCtx.restore();
+
+  drawImageCursor(currentStationMode());
+  drawThoughtPopup();
+}
+
+function drawThoughtPopup() {
+  const popup = paintState.thoughtPopup;
+  if (!popup) return;
+
+  const close = thoughtCloseHitbox();
+  paintCtx.save();
+  const drewPopup = drawAssetContained(assetImages.thoughtPopup, popup.x + popup.w / 2, popup.y + popup.h / 2, popup.w, popup.h, popup.requiresDismiss ? 0.98 : 0.84);
+  if (!drewPopup) {
+    paintCtx.fillStyle = popup.dark ? "rgba(12, 12, 12, 0.96)" : "rgba(248, 248, 248, 0.97)";
+    paintCtx.strokeStyle = popup.dark ? "rgba(170, 60, 60, 0.72)" : "rgba(0, 0, 0, 0.34)";
+    paintCtx.lineWidth = 2;
+    paintCtx.fillRect(popup.x, popup.y, popup.w, popup.h);
+    paintCtx.strokeRect(popup.x, popup.y, popup.w, popup.h);
+  }
+
+  paintCtx.fillStyle = popup.dark ? "#f1dddd" : "#f5f5f5";
+  paintCtx.font = "13px Trebuchet MS";
+  paintCtx.textAlign = "center";
+  paintCtx.textBaseline = "middle";
+  paintCtx.fillText("thought", popup.x + popup.w / 2, popup.y + 18);
+
+  if (close && popup.requiresDismiss) {
+    paintCtx.strokeStyle = popup.dark ? "rgba(255, 176, 176, 0.78)" : "rgba(0,0,0,0.42)";
+    paintCtx.strokeRect(close.x, close.y, close.w, close.h);
+    paintCtx.beginPath();
+    paintCtx.moveTo(close.x + 7, close.y + 7);
+    paintCtx.lineTo(close.x + close.w - 7, close.y + close.h - 7);
+    paintCtx.moveTo(close.x + close.w - 7, close.y + 7);
+    paintCtx.lineTo(close.x + 7, close.y + close.h - 7);
+    paintCtx.stroke();
+  }
+
+  paintCtx.fillStyle = popup.dark ? "#f0dede" : "#111";
+  paintCtx.font = "14px Trebuchet MS";
+  const lines = wrapThoughtText(popup.text, popup.w - 40);
+  lines.forEach((line, index) => {
+    paintCtx.fillText(line, popup.x + popup.w / 2, popup.y + 54 + index * 18);
+  });
+  paintCtx.restore();
 }
 
 function drawImageCursor(mode) {
@@ -1840,6 +2470,49 @@ function drawImageCursor(mode) {
   paintCtx.drawImage(image, paintState.cursorX - tipX, paintState.cursorY - tipY, width, height);
 }
 
+function fracturePieceAt(x, y) {
+  for (let i = paintState.fracturePieces.length - 1; i >= 0; i -= 1) {
+    const piece = paintState.fracturePieces[i];
+    if (piece.placed) continue;
+    if (x >= piece.x && x <= piece.x + piece.w && y >= piece.y && y <= piece.y + piece.h) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function beginFractureDrag(x, y) {
+  const pieceIndex = fracturePieceAt(x, y);
+  if (pieceIndex === -1) return;
+  const [piece] = paintState.fracturePieces.splice(pieceIndex, 1);
+  paintState.fracturePieces.push(piece);
+  paintState.draggedPieceIndex = paintState.fracturePieces.length - 1;
+  paintState.dragOffsetX = x - piece.x;
+  paintState.dragOffsetY = y - piece.y;
+}
+
+function moveFractureDrag(x, y) {
+  if (paintState.draggedPieceIndex === -1) return;
+  const piece = paintState.fracturePieces[paintState.draggedPieceIndex];
+  piece.x = Math.max(0, Math.min(paintCanvas.width - piece.w, x - paintState.dragOffsetX));
+  piece.y = Math.max(0, Math.min(paintCanvas.height - piece.h, y - paintState.dragOffsetY));
+}
+
+function endFractureDrag() {
+  if (paintState.draggedPieceIndex === -1) return;
+  const piece = paintState.fracturePieces[paintState.draggedPieceIndex];
+  if (Math.hypot(piece.x - piece.targetX, piece.y - piece.targetY) < 28) {
+    piece.x = piece.targetX;
+    piece.y = piece.targetY;
+    piece.placed = true;
+  }
+  paintState.draggedPieceIndex = -1;
+
+  if (paintState.fracturePieces.length > 0 && paintState.fracturePieces.every((entry) => entry.placed)) {
+    completeFracturePuzzle();
+  }
+}
+
 function frame(now) {
   const dt = Math.min(0.033, (now - lastTime) / 1000);
   lastTime = now;
@@ -1862,7 +2535,34 @@ function pointerInsidePaintCanvas(event) {
   };
 }
 
-dialogButton.addEventListener("click", continueAfterDialog);
+dialogButton.addEventListener("click", () => {
+  if (gameState.dialogMode === "day-one-intro") {
+    dialogOverlay.classList.add("hidden");
+    resetDialogButtons();
+    gameState.dayOneIntroSeen = true;
+    startShift(true);
+    return;
+  }
+
+  if (gameState.dialogMode === "day-five-choice") {
+    dialogOverlay.classList.add("hidden");
+    resetDialogButtons();
+    gameState.dayFiveCutsceneSeen = true;
+    gameState.joinedWorkers = true;
+    showSolidarityEnding();
+    return;
+  }
+  continueAfterDialog();
+});
+
+dialogAltButton.addEventListener("click", () => {
+  if (gameState.dialogMode !== "day-five-choice") return;
+  dialogOverlay.classList.add("hidden");
+  resetDialogButtons();
+  gameState.dayFiveCutsceneSeen = true;
+  gameState.joinedWorkers = false;
+  startShift(true);
+});
 
 brushButton.addEventListener("click", () => {
   switchToBrushMode();
@@ -1878,8 +2578,14 @@ lickButton.addEventListener("click", () => {
   paintState.tool = "brush";
   paintState.correcting = false;
   paintState.brushSize = DEFAULT_BRUSH_SIZE;
+  paintState.paintLoaded = MAX_PAINT_LOAD;
   paintPrompt.textContent = "You mouth-point the brush before tracing the next strokes. The tip narrows back into working shape.";
   updatePaintStats();
+  drawWatchMinigame();
+});
+
+wipeButton.addEventListener("click", () => {
+  wipeNearestDial();
   drawWatchMinigame();
 });
 
@@ -1897,6 +2603,15 @@ paintCanvas.addEventListener("mousemove", (event) => {
   paintState.cursorX = position.x;
   paintState.cursorY = position.y;
 
+  if (paintState.mode === "fracture") {
+    moveFractureDrag(position.x, position.y);
+    return;
+  }
+
+  if (paintState.thoughtPopup && paintState.thoughtPopup.requiresDismiss) {
+    return;
+  }
+
   if (paintState.active && paintState.isPainting) {
     if (paintState.tool === "brush") {
       paintAt(position.x, position.y);
@@ -1913,22 +2628,54 @@ paintCanvas.addEventListener("mousedown", (event) => {
   paintState.cursorX = position.x;
   paintState.cursorY = position.y;
 
+  if (paintState.mode === "fracture") {
+    beginFractureDrag(position.x, position.y);
+    drawWatchMinigame();
+    return;
+  }
+
+  if (paintState.thoughtPopup && paintState.thoughtPopup.requiresDismiss) {
+    if (pointInsideThoughtClose(position.x, position.y)) {
+      closeThoughtPopup();
+    } else {
+      paintPrompt.textContent = "The thought sits over your work until you close it.";
+    }
+    drawWatchMinigame();
+    return;
+  }
+
   const region = bowlUnderCursor(position.x, position.y);
-  if (region) {
+  if (paintState.zoomedDialIndex === -1 && region) {
     addIngredient(region);
     drawWatchMinigame();
     return;
   }
 
-  if (Math.hypot(position.x - 266, position.y - 468) < 56) {
+  if (paintState.zoomedDialIndex === -1 && Math.hypot(position.x - STATION_LAYOUT.brushProp.x, position.y - STATION_LAYOUT.brushProp.y) < STATION_LAYOUT.brushProp.r) {
     switchToBrushMode("You pick up the brush from the side of the station.");
     return;
   }
 
-  if (Math.hypot(position.x - 282, position.y - 340) < 36) {
+  if (paintState.zoomedDialIndex === -1 && Math.hypot(position.x - STATION_LAYOUT.nailProp.x, position.y - STATION_LAYOUT.nailProp.y) < STATION_LAYOUT.nailProp.r) {
     switchToNailMode("prop");
     paintPrompt.textContent = "You set the brush down and use your fingernails as an eraser instead.";
     updatePaintStats();
+    drawWatchMinigame();
+    return;
+  }
+
+  if (paintState.zoomedDialIndex === -1) {
+    if (paintState.mixQuality <= 0) {
+      paintPrompt.textContent = "Mix the dish first. Then click a numeral on the watch face to work on it up close.";
+      drawWatchMinigame();
+      return;
+    }
+    const dial = findNearestDial(position.x, position.y)?.dial;
+    if (dial) {
+      enterDialZoom(paintState.dials.indexOf(dial));
+      return;
+    }
+    paintPrompt.textContent = "Click directly on a numeral to open it against the dark.";
     drawWatchMinigame();
     return;
   }
@@ -1945,15 +2692,22 @@ paintCanvas.addEventListener("mousedown", (event) => {
 });
 
 window.addEventListener("mouseup", () => {
+  if (paintState.mode === "fracture") {
+    endFractureDrag();
+  }
   paintState.isPainting = false;
 });
 
 document.addEventListener("keydown", (event) => {
   keys.add(event.code);
 
-  if (event.code === "Escape" && paintState.active) {
-    closeMinigame();
-    setMessage("You stand back up from the bench.", "The line keeps moving while the next watch waits under the lamp.");
+  if (event.code === "Escape" && paintState.active && paintState.mode !== "fracture") {
+    if (paintState.zoomedDialIndex !== -1) {
+      exitDialZoom();
+    } else {
+      closeMinigame();
+      setMessage("You stand back up from the bench.", "The line keeps moving while the next watch waits under the lamp.");
+    }
   }
 });
 

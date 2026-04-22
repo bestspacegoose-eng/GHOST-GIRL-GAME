@@ -3044,6 +3044,35 @@ function pointerInsidePaintCanvas(event) {
   };
 }
 
+function paintingDriftStrength() {
+  const health = Math.max(0, Math.min(100, gameState.hiddenStats.health));
+  if (health > 80) return 0;
+  return (80 - health) / 80;
+}
+
+function applyPaintingDrift(position) {
+  if (!paintState.active || !paintState.isPainting || paintState.tool !== "brush") {
+    return position;
+  }
+
+  const severity = paintingDriftStrength();
+  if (severity <= 0) return position;
+
+  const now = performance.now();
+  const radius = 3 + severity * 15;
+  const driftX =
+    Math.sin(now * 0.008 + paintState.watchIndex * 0.71) * radius * 0.72 +
+    Math.cos(now * 0.017 + paintState.activeDialIndex * 1.11) * radius * 0.36;
+  const driftY =
+    Math.cos(now * 0.007 + paintState.watchIndex * 0.39) * radius * 0.68 +
+    Math.sin(now * 0.013 + paintState.activeDialIndex * 0.93) * radius * 0.34;
+
+  return {
+    x: Math.max(0, Math.min(paintCanvas.width, position.x + driftX)),
+    y: Math.max(0, Math.min(paintCanvas.height, position.y + driftY)),
+  };
+}
+
 dialogButton.addEventListener("click", () => {
   if (gameState.dialogMode === "day-one-intro") {
     dialogOverlay.classList.add("hidden");
@@ -3119,23 +3148,28 @@ mixResetButton.addEventListener("click", () => {
 
 paintCanvas.addEventListener("mousemove", (event) => {
   const position = pointerInsidePaintCanvas(event);
-  paintState.cursorX = position.x;
-  paintState.cursorY = position.y;
-
   if (paintState.mode === "fracture") {
+    paintState.cursorX = position.x;
+    paintState.cursorY = position.y;
     moveFractureDrag(position.x, position.y);
     return;
   }
 
   if (paintState.thoughtPopup && paintState.thoughtPopup.requiresDismiss) {
+    paintState.cursorX = position.x;
+    paintState.cursorY = position.y;
     return;
   }
 
+  const driftedPosition = applyPaintingDrift(position);
+  paintState.cursorX = driftedPosition.x;
+  paintState.cursorY = driftedPosition.y;
+
   if (paintState.active && paintState.isPainting) {
     if (paintState.tool === "brush") {
-      paintAt(position.x, position.y);
+      paintAt(driftedPosition.x, driftedPosition.y);
     } else {
-      correctAt(position.x, position.y);
+      correctAt(driftedPosition.x, driftedPosition.y);
     }
   }
 });
@@ -3144,14 +3178,18 @@ paintCanvas.addEventListener("mousedown", (event) => {
   if (!paintState.active) return;
 
   const position = pointerInsidePaintCanvas(event);
-  paintState.cursorX = position.x;
-  paintState.cursorY = position.y;
 
   if (paintState.mode === "fracture") {
+    paintState.cursorX = position.x;
+    paintState.cursorY = position.y;
     beginFractureDrag(position.x, position.y);
     drawWatchMinigame();
     return;
   }
+
+  const driftedPosition = applyPaintingDrift(position);
+  paintState.cursorX = driftedPosition.x;
+  paintState.cursorY = driftedPosition.y;
 
   if (paintState.thoughtPopup) {
     if (pointInsideThoughtClose(position.x, position.y)) {
@@ -3206,7 +3244,7 @@ paintCanvas.addEventListener("mousedown", (event) => {
   }
 
   if (paintState.tool === "nail") {
-    correctAt(position.x, position.y);
+    correctAt(driftedPosition.x, driftedPosition.y);
     drawWatchMinigame();
     return;
   }
@@ -3216,7 +3254,10 @@ paintCanvas.addEventListener("mousedown", (event) => {
     updatePaintStats();
   }
   paintState.isPainting = true;
-  paintAt(position.x, position.y);
+  const paintingPosition = applyPaintingDrift(position);
+  paintState.cursorX = paintingPosition.x;
+  paintState.cursorY = paintingPosition.y;
+  paintAt(paintingPosition.x, paintingPosition.y);
   drawWatchMinigame();
 });
 

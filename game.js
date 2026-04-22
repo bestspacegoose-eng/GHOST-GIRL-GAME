@@ -1608,31 +1608,81 @@ function buildDigitPoints(digit, offsetX, offsetY, scale) {
     if (segment === "g") pushLinePoints(points, left, midY, right, midY, 10);
   }
 
+  if (points.length > 0) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const point of points) {
+      if (point.x < minX) minX = point.x;
+      if (point.x > maxX) maxX = point.x;
+      if (point.y < minY) minY = point.y;
+      if (point.y > maxY) maxY = point.y;
+    }
+
+    const shiftX = offsetX - (minX + maxX) / 2;
+    const shiftY = offsetY - (minY + maxY) / 2;
+    for (const point of points) {
+      point.x += shiftX;
+      point.y += shiftY;
+    }
+  }
+
   return points;
 }
 
 function buildNumeralPoints(label, centerX, centerY, angle) {
   const points = [];
   const chars = label.split("");
-  const tangentX = -Math.sin(angle);
-  const tangentY = Math.cos(angle);
   const radialX = Math.cos(angle);
   const radialY = Math.sin(angle);
   const layout = {
-    "10": { spacing: 38, inwardOffset: -24, tangentShift: -7, scale: 0.84 },
-    "11": { spacing: 30, inwardOffset: -30, tangentShift: -5, scale: 0.8 },
-    "12": { spacing: 32, inwardOffset: -14, tangentShift: 0, scale: 0.92 },
+    "10": { spacing: 28, inwardOffset: -18, tangentShift: 0, scale: 0.9 },
+    "11": { spacing: 24, inwardOffset: -18, tangentShift: 0, scale: 0.9 },
+    "12": { spacing: 38, inwardOffset: -18, tangentShift: 0, scale: 0.9 },
   }[label] || { spacing: chars.length === 1 ? 0 : 32, inwardOffset: chars.length === 1 ? 0 : -14, tangentShift: 0, scale: chars.length === 1 ? 1.45 : 0.92 };
+  const baseX = centerX + radialX * layout.inwardOffset;
+  const baseY = centerY + radialY * layout.inwardOffset;
 
   chars.forEach((char, index) => {
-    const tangentOffset = chars.length === 1 ? 0 : (index - (chars.length - 1) / 2) * layout.spacing + layout.tangentShift;
-    const digitX = centerX + tangentX * tangentOffset + radialX * layout.inwardOffset;
-    const digitY = centerY + tangentY * tangentOffset + radialY * layout.inwardOffset;
+    const horizontalOffset = chars.length === 1
+      ? 0
+      : (index - (chars.length - 1) / 2) * layout.spacing + layout.tangentShift;
+    const digitX = baseX + horizontalOffset;
+    const digitY = baseY;
     const digitPoints = buildDigitPoints(char, digitX, digitY, layout.scale);
     points.push(...digitPoints);
   });
 
   return points;
+}
+
+function pointBounds(points) {
+  if (!points || points.length === 0) {
+    return { minX: 0, maxX: 0, minY: 0, maxY: 0, centerX: 0, centerY: 0 };
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const point of points) {
+    if (point.x < minX) minX = point.x;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.y > maxY) maxY = point.y;
+  }
+
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2,
+  };
 }
 
 function resetMix() {
@@ -1674,21 +1724,32 @@ function activeDial() {
   return paintState.dials[paintState.zoomedDialIndex] || paintState.dials[paintState.activeDialIndex] || null;
 }
 
+function dialZoomAnchor(dial) {
+  if (!dial || !dial.targetPoints || dial.targetPoints.length === 0) {
+    return { x: dial?.x || WATCH_CENTER_X, y: dial?.y || WATCH_CENTER_Y };
+  }
+
+  const bounds = pointBounds(dial.targetPoints);
+  return { x: bounds.centerX, y: bounds.centerY };
+}
+
 function dialRenderPoints(dial) {
   if (!dial) return [];
   if (paintState.zoomedDialIndex === -1) return dial.targetPoints;
+  const anchor = dialZoomAnchor(dial);
   return dial.targetPoints.map((point) => ({
-    x: ZOOM_CENTER_X + (point.x - dial.x) * ZOOM_SCALE,
-    y: ZOOM_CENTER_Y + (point.y - dial.y) * ZOOM_SCALE,
+    x: ZOOM_CENTER_X + (point.x - anchor.x) * ZOOM_SCALE,
+    y: ZOOM_CENTER_Y + (point.y - anchor.y) * ZOOM_SCALE,
   }));
 }
 
 function strayRenderPoints(dial) {
   if (!dial) return [];
   if (paintState.zoomedDialIndex === -1) return dial.strayPoints;
+  const anchor = dialZoomAnchor(dial);
   return dial.strayPoints.map((point) => ({
-    x: ZOOM_CENTER_X + (point.x - dial.x) * ZOOM_SCALE,
-    y: ZOOM_CENTER_Y + (point.y - dial.y) * ZOOM_SCALE,
+    x: ZOOM_CENTER_X + (point.x - anchor.x) * ZOOM_SCALE,
+    y: ZOOM_CENTER_Y + (point.y - anchor.y) * ZOOM_SCALE,
     r: point.r * ZOOM_SCALE,
     a: point.a,
   }));
@@ -1696,9 +1757,10 @@ function strayRenderPoints(dial) {
 
 function worldPointForDial(dial, x, y) {
   if (paintState.zoomedDialIndex === -1) return { x, y };
+  const anchor = dialZoomAnchor(dial);
   return {
-    x: dial.x + (x - ZOOM_CENTER_X) / ZOOM_SCALE,
-    y: dial.y + (y - ZOOM_CENTER_Y) / ZOOM_SCALE,
+    x: anchor.x + (x - ZOOM_CENTER_X) / ZOOM_SCALE,
+    y: anchor.y + (y - ZOOM_CENTER_Y) / ZOOM_SCALE,
   };
 }
 
@@ -2270,9 +2332,10 @@ function correctAt(x, y) {
   }
 
   const remainingStray = [];
+  const anchor = paintState.zoomedDialIndex === -1 ? null : dialZoomAnchor(target.dial);
   for (const mark of target.dial.strayPoints) {
-    const renderX = paintState.zoomedDialIndex === -1 ? mark.x : ZOOM_CENTER_X + (mark.x - target.dial.x) * ZOOM_SCALE;
-    const renderY = paintState.zoomedDialIndex === -1 ? mark.y : ZOOM_CENTER_Y + (mark.y - target.dial.y) * ZOOM_SCALE;
+    const renderX = paintState.zoomedDialIndex === -1 ? mark.x : ZOOM_CENTER_X + (mark.x - anchor.x) * ZOOM_SCALE;
+    const renderY = paintState.zoomedDialIndex === -1 ? mark.y : ZOOM_CENTER_Y + (mark.y - anchor.y) * ZOOM_SCALE;
     const distance = Math.hypot(renderX - x, renderY - y);
     if (distance <= correctionRadius) {
       cleanedMarks += 1;

@@ -45,11 +45,12 @@ const PAY_PER_DIAL_CENTS = 8;
 const IGNORE_CORRECTION_FINE_CENTS = 10;
 const DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const DEFAULT_BRUSH_SIZE = 0.22;
-const WATCH_CENTER_X = 438;
-const WATCH_CENTER_Y = 256;
-const NUMERAL_RADIUS = 194;
-const WATCH_DRAW_WIDTH = 592;
-const WATCH_DRAW_HEIGHT = 472;
+const WATCH_FACE_ASPECT = 1536 / 1024;
+const WATCH_CENTER_X = 409;
+const WATCH_CENTER_Y = 282;
+const NUMERAL_RADIUS = 116;
+const WATCH_DRAW_WIDTH = 426;
+const WATCH_DRAW_HEIGHT = Math.round(WATCH_DRAW_WIDTH / WATCH_FACE_ASPECT);
 const FRACTURE_DRAW_WIDTH = 592;
 const FRACTURE_DRAW_HEIGHT = 472;
 const FRACTURE_CENTER_X = 320;
@@ -1832,7 +1833,7 @@ function openMinigame(label) {
   document.exitPointerLock();
 
   paintPrompt.textContent =
-    "Mix the paint in the dish, then click a numeral on the watch to open it in close view and paint inside the faint guide lines.";
+    "Mix the paint in the dish, then click one of the gray numeral markers to open that spot in close view and paint inside the guide lines.";
   mixPrompt.textContent = mixTextureFeedback();
   updatePaintStats();
   drawWatchMinigame();
@@ -1898,7 +1899,7 @@ function switchToNailMode(source = "toggle") {
   paintState.tool = "nail";
   paintState.correcting = true;
   if (source === "toggle") {
-    paintPrompt.textContent = "Use your fingernails on the numerals to scrape away extra paint.";
+    paintPrompt.textContent = "Use your fingernails to lift only the excess paint around the numeral, a small area at a time.";
   }
   updatePaintStats();
   drawWatchMinigame();
@@ -2254,14 +2255,17 @@ function correctAt(x, y) {
     return;
   }
 
-  let erased = 0;
+  const correctionRadius = paintState.zoomedDialIndex === -1 ? 12 : 24;
+  let cleanedMarks = 0;
+  let nearbyPaintPoints = 0;
+
   const renderPoints = dialRenderPoints(target.dial);
   for (let i = 0; i < renderPoints.length; i += 1) {
+    if (!target.dial.paintedMask[i]) continue;
     const point = renderPoints[i];
     const distance = Math.hypot(point.x - x, point.y - y);
-    if (distance <= (paintState.zoomedDialIndex === -1 ? 14 : 28) && target.dial.paintedMask[i]) {
-      target.dial.paintedMask[i] = false;
-      erased += 1;
+    if (distance <= correctionRadius) {
+      nearbyPaintPoints += 1;
     }
   }
 
@@ -2270,19 +2274,21 @@ function correctAt(x, y) {
     const renderX = paintState.zoomedDialIndex === -1 ? mark.x : ZOOM_CENTER_X + (mark.x - target.dial.x) * ZOOM_SCALE;
     const renderY = paintState.zoomedDialIndex === -1 ? mark.y : ZOOM_CENTER_Y + (mark.y - target.dial.y) * ZOOM_SCALE;
     const distance = Math.hypot(renderX - x, renderY - y);
-    if (distance <= (paintState.zoomedDialIndex === -1 ? 14 : 26)) {
-      erased += 1;
+    if (distance <= correctionRadius) {
+      cleanedMarks += 1;
       continue;
     }
     remainingStray.push(mark);
   }
   target.dial.strayPoints = remainingStray;
 
-  if (erased === 0) {
+  const messReduction = Math.min(0.12, nearbyPaintPoints * 0.006) + cleanedMarks * 0.045;
+  if (messReduction <= 0) {
     paintPrompt.textContent = "Your fingernail grazes the edge, but lifts almost nothing.";
   } else {
-    target.dial.mess = Math.max(0, target.dial.mess - erased * 0.018);
-    paintPrompt.textContent = "You scrape away only the paint under your nail, leaving a thinner edge behind.";
+    target.dial.mess = Math.max(0, target.dial.mess - messReduction);
+    target.dial.corrected = true;
+    paintPrompt.textContent = "You lift away a narrow patch of excess paint without cutting into the numeral itself.";
   }
 
   updateCoverage();
@@ -2441,6 +2447,30 @@ function drawAssetContained(image, x, y, boxWidth, boxHeight, alpha = 1) {
   return { x: x - width / 2, y: y - height / 2, w: width, h: height };
 }
 
+function drawDialMarker(dial) {
+  const markerWidth = dial.label.length === 2 ? 28 : 20;
+  const markerHeight = 14;
+  const left = dial.x - markerWidth / 2;
+  const top = dial.y - markerHeight / 2;
+  const fillAlpha = 0.18 + Math.min(0.62, dial.coverage * 0.46);
+
+  paintCtx.fillStyle = `rgba(156, 156, 156, ${fillAlpha})`;
+  paintCtx.fillRect(left, top, markerWidth, markerHeight);
+
+  if (dial.coverage > 0) {
+    paintCtx.fillStyle = `rgba(241, 224, 124, ${0.3 + Math.min(0.58, dial.coverage * 0.45)})`;
+    paintCtx.fillRect(left + 2, top + 2, Math.max(4, (markerWidth - 4) * Math.min(1, dial.coverage)), markerHeight - 4);
+  }
+
+  paintCtx.strokeStyle = dialNeedsCorrection(dial)
+    ? (paintState.correcting ? "rgba(255, 207, 122, 0.96)" : "rgba(192, 74, 59, 0.96)")
+    : dial.coverage >= 0.96
+      ? "rgba(241, 224, 124, 0.82)"
+      : "rgba(190, 190, 190, 0.5)";
+  paintCtx.lineWidth = dial === activeDial() ? 2.6 : 1.5;
+  paintCtx.strokeRect(left, top, markerWidth, markerHeight);
+}
+
 function drawFracturePuzzle() {
   const w = paintCanvas.width;
   const h = paintCanvas.height;
@@ -2560,31 +2590,7 @@ function drawWatchMinigame() {
   paintCtx.font = "24px Georgia";
 
   for (const dial of paintState.dials) {
-    const radius = 14 + Math.min(1.2, dial.coverage) * 10;
-
-    if (dialNeedsCorrection(dial)) {
-      paintCtx.strokeStyle = paintState.correcting ? "#ffcf7a" : "#c04a3b";
-      paintCtx.lineWidth = 3;
-      paintCtx.beginPath();
-      paintCtx.arc(dial.x, dial.y, radius + 6, 0, Math.PI * 2);
-      paintCtx.stroke();
-    }
-
-    paintCtx.strokeStyle = "rgba(200, 200, 200, 0.2)";
-    paintCtx.lineWidth = 2.3;
-    paintCtx.lineJoin = "round";
-    paintCtx.lineCap = "round";
-    for (let i = 1; i < dial.targetPoints.length; i += 1) {
-      const prev = dial.targetPoints[i - 1];
-      const next = dial.targetPoints[i];
-      if (Math.hypot(prev.x - next.x, prev.y - next.y) > 18) continue;
-      paintCtx.beginPath();
-      paintCtx.moveTo(prev.x, prev.y);
-      paintCtx.lineTo(next.x, next.y);
-      paintCtx.stroke();
-    }
-    drawStrayPaint(dial, false);
-    drawDialPaint(dial, false);
+    drawDialMarker(dial);
   }
 
   if (!drewWatchFace) {
@@ -2989,7 +2995,7 @@ paintCanvas.addEventListener("mousedown", (event) => {
 
   if (paintState.zoomedDialIndex === -1 && Math.hypot(position.x - STATION_LAYOUT.nailProp.x, position.y - STATION_LAYOUT.nailProp.y) < STATION_LAYOUT.nailProp.r) {
     switchToNailMode("prop");
-    paintPrompt.textContent = "You set the brush down and use your fingernails as an eraser instead.";
+    paintPrompt.textContent = "You set the brush down and use your fingernails as a precise wipe instead.";
     updatePaintStats();
     drawWatchMinigame();
     return;
@@ -2997,7 +3003,7 @@ paintCanvas.addEventListener("mousedown", (event) => {
 
   if (paintState.zoomedDialIndex === -1) {
     if (paintState.mixQuality <= 0) {
-      paintPrompt.textContent = "Mix the dish first. Then click a numeral on the watch face to work on it up close.";
+      paintPrompt.textContent = "Mix the dish first. Then click one of the gray numeral markers to work on it up close.";
       drawWatchMinigame();
       return;
     }
@@ -3006,7 +3012,7 @@ paintCanvas.addEventListener("mousedown", (event) => {
       enterDialZoom(paintState.dials.indexOf(dial));
       return;
     }
-    paintPrompt.textContent = "Click directly on a numeral to open it against the dark.";
+    paintPrompt.textContent = "Click one of the gray numeral markers to open it against the dark.";
     drawWatchMinigame();
     return;
   }

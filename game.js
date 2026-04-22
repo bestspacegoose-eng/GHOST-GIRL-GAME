@@ -157,7 +157,7 @@ const THOUGHTS_LIGHT = [
     "I wonder how Elly's doing in school right now.",
     "Did Mom remember to pack her lunch today?",
     "I have to pick Denny up later.",
-    "I hope the first pay envelope looks as good as they promised.",
+    "I hope the first pay is as good as they promised.",
   ],
   [
     "I should stop by the grocer before he shuts the till.",
@@ -166,19 +166,19 @@ const THOUGHTS_LIGHT = [
     "Maybe I can bring something sweet home if this week goes well.",
   ],
   [
-    "My jaw feels sore. Maybe I've just been holding it too tight.",
+    "My jaw feels sore. Have I been holding it too tight?",
     "I need to keep my hand steady. I can't lose this work.",
     "I should write down what Denny needs for school before I forget.",
-    "Maybe the tiredness will wear off after a good night's sleep.",
+    "Maybe the exhaustion will wear off after a good night's sleep.",
   ],
   [
-    "I ought to rest more. That's all this is.",
+    "I ought to rest more. My body's acting up.",
     "If I come in early tomorrow, maybe I can make up today's total.",
     "I shouldn't keep thinking about the ache in my mouth.",
     "I need to remember to smile when I get home so no one worries.",
   ],
   [
-    "If I keep quiet and keep working, everything will stay manageable.",
+    "If I keep quiet and keep working, everything will stay...fine.",
     "I can't bring bad news home on top of everything else.",
     "I should ask if Elly needs new shoes before the weather turns.",
     "The girls are kinder now. I didn't think that would happen.",
@@ -191,7 +191,7 @@ const THOUGHTS_LIGHT = [
   ],
   [
     "Just finish the dial in front of you.",
-    "Think about the next breath, not the whole night ahead.",
+    "Think about the next breath, not the whole night.",
     "If I can stand through this shift, I can stand through the next hour.",
     "I cannot let myself look frightened before I leave the room.",
   ],
@@ -223,19 +223,19 @@ const THOUGHTS_DARK = [
     "I can be afraid later. Not here. Not yet.",
   ],
   [
-    "I don't know how much longer I can pretend this is ordinary.",
+    "I don't know how much longer I can pretend this is normal.",
     "They keep saying it's fine. Then why does it hurt like this?",
     "If I tell the truth at home, they'll beg me to stop.",
     "Don't open your mouth too wide. Don't let them see.",
   ],
   [
-    "I feel as if something bright is eating its way inward.",
+    "I feel as if something is digesting me from the inside out.",
     "I wish I could leave before the room goes dark again.",
-    "My body knows something my mind keeps refusing to say.",
+    "My body knows something my mind won't say.",
     "Keep working. Keep smiling. Keep earning. Keep quiet.",
   ],
   [
-    "I don't know whether I am enduring this or disappearing inside it.",
+    "I don't know whether I am enduring this or dying inside it.",
     "What if the girls see it on me before I can hide it?",
     "If I leave, we lose the money. If I stay, what do I lose next?",
     "Just one more dial. Just one more.",
@@ -1123,7 +1123,7 @@ function refreshHint() {
 
   if (paintState.active && paintState.mode === "fracture") {
     hint.textContent = "The broken clock waits under your hands.";
-    subhint.textContent = "Drag each piece back into place so the next day can start.";
+    subhint.textContent = "Drag each piece back into place so that your mind slots into place.";
     return;
   }
 
@@ -1248,8 +1248,8 @@ function endOfDayReflection() {
   const day = gameState.currentDay;
 
   const opening = day === 0
-    ? "On the way home, you still try to believe this factory might be the answer you were promised."
-    : "On the way home, the weight of the day follows you even after the lamps are behind you.";
+    ? "On the way home, you try to believe this factory might be the answer you were promised."
+    : "On the way home, the day looms over you even as the neon lights fade from the shells of your eyes.";
 
   let body;
   if (health >= 80) {
@@ -1272,13 +1272,13 @@ function endOfDayReflection() {
 function darkRoomGathering() {
   const day = gameState.currentDay;
   const scenes = [
-    "After the tally, a few of the girls linger near the benches until the lamps are cut low. Their fingertips hold a faint light even then, a dim wash at the nails and cuffs, and one of them glances over her shoulder to see whether you are following. You hover at the edge, still too new to step in easily, but another girl gives you a shy half-smile and shifts aside so there is room for you in the dark.",
+    "After the tally, a few of the girls linger near the benches until the lamps are cut low. Their fingertips hold a faint light even then, a dim wash at the nails and cuffs, and one of them glances over her shoulder to check whether you are following. You hover at the edge, still too new to step in easily, but another girl gives you a shy half-smile and shifts aside so there is room for you in the dark.",
     "On the second night, they gather more quickly, as if the room itself has taught them where to meet once the light thins. The glow on their hands is stronger now, fine green fire caught along the cuticles and in the loose wisps of hair at their temples. One lifts her palm and says, almost laughing, that the dark is kinder to them than the day. Another angles her glowing knuckles beneath your gaze and asks, softer than she would have at the bench, whether yours shine too.",
-    "By Wednesday the gathering has the hush of a ritual. They stand close enough for their brightness to mingle: fingertips, collars, the edge of a cheek, the ghostly trace of paint brushed over a nail. Someone says they ought to charge admission for such beauty. Another calls it the undark, and the others echo the word like a private blessing. When you hesitate, a girl touches your elbow and tells you not to stand off on your own. \"Come look,\" she says. \"You're one of us now.\"",
-    "Thursday night turns them almost theatrical in the black. Leftover paint gleams where one girl has smoothed it over her nails, where another has drawn it lightly through a loosened strand of hair so it catches when she moves. They tilt toward one another to admire the effect, laughing low, their faces transformed into something tender and almost holy by the strange green light. One of the women who barely looked up at you on your first day reaches for your wrist and lifts your hand into the glow beside hers, studying it with the care of a friend.",
+    "By Wednesday the gathering has the hush of a ritual. They stand close enough for their brightness to mingle: fingertips, collars, the edge of a cheek, the ghostly trace of paint brushed over a nail. A constellation glimmers in this room. Someone says they ought to charge admission for such beauty. Another calls it the undark, and the others echo the word like a private blessing. When you hesitate, a girl touches your elbow and tells you not to stand off on your own. \"Come look,\" she says. \"You're one of us now.\"",
+    "Thursday night turns them almost theatrical in the black. Leftover paint gleams where one girl has smoothed it over her nails, where another has drawn it lightly through a loosened strand of hair so it catches when she moves. They tilt toward one another to admire the effect, laughing low, their faces transformed into something tender and almost holy by the glittering green light. One of the women who barely looked up at you on your first day reaches for your wrist and lifts your hand into the glow beside hers, studying it with the care of a friend.",
     "On Friday, after the talk of standing together, the dark-room gathering feels closer, more deliberate. They cluster shoulder to shoulder while the undark rises from skin, apron hems, and the fine dust at the edges of their curls. Their warmth toward you is no longer tentative. Someone presses hip to hip against you to make space in the circle. Someone else, smiling through tiredness, tells you that your hands catch the light beautifully. In the black they seem briefly remade, not into ghosts but into women lit from within.",
     "Saturday's gathering is quieter, more intimate. The glow lies along their fingers and hair like dew caught in moonlight, and in the hush you can hear how gently they speak to one another now. One girl smooths paint over a thumbnail and reaches to compare it with yours; another watches your face and asks whether you are holding up. The kindness would have startled you at the start of the week. Now it lands like something you had already begun to need.",
-    "By Sunday night the room is nearly empty before the last of them gather in the dark. The undark answers at once, threading itself through nails, cuffs, lashes, and the stray flyaway hairs that no pins can hold. They look unbearably lovely that way, as if each of them has stolen back a little private constellation from the factory floor. No one leaves you standing apart anymore. They draw you in by the hand, by the shoulder, by the easy angle of their bodies, and for one suspended moment the black room feels less like a place of ending than a place where all of you are trying, together, to remain visible.",
+    "By Sunday night the room is nearly empty before the last of them gather in the dark. The undark answers at once, threading itself through nails, cuffs, lashes, and the stray flyaway hairs that no pins can hold. They look unbearably lovely that way, as if each of them has stolen back a little private constellation from the factory floor. They burn so bright tonight. No one leaves you standing apart anymore. They draw you in by the hand, by the shoulder, by the easy angle of their bodies, and for one suspended moment the black room feels less like a place of ending than a place where all of you are trying, together, to remain visible.",
   ];
   return scenes[Math.min(6, day)];
 }
@@ -1338,7 +1338,7 @@ function showDayOneIntro() {
   resetDialogButtons();
   dialogTitle.textContent = "Day 1 - New Hire";
   dialogBody.textContent =
-    "The job feels like a miracle when you first arrive. Watch-painting is spoken of as one of the best-paying positions a woman can get, and you come to the factory with the kind of hope that only grows when money has been short for too long. At home, there are six siblings and too much need to go around, and as the middle child you have learned how often duty lands in the hands of the one who can least refuse it. So you take your place at the bench telling yourself this is what luck looks like at last. Everyone talks about the paint as if it belongs to the future: luminous, fashionable, and made with the same remarkable material turning up in all the newest products. You have even heard it said that it is good for the health. By the time the shift is ready to begin, you want very badly to believe every word of it.";
+    "You've heard talk of it for weeks, months now; this lucrative new job where skillful work translates directly to high pay. Its one of the few jobs you could have taken; between being a woman, and one as young as you are. Unlike most other jobs, both attributes make you the perfect hire: young deft hands for this delicate work, and one of the few people left behind while the men valiantly fight for your country. You are a full-blown patriot now, a hero of your family and your country. ou come to the factory with the kind of hope that only grows when money has been short for too long. At home, there are six siblings and too much need to go around, and as the middle child you have learned how often duty lands in the hands of the one who can least refuse it. So you take your place at the bench telling yourself this is what luck looks like at last. Everyone talks about the paint as if it belongs to the future: luminous, fashionable, and made with the same remarkable material turning up in all the newest products. You have even heard it said that it is good for the health. By the time the shift is ready to begin, you want very badly to believe every word of it.";
   dialogButton.textContent = "Begin shift";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "day-one-intro";

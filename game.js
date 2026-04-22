@@ -133,6 +133,8 @@ const gameState = {
 
 const paintState = {
   active: false,
+  pointerX: paintCanvas.width / 2,
+  pointerY: paintCanvas.height / 2,
   cursorX: paintCanvas.width / 2,
   cursorY: paintCanvas.height / 2,
   isPainting: false,
@@ -1632,8 +1634,9 @@ function leadingPointForDial(index = paintState.activeDialIndex) {
 
 function moveCursorToActiveDial() {
   const point = leadingPointForDial();
-  paintState.cursorX = point.x;
-  paintState.cursorY = point.y;
+  paintState.pointerX = point.x;
+  paintState.pointerY = point.y;
+  refreshPaintCursor();
 }
 
 function updateActiveDialIndex() {
@@ -1848,8 +1851,9 @@ function zoomCursorToDial(index) {
   if (!dial) return;
   const points = dialRenderPoints(dial);
   const point = points[Math.floor(points.length / 2)] || { x: ZOOM_CENTER_X, y: ZOOM_CENTER_Y };
-  paintState.cursorX = point.x;
-  paintState.cursorY = point.y;
+  paintState.pointerX = point.x;
+  paintState.pointerY = point.y;
+  refreshPaintCursor();
 }
 
 function enterDialZoom(index) {
@@ -1921,6 +1925,8 @@ function openFracturePuzzle(message) {
   paintState.isPainting = false;
   paintState.correcting = false;
   paintState.draggedPieceIndex = -1;
+  paintState.pointerX = paintCanvas.width / 2;
+  paintState.pointerY = paintCanvas.height / 2;
   paintState.cursorX = paintCanvas.width / 2;
   paintState.cursorY = paintCanvas.height / 2;
   initializeFracturePieces();
@@ -3014,7 +3020,10 @@ function frame(now) {
 
   update(dt);
   drawScene();
-  if (paintState.active) drawWatchMinigame();
+  if (paintState.active) {
+    refreshPaintCursor();
+    drawWatchMinigame();
+  }
   if (activeMessageTimer <= 0) refreshHint();
 
   requestAnimationFrame(frame);
@@ -3028,6 +3037,16 @@ function pointerInsidePaintCanvas(event) {
     x: Math.max(0, Math.min(paintCanvas.width, x)),
     y: Math.max(0, Math.min(paintCanvas.height, y)),
   };
+}
+
+function refreshPaintCursor() {
+  const driftedPosition = applyPaintingDrift({
+    x: paintState.pointerX,
+    y: paintState.pointerY,
+  });
+  paintState.cursorX = driftedPosition.x;
+  paintState.cursorY = driftedPosition.y;
+  return driftedPosition;
 }
 
 function paintingDriftStrength() {
@@ -3138,21 +3157,23 @@ mixResetButton.addEventListener("click", () => {
 paintCanvas.addEventListener("mousemove", (event) => {
   const position = pointerInsidePaintCanvas(event);
   if (paintState.mode === "fracture") {
+    paintState.pointerX = position.x;
+    paintState.pointerY = position.y;
     paintState.cursorX = position.x;
     paintState.cursorY = position.y;
     moveFractureDrag(position.x, position.y);
     return;
   }
 
+  paintState.pointerX = position.x;
+  paintState.pointerY = position.y;
+
   if (paintState.thoughtPopup && paintState.thoughtPopup.requiresDismiss) {
-    paintState.cursorX = position.x;
-    paintState.cursorY = position.y;
+    refreshPaintCursor();
     return;
   }
 
-  const driftedPosition = applyPaintingDrift(position);
-  paintState.cursorX = driftedPosition.x;
-  paintState.cursorY = driftedPosition.y;
+  const driftedPosition = refreshPaintCursor();
 
   if (paintState.active && paintState.isPainting) {
     if (paintState.tool === "brush") {
@@ -3167,6 +3188,8 @@ paintCanvas.addEventListener("mousedown", (event) => {
   if (!paintState.active) return;
 
   const position = pointerInsidePaintCanvas(event);
+  paintState.pointerX = position.x;
+  paintState.pointerY = position.y;
 
   if (paintState.mode === "fracture") {
     paintState.cursorX = position.x;
@@ -3176,9 +3199,7 @@ paintCanvas.addEventListener("mousedown", (event) => {
     return;
   }
 
-  const driftedPosition = applyPaintingDrift(position);
-  paintState.cursorX = driftedPosition.x;
-  paintState.cursorY = driftedPosition.y;
+  const driftedPosition = refreshPaintCursor();
 
   if (paintState.thoughtPopup) {
     if (pointInsideThoughtClose(position.x, position.y)) {
@@ -3239,9 +3260,7 @@ paintCanvas.addEventListener("mousedown", (event) => {
   }
 
   paintState.isPainting = true;
-  const paintingPosition = applyPaintingDrift(position);
-  paintState.cursorX = paintingPosition.x;
-  paintState.cursorY = paintingPosition.y;
+  const paintingPosition = refreshPaintCursor();
   paintAt(paintingPosition.x, paintingPosition.y);
   drawWatchMinigame();
 });

@@ -155,6 +155,7 @@ const gameState = {
   groceryBudgetTenths: 0,
   groceryFundsTenths: 0,
   groceryCart: {},
+  tutorialSeen: false,
 };
 
 const paintState = {
@@ -184,7 +185,41 @@ const paintState = {
   thoughtPopup: null,
   nextThoughtTimer: 9,
   lastPointerMoveAt: 0,
+  tutorial: null,
 };
+
+const TUTORIAL_STEPS = [
+  {
+    title: "Center Bench Tutorial",
+    body:
+      "The woman at the center bench waves you in before the bell. \"We will do this properly. First, click the brush lying beside the dishes. You do not paint bare-handed.\"",
+  },
+  {
+    title: "Center Bench Tutorial",
+    body:
+      "She watches your grip, then nods once. Before she can say more, another girl further down the row mutters without looking up: \"Three powder, two tar, one water.\" Build a usable paint in the dish from the platters on the bench.",
+  },
+  {
+    title: "Center Bench Tutorial",
+    body:
+      "\"Good. Now choose a numeral on the watch face. Click one of the gray markers so you can work on it up close.\"",
+  },
+  {
+    title: "Center Bench Tutorial",
+    body:
+      "\"Trace the numeral carefully,\" she says. \"Keep the paint on the guide and make it clean enough to count.\" Finish this numeral.",
+  },
+  {
+    title: "Center Bench Tutorial",
+    body:
+      "\"That is the heart of it. If the paint strays, Switch to fingernails for a small correction, Wipe paint directly for a ruined numeral, and Sharpen brush when the tip starts to spread. Press Escape to pull back from the numeral.\"",
+  },
+  {
+    title: "Center Bench Tutorial",
+    body:
+      "\"That is the whole process. When you are ready to begin the real day, leave the bench and clock in at the wall.\"",
+  },
+];
 
 const THOUGHTS_LIGHT = [
   [
@@ -1493,13 +1528,7 @@ function showDayOneIntro() {
 }
 
 function showBenchTutorial() {
-  resetDialogButtons();
-  dialogTitle.textContent = "Center Bench Tutorial";
-  dialogBody.textContent =
-    "The girl at the center bench finally looks up. 'Listen closely. First, clock in at the wall clock to begin the shift. When you sit at a bench, click the brush lying by the dishes when you want to paint, use Switch to fingernails to clean up only the excess around a numeral, Sharpen brush to restore a fine point, Wipe paint directly if the open numeral needs a full clean correction, Send watch in once all twelve numerals are painted cleanly, and Empty the dish if your mixture goes bad. The three vessels build the paint: powder, tar, and water. In the main watch view, click a gray numeral marker to open it. In the zoomed view, paint inside the guide lines until the numeral is clean enough to count. If the edges get ragged, correct them before you send the watch in. Then clock out at the wall when you're finished.'";
-  dialogButton.textContent = "Understood";
-  dialogOverlay.classList.remove("hidden");
-  gameState.dialogMode = "bench-tutorial";
+  openTutorialMinigame();
 }
 
 function showDayFiveCutscene() {
@@ -1791,7 +1820,7 @@ function cloneDials(dials) {
 }
 
 function saveCurrentBenchWork() {
-  if (!paintState.tableLabel || paintState.mode !== "watch" || paintState.dials.length === 0) return;
+  if (paintState.tutorial || !paintState.tableLabel || paintState.mode !== "watch" || paintState.dials.length === 0) return;
   gameState.savedBenchWork[paintState.tableLabel] = {
     dials: cloneDials(paintState.dials),
     mix: [...paintState.mix],
@@ -2003,8 +2032,8 @@ function mixTextureFeedback() {
 
 function currentStationMode() {
   if (paintState.tool === "nail") return "nail";
-  if (paintState.zoomedDialIndex === -1) return "mix";
-  return "brush";
+  if (paintState.tool === "brush") return "brush";
+  return "mix";
 }
 
 function activeDial() {
@@ -2069,6 +2098,7 @@ function enterDialZoom(index) {
   paintState.paintLoaded = MAX_PAINT_LOAD;
   zoomCursorToDial(index);
   paintPrompt.textContent = `The ${dial.label} fills the dark. Paint inside the faint guide while the brush still holds paint.`;
+  advanceTutorialStep("zoom");
   updatePaintStats();
   drawWatchMinigame();
 }
@@ -2077,8 +2107,86 @@ function exitDialZoom(message = "You pull back from the numeral to survey the fu
   paintState.zoomedDialIndex = -1;
   moveCursorToActiveDial();
   paintPrompt.textContent = message;
+  advanceTutorialStep("exit-zoom");
   updatePaintStats();
   drawWatchMinigame();
+}
+
+function tutorialStepData() {
+  return paintState.tutorial ? TUTORIAL_STEPS[paintState.tutorial.step] : null;
+}
+
+function tutorialBoxFrame() {
+  return {
+    x: 20,
+    y: 468,
+    w: 600,
+    h: 132,
+  };
+}
+
+function setTutorialStep(step) {
+  if (!paintState.tutorial) return;
+  paintState.tutorial.step = Math.max(0, Math.min(TUTORIAL_STEPS.length - 1, step));
+  const current = tutorialStepData();
+  if (!current) return;
+  paintPrompt.textContent = current.body;
+  mixPrompt.textContent =
+    paintState.tutorial.step <= 1
+      ? "Follow the woman at the center bench step by step before the shift begins."
+      : mixTextureFeedback();
+  updatePaintStats();
+}
+
+function advanceTutorialStep(eventName) {
+  if (!paintState.tutorial) return;
+  const step = paintState.tutorial.step;
+  const totalMix = paintState.mix[0] + paintState.mix[1] + paintState.mix[2];
+  const dial = activeDial();
+
+  if (step === 0 && eventName === "brush") {
+    setTutorialStep(1);
+    return;
+  }
+
+  if (step === 1 && eventName === "mix" && totalMix >= 6 && paintState.mixQuality > 0.88) {
+    setTutorialStep(2);
+    return;
+  }
+
+  if (step === 2 && eventName === "zoom") {
+    setTutorialStep(3);
+    return;
+  }
+
+  if (step === 3 && eventName === "paint-complete" && dial && dial.coverage >= 0.96 && !dialNeedsCorrection(dial)) {
+    setTutorialStep(4);
+    return;
+  }
+
+  if (step === 4 && eventName === "exit-zoom") {
+    setTutorialStep(5);
+  }
+}
+
+function openTutorialMinigame() {
+  openMinigame("tutorial");
+  paintState.tutorial = { step: 0 };
+  paintState.tool = "mix";
+  paintState.correcting = false;
+  paintState.paintLoaded = 0;
+  gameState.tutorialSeen = true;
+  setTutorialStep(0);
+  drawWatchMinigame();
+}
+
+function closeTutorialMinigame() {
+  paintState.tutorial = null;
+  closeMinigame();
+  setMessage(
+    "The woman lets you stand back up from the bench.",
+    "Clock in at the wall clock when you are ready to begin the shift.",
+  );
 }
 
 function imageReady(image) {
@@ -2168,8 +2276,9 @@ function openMinigame(label) {
   paintState.tableLabel = label;
   paintState.isPainting = false;
   paintState.correcting = false;
-  paintState.tool = "brush";
+  paintState.tool = "mix";
   paintState.thoughtPopup = null;
+  paintState.tutorial = null;
   paintState.nextThoughtTimer = nextThoughtDelay();
   if (!restoreBenchWork(label)) {
     paintState.watchIndex += 1;
@@ -2198,11 +2307,12 @@ function closeMinigame() {
   paintState.active = false;
   paintState.isPainting = false;
   paintState.correcting = false;
-  paintState.tool = "brush";
+  paintState.tool = "mix";
   paintState.mode = "watch";
   paintState.zoomedDialIndex = -1;
   paintState.paintLoaded = 0;
   paintState.thoughtPopup = null;
+  paintState.tutorial = null;
   paintState.fracturePieces = [];
   paintState.draggedPieceIndex = -1;
   minigameHeading.textContent = "Watch Painting";
@@ -2274,6 +2384,7 @@ function switchToBrushMode(message = "You pick the brush back up and return to t
   paintState.tool = "brush";
   paintState.correcting = false;
   paintPrompt.textContent = message;
+  advanceTutorialStep("brush");
   updatePaintStats();
   drawWatchMinigame();
 }
@@ -2281,7 +2392,7 @@ function switchToBrushMode(message = "You pick the brush back up and return to t
 function prepareNextWatch(message) {
   clearBenchWork();
   paintState.correcting = false;
-  paintState.tool = "brush";
+  paintState.tool = "mix";
   paintState.zoomedDialIndex = -1;
   paintState.readyToSubmit = false;
   resetMix();
@@ -2389,6 +2500,7 @@ function addIngredient(region) {
     paintState.tool = "brush";
     paintState.correcting = false;
     paintPrompt.textContent = "You dip the brush back into the paint dish at your side.";
+    advanceTutorialStep("brush");
     updatePaintStats();
     return;
   }
@@ -2405,6 +2517,7 @@ function addIngredient(region) {
     paintPrompt.textContent = "The lower vessel thins the dish and lightens the surface reflection.";
   }
 
+  advanceTutorialStep("mix");
   updatePaintStats();
 }
 
@@ -2413,6 +2526,7 @@ function dialCountsAsPainted(dial) {
 }
 
 function creditCompletedDials() {
+  if (paintState.tutorial) return;
   let creditedNow = 0;
   for (const dial of paintState.dials) {
     if (dial.credited || !dialCountsAsPainted(dial)) continue;
@@ -2607,6 +2721,13 @@ function paintAt(x, y) {
     }
   }
 
+  if (paintState.tutorial) {
+    const tutorialDial = activeDial();
+    if (tutorialDial && tutorialDial.coverage >= 0.96 && !dialNeedsCorrection(tutorialDial)) {
+      advanceTutorialStep("paint-complete");
+    }
+  }
+
   updatePaintStats();
 }
 
@@ -2697,6 +2818,13 @@ function correctAt(x, y) {
     paintPrompt.textContent = "The ragged edges are cleaned away. This watch can go in at full pay.";
   }
 
+  if (paintState.tutorial) {
+    const tutorialDial = activeDial();
+    if (tutorialDial && tutorialDial.coverage >= 0.96 && !dialNeedsCorrection(tutorialDial)) {
+      advanceTutorialStep("paint-complete");
+    }
+  }
+
   updatePaintStats();
 }
 
@@ -2720,6 +2848,12 @@ function wipeNearestDial() {
   paintState.correcting = preservedCorrecting;
   updateCoverage();
   creditCompletedDials();
+  if (paintState.tutorial) {
+    const tutorialDial = activeDial();
+    if (tutorialDial && tutorialDial.coverage >= 0.96 && !dialNeedsCorrection(tutorialDial)) {
+      advanceTutorialStep("paint-complete");
+    }
+  }
   updatePaintStats();
   paintPrompt.textContent = "You wipe the ragged excess away with your hands and leave the numeral clean again.";
 }
@@ -2733,6 +2867,10 @@ function updateCoverage() {
 }
 
 function sendCurrentWatch() {
+  if (paintState.tutorial) {
+    paintPrompt.textContent = "This is only the practice bench. Leave the tutorial and clock in when you are ready for the real shift.";
+    return;
+  }
   if (!allDialsReady()) {
     paintPrompt.textContent = "Not every numeral is luminous yet. The watch is not ready to send in.";
     return;
@@ -3180,6 +3318,7 @@ function drawWatchMinigame() {
     drawHoverLabel(paintCtx, hoveredStationTarget.centerX, hoveredStationTarget.topY, hoveredStationTarget.label);
   }
 
+  drawTutorialPanel();
   drawImageCursor(stationMode);
 }
 
@@ -3266,6 +3405,7 @@ function drawZoomedDialView() {
     drawHoverLabel(paintCtx, hoveredStationTarget.centerX, hoveredStationTarget.topY, hoveredStationTarget.label);
   }
 
+  drawTutorialPanel();
   drawImageCursor(currentStationMode());
   drawThoughtPopup();
 }
@@ -3322,6 +3462,41 @@ function drawThoughtPopup() {
   const startY = textFrame.y + textFrame.h / 2 - ((fitted.lines.length - 1) * fitted.lineHeight) / 2;
   fitted.lines.forEach((line, index) => {
     paintCtx.fillText(line, textFrame.x + textFrame.w / 2, startY + index * fitted.lineHeight);
+  });
+  paintCtx.restore();
+}
+
+function drawTutorialPanel() {
+  if (!paintState.tutorial) return;
+  const step = tutorialStepData();
+  if (!step) return;
+  const frame = tutorialBoxFrame();
+  const textFrame = {
+    x: frame.x + 16,
+    y: frame.y + 34,
+    w: frame.w - 32,
+    h: frame.h - 48,
+  };
+  const fitted = fitThoughtText(step.body, textFrame);
+
+  paintCtx.save();
+  paintCtx.fillStyle = "rgba(0, 0, 0, 0.9)";
+  paintCtx.fillRect(frame.x, frame.y, frame.w, frame.h);
+  paintCtx.strokeStyle = "rgba(255,255,255,0.18)";
+  paintCtx.lineWidth = 2;
+  paintCtx.strokeRect(frame.x, frame.y, frame.w, frame.h);
+
+  paintCtx.fillStyle = "rgba(255,255,255,0.82)";
+  paintCtx.font = "bold 14px Georgia";
+  paintCtx.textAlign = "left";
+  paintCtx.textBaseline = "middle";
+  paintCtx.fillText(step.title, frame.x + 16, frame.y + 16);
+
+  paintCtx.fillStyle = "#f5f5f5";
+  paintCtx.font = `${fitted.fontSize}px Georgia`;
+  const startY = textFrame.y + textFrame.h / 2 - ((fitted.lines.length - 1) * fitted.lineHeight) / 2;
+  fitted.lines.forEach((line, index) => {
+    paintCtx.fillText(line, textFrame.x, startY + index * fitted.lineHeight);
   });
   paintCtx.restore();
 }
@@ -3515,15 +3690,6 @@ dialogButton.addEventListener("click", () => {
     showSolidarityEnding();
     return;
   }
-  if (gameState.dialogMode === "bench-tutorial") {
-    dialogOverlay.classList.add("hidden");
-    resetDialogButtons();
-    setMessage(
-      "The center worker has shown you the process.",
-      "Clock in at the wall clock when you're ready to start the shift.",
-    );
-    return;
-  }
   continueAfterDialog();
 });
 
@@ -3698,6 +3864,12 @@ paintCanvas.addEventListener("mousedown", (event) => {
     return;
   }
 
+  if (paintState.tool !== "brush") {
+    paintPrompt.textContent = "Pick up the brush on the bench before you try to paint the numeral.";
+    drawWatchMinigame();
+    return;
+  }
+
   paintState.isPainting = true;
   const paintingPosition = refreshPaintCursor();
   paintAt(paintingPosition.x, paintingPosition.y);
@@ -3733,6 +3905,8 @@ document.addEventListener("keydown", (event) => {
   if (event.code === "Escape" && paintState.active && paintState.mode !== "fracture") {
     if (paintState.zoomedDialIndex !== -1) {
       exitDialZoom();
+    } else if (paintState.tutorial) {
+      closeTutorialMinigame();
     } else {
       closeMinigame();
       setMessage("You stand back up from the bench.", "The line keeps moving while the next watch waits under the lamp.");

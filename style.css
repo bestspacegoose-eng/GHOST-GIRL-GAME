@@ -104,9 +104,33 @@ canvas {
   color: var(--accent);
 }
 
+#healthLabel {
+  color: var(--text);
+}
+
 #subhint,
 #timeLabel {
   color: var(--muted);
+}
+
+.health-panel {
+  margin-top: 8px;
+}
+
+.health-meter {
+  width: 100%;
+  height: 12px;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.health-meter-fill {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #8d1010 0%, #d76f42 38%, #d9f57a 100%);
+  transform-origin: left center;
 }
 
 .reticle {

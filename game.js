@@ -6,6 +6,8 @@ const dayLabel = document.getElementById("dayLabel");
 const timeLabel = document.getElementById("timeLabel");
 const dialLabel = document.getElementById("dialLabel");
 const earningsLabel = document.getElementById("earningsLabel");
+const healthLabel = document.getElementById("healthLabel");
+const healthFill = document.getElementById("healthFill");
 const titleCard = document.getElementById("titleCard");
 const titleCardText = document.getElementById("titleCardText");
 const dialogOverlay = document.getElementById("dialogOverlay");
@@ -157,6 +159,7 @@ const paintState = {
   dragOffsetY: 0,
   thoughtPopup: null,
   nextThoughtTimer: 9,
+  lastPointerMoveAt: 0,
 };
 
 const THOUGHTS_LIGHT = [
@@ -1171,10 +1174,14 @@ function formatShiftTime() {
 }
 
 function updateHud() {
+  const health = Math.max(0, Math.min(100, gameState.hiddenStats.health));
   dayLabel.textContent = `${DAY_NAMES[gameState.currentDay]} - DAY ${gameState.currentDay + 1}`;
   timeLabel.textContent = formatShiftTime();
   dialLabel.textContent = `Dials painted: ${gameState.dialsPaintedToday}`;
   earningsLabel.textContent = `Due today: ${formatCurrency(gameState.dayEarningsCents)}`;
+  healthLabel.textContent = `Health: ${Math.round(health)}%`;
+  healthFill.style.transform = `scaleX(${health / 100})`;
+  healthFill.style.filter = health < 35 ? "saturate(0.7) brightness(0.8)" : "none";
 }
 
 function refreshHint() {
@@ -1636,6 +1643,7 @@ function moveCursorToActiveDial() {
   const point = leadingPointForDial();
   paintState.pointerX = point.x;
   paintState.pointerY = point.y;
+  paintState.lastPointerMoveAt = performance.now();
   refreshPaintCursor();
 }
 
@@ -1853,6 +1861,7 @@ function zoomCursorToDial(index) {
   const point = points[Math.floor(points.length / 2)] || { x: ZOOM_CENTER_X, y: ZOOM_CENTER_Y };
   paintState.pointerX = point.x;
   paintState.pointerY = point.y;
+  paintState.lastPointerMoveAt = performance.now();
   refreshPaintCursor();
 }
 
@@ -1927,6 +1936,7 @@ function openFracturePuzzle(message) {
   paintState.draggedPieceIndex = -1;
   paintState.pointerX = paintCanvas.width / 2;
   paintState.pointerY = paintCanvas.height / 2;
+  paintState.lastPointerMoveAt = performance.now();
   paintState.cursorX = paintCanvas.width / 2;
   paintState.cursorY = paintCanvas.height / 2;
   initializeFracturePieces();
@@ -3064,16 +3074,23 @@ function applyPaintingDrift(position) {
   if (severity <= 0) return position;
 
   const now = performance.now();
+  const idleElapsed = Math.max(0, now - paintState.lastPointerMoveAt);
+  const idleFactor = Math.min(1, Math.max(0, idleElapsed - 110) / 650);
   const strokeBoost = paintState.isPainting && paintState.tool === "brush" ? 1.15 : 1;
-  const radius = (0.9 + severity * 4.8) * strokeBoost;
+  const shakeRadius = (1.8 + severity * 7.2) * strokeBoost;
+  const idleRadius = (12 + severity * 44) * idleFactor;
   const driftX =
-    Math.sin(now * 0.06 + paintState.watchIndex * 0.71) * radius * 0.55 +
-    Math.sin(now * 0.12 + paintState.activeDialIndex * 1.11) * radius * 0.28 +
-    Math.cos(now * 0.17 + paintState.watchIndex * 0.43) * radius * 0.16;
+    Math.sin(now * 0.08 + paintState.watchIndex * 0.71) * shakeRadius * 0.62 +
+    Math.sin(now * 0.16 + paintState.activeDialIndex * 1.11) * shakeRadius * 0.32 +
+    Math.cos(now * 0.23 + paintState.watchIndex * 0.43) * shakeRadius * 0.18 +
+    Math.sin(now * 0.012 + paintState.watchIndex * 0.34) * idleRadius * 0.92 +
+    Math.cos(now * 0.019 + paintState.activeDialIndex * 0.58) * idleRadius * 0.46;
   const driftY =
-    Math.cos(now * 0.07 + paintState.watchIndex * 0.39) * radius * 0.52 +
-    Math.sin(now * 0.135 + paintState.activeDialIndex * 0.93) * radius * 0.24 +
-    Math.cos(now * 0.19 + paintState.watchIndex * 0.27) * radius * 0.16;
+    Math.cos(now * 0.09 + paintState.watchIndex * 0.39) * shakeRadius * 0.58 +
+    Math.sin(now * 0.175 + paintState.activeDialIndex * 0.93) * shakeRadius * 0.28 +
+    Math.cos(now * 0.21 + paintState.watchIndex * 0.27) * shakeRadius * 0.17 +
+    Math.cos(now * 0.011 + paintState.watchIndex * 0.29) * idleRadius * 0.88 +
+    Math.sin(now * 0.017 + paintState.activeDialIndex * 0.47) * idleRadius * 0.44;
 
   return {
     x: Math.max(0, Math.min(paintCanvas.width, position.x + driftX)),
@@ -3159,6 +3176,7 @@ paintCanvas.addEventListener("mousemove", (event) => {
   if (paintState.mode === "fracture") {
     paintState.pointerX = position.x;
     paintState.pointerY = position.y;
+    paintState.lastPointerMoveAt = performance.now();
     paintState.cursorX = position.x;
     paintState.cursorY = position.y;
     moveFractureDrag(position.x, position.y);
@@ -3167,6 +3185,7 @@ paintCanvas.addEventListener("mousemove", (event) => {
 
   paintState.pointerX = position.x;
   paintState.pointerY = position.y;
+  paintState.lastPointerMoveAt = performance.now();
 
   if (paintState.thoughtPopup && paintState.thoughtPopup.requiresDismiss) {
     refreshPaintCursor();
@@ -3190,6 +3209,7 @@ paintCanvas.addEventListener("mousedown", (event) => {
   const position = pointerInsidePaintCanvas(event);
   paintState.pointerX = position.x;
   paintState.pointerY = position.y;
+  paintState.lastPointerMoveAt = performance.now();
 
   if (paintState.mode === "fracture") {
     paintState.cursorX = position.x;

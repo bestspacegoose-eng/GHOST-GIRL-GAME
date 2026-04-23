@@ -25,7 +25,6 @@ const paintStats = document.getElementById("paintStats");
 const correctButton = document.getElementById("correctButton");
 const lickButton = document.getElementById("lickButton");
 const wipeButton = document.getElementById("wipeButton");
-const submitButton = document.getElementById("submitButton");
 const mixResetButton = document.getElementById("mixResetButton");
 
 const WIDTH = canvas.width;
@@ -95,6 +94,8 @@ const ASSET_PATHS = {
   roomClock: "./assets/room-clock.png",
   cursorMix: "./assets/cursor-mix.png",
   cursorBrush: "./assets/cursor-brush.png",
+  roughBrush: "./assets/RoughBrush.png",
+  fannedBrush: "./assets/FannedBrush.png",
   cursorNail: "./assets/cursor-nail.png",
   watchFace: "./assets/watch-face.png",
   completedWatchFace: "./assets/completed-watch-face.png",
@@ -186,6 +187,7 @@ const paintState = {
   nextThoughtTimer: 9,
   lastPointerMoveAt: 0,
   tutorial: null,
+  autoSubmitTimer: -1,
 };
 
 const TUTORIAL_STEPS = [
@@ -941,6 +943,7 @@ function update(dt) {
   }
 
   updateThoughtPopups(dt);
+  updateAutoSubmit(dt);
 
   updateHud();
 }
@@ -1361,7 +1364,6 @@ function setStationControlsHidden(hidden) {
   correctButton.classList.toggle("hidden", hidden);
   lickButton.classList.toggle("hidden", hidden);
   wipeButton.classList.toggle("hidden", hidden);
-  submitButton.classList.toggle("hidden", hidden);
   mixResetButton.classList.toggle("hidden", hidden);
 }
 
@@ -2279,6 +2281,7 @@ function openMinigame(label) {
   paintState.tool = "mix";
   paintState.thoughtPopup = null;
   paintState.tutorial = null;
+  paintState.autoSubmitTimer = -1;
   paintState.nextThoughtTimer = nextThoughtDelay();
   if (!restoreBenchWork(label)) {
     paintState.watchIndex += 1;
@@ -2313,6 +2316,7 @@ function closeMinigame() {
   paintState.paintLoaded = 0;
   paintState.thoughtPopup = null;
   paintState.tutorial = null;
+  paintState.autoSubmitTimer = -1;
   paintState.fracturePieces = [];
   paintState.draggedPieceIndex = -1;
   minigameHeading.textContent = "Watch Painting";
@@ -2350,7 +2354,6 @@ function updatePaintStats() {
   mixPrompt.textContent = mixTextureFeedback();
   correctButton.classList.toggle("active", paintState.tool === "nail");
   wipeButton.disabled = paintState.zoomedDialIndex === -1 || !currentDial || !dialNeedsCorrection(currentDial);
-  submitButton.textContent = correctionNeeded > 0 ? "Send watch in anyway" : "Send watch in";
 }
 
 function spendHealth(amount) {
@@ -2401,6 +2404,7 @@ function prepareNextWatch(message) {
   paintState.brushSize = DEFAULT_BRUSH_SIZE;
   paintState.paintLoaded = 0;
   paintState.thoughtPopup = null;
+  paintState.autoSubmitTimer = -1;
   paintState.nextThoughtTimer = nextThoughtDelay();
   paintPrompt.textContent = message;
   updatePaintStats();
@@ -2864,6 +2868,36 @@ function updateCoverage() {
     dial.coverage = dial.targetPoints.length === 0 ? 0 : painted / dial.targetPoints.length;
   }
   updateActiveDialIndex();
+}
+
+function updateAutoSubmit(dt) {
+  if (!paintState.active || paintState.mode !== "watch" || paintState.tutorial) {
+    paintState.autoSubmitTimer = -1;
+    return;
+  }
+
+  if (!allDialsReady()) {
+    paintState.autoSubmitTimer = -1;
+    return;
+  }
+
+  if (paintState.zoomedDialIndex !== -1) {
+    exitDialZoom("The finished watch settles under the lamp for a brief inspection.");
+    paintState.autoSubmitTimer = 1;
+    return;
+  }
+
+  if (paintState.autoSubmitTimer < 0) {
+    paintState.autoSubmitTimer = 1;
+    paintPrompt.textContent = "The finished watch settles under the lamp for a brief inspection.";
+    return;
+  }
+
+  paintState.autoSubmitTimer -= dt;
+  if (paintState.autoSubmitTimer <= 0) {
+    paintState.autoSubmitTimer = -1;
+    sendCurrentWatch();
+  }
 }
 
 function sendCurrentWatch() {
@@ -3502,11 +3536,19 @@ function drawTutorialPanel() {
 }
 
 function drawImageCursor(mode) {
-  const image = mode === "mix"
-    ? assetImages.cursorMix
-    : mode === "brush"
-      ? assetImages.cursorBrush
-      : assetImages.cursorNail;
+  let image;
+  if (mode === "mix") {
+    image = assetImages.cursorMix;
+  } else if (mode === "brush") {
+    image =
+      paintState.brushSize > 2.2
+        ? assetImages.fannedBrush
+        : paintState.brushSize > 1.1
+          ? assetImages.roughBrush
+          : assetImages.cursorBrush;
+  } else {
+    image = assetImages.cursorNail;
+  }
 
   if (!imageReady(image)) {
     paintCtx.save();
@@ -3526,12 +3568,23 @@ function drawImageCursor(mode) {
   }
 
   if (mode === "brush") {
-    const width = 74;
-    const height = 74;
-    const scaleX = width / 544;
-    const scaleY = height / 543;
-    const tipX = 84 * scaleX;
-    const tipY = 503 * scaleY;
+    let width = 74;
+    let height = 74;
+    let tipX = 84 * (width / 544);
+    let tipY = 503 * (height / 543);
+
+    if (image === assetImages.roughBrush) {
+      width = 74;
+      height = 125;
+      tipX = 72 * (width / 544);
+      tipY = 865 * (height / 917);
+    } else if (image === assetImages.fannedBrush) {
+      width = 74;
+      height = 124;
+      tipX = 86 * (width / 540);
+      tipY = 874 * (height / 907);
+    }
+
     paintCtx.drawImage(image, paintState.cursorX - tipX, paintState.cursorY - tipY, width, height);
     return;
   }
@@ -3723,8 +3776,6 @@ wipeButton.addEventListener("click", () => {
   wipeNearestDial();
   drawWatchMinigame();
 });
-
-submitButton.addEventListener("click", sendCurrentWatch);
 
 mixResetButton.addEventListener("click", () => {
   resetMix();

@@ -22,7 +22,6 @@ const paintCtx = paintCanvas.getContext("2d");
 const paintPrompt = document.getElementById("paintPrompt");
 const mixPrompt = document.getElementById("mixPrompt");
 const paintStats = document.getElementById("paintStats");
-const brushButton = document.getElementById("brushButton");
 const correctButton = document.getElementById("correctButton");
 const lickButton = document.getElementById("lickButton");
 const wipeButton = document.getElementById("wipeButton");
@@ -67,11 +66,11 @@ const MAX_PAINT_LOAD = 1;
 const PAINT_DRAIN_PER_STROKE = 0.012;
 const STATION_LAYOUT = {
   powder: { x: 98, y: 210, w: 118, h: 156, rx: 44, ry: 48 },
-  gum: { x: 170, y: 352, w: 112, h: 86, rx: 42, ry: 28 },
-  water: { x: 58, y: 362, w: 112, h: 84, rx: 42, ry: 28 },
+  gum: { x: 170, y: 356, w: 114, h: 90, rx: 42, ry: 30 },
+  water: { x: 58, y: 356, w: 114, h: 90, rx: 42, ry: 30 },
   dish: { x: 112, y: 504, w: 156, h: 116, rx: 52, ry: 34 },
   zoomPaint: { x: 96, y: 108, w: 122, h: 90, rx: 44, ry: 30 },
-  brushProp: { x: 236, y: 460, r: 48 },
+  brushProp: { x: 246, y: 488, w: 54, h: 196 },
   nailProp: { x: 252, y: 338, r: 30 },
 };
 const GROCERY_ITEMS = [
@@ -108,6 +107,7 @@ const ASSET_PATHS = {
   mixedPaint: "./assets/mixed-paint.png",
   thoughtPopup: "./assets/thought-popup.png",
   groceries: "./assets/groceries.png",
+  workbenchBrush: "./assets/workbench-brush.png",
 };
 
 const keys = new Set();
@@ -290,9 +290,9 @@ const assetImages = Object.fromEntries(
 );
 
 const componentRegions = [
-  { index: 0, x: STATION_LAYOUT.powder.x, y: STATION_LAYOUT.powder.y, rx: STATION_LAYOUT.powder.rx, ry: STATION_LAYOUT.powder.ry },
-  { index: 1, x: STATION_LAYOUT.gum.x, y: STATION_LAYOUT.gum.y, rx: STATION_LAYOUT.gum.rx, ry: STATION_LAYOUT.gum.ry },
-  { index: 2, x: STATION_LAYOUT.water.x, y: STATION_LAYOUT.water.y, rx: STATION_LAYOUT.water.rx, ry: STATION_LAYOUT.water.ry },
+  { index: 0, label: "Powder", x: STATION_LAYOUT.powder.x, y: STATION_LAYOUT.powder.y, rx: STATION_LAYOUT.powder.rx, ry: STATION_LAYOUT.powder.ry },
+  { index: 1, label: "Tar", x: STATION_LAYOUT.gum.x, y: STATION_LAYOUT.gum.y, rx: STATION_LAYOUT.gum.rx, ry: STATION_LAYOUT.gum.ry },
+  { index: 2, label: "Water", x: STATION_LAYOUT.water.x, y: STATION_LAYOUT.water.y, rx: STATION_LAYOUT.water.rx, ry: STATION_LAYOUT.water.ry },
 ];
 const ROOM_HOTSPOTS = [
   { id: "clock", x: 4, y: 18, w: 54, h: 146 },
@@ -654,6 +654,14 @@ function workerDialogueLines(id) {
   if (!profile) return ["Not right now.", ""];
   const dayIndex = Math.min(6, gameState.currentDay);
   return profile.dailyDialogue[dayIndex];
+}
+
+function interactableDisplayName(item) {
+  if (!item) return "";
+  if (item.kind === "worker") return "???";
+  if (item.kind === "bench") return "Workbench";
+  if (item.kind === "clock") return "Wall Clock";
+  return item.name;
 }
 
 const interactables = [
@@ -1151,6 +1159,8 @@ function drawRoomScene() {
     ctx.strokeRect(hoverSpot.x, hoverSpot.y, hoverSpot.w, hoverSpot.h);
     ctx.fillStyle = "rgba(248, 227, 168, 0.12)";
     ctx.fillRect(hoverSpot.x, hoverSpot.y, hoverSpot.w, hoverSpot.h);
+    const hoveredItem = interactables.find((entry) => entry.id === hoverSpot.id);
+    drawHoverLabel(ctx, hoverSpot.x + hoverSpot.w / 2, hoverSpot.y, interactableDisplayName(hoveredItem));
   }
 
   if (imageReady(roomClock)) {
@@ -1178,6 +1188,28 @@ function getTargetedInteractable() {
   if (!hotspot) return null;
   const item = interactables.find((entry) => entry.id === hotspot.id);
   return item ? { item, distance: 0 } : null;
+}
+
+function drawHoverLabel(drawCtx, centerX, topY, text) {
+  if (!text) return;
+  drawCtx.save();
+  drawCtx.font = "12px Georgia";
+  drawCtx.textAlign = "center";
+  drawCtx.textBaseline = "middle";
+  const textWidth = drawCtx.measureText(text).width;
+  const paddingX = 10;
+  const boxWidth = Math.max(52, textWidth + paddingX * 2);
+  const boxHeight = 22;
+  const x = Math.max(6, Math.min(centerX - boxWidth / 2, drawCtx.canvas.width - boxWidth - 6));
+  const y = Math.max(6, topY - boxHeight - 6);
+  drawCtx.fillStyle = "rgba(0, 0, 0, 0.88)";
+  drawCtx.fillRect(x, y, boxWidth, boxHeight);
+  drawCtx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+  drawCtx.lineWidth = 1;
+  drawCtx.strokeRect(x, y, boxWidth, boxHeight);
+  drawCtx.fillStyle = "#f4f4f4";
+  drawCtx.fillText(text, x + boxWidth / 2, y + boxHeight / 2 + 1);
+  drawCtx.restore();
 }
 
 function setMessage(primary, secondary = "") {
@@ -1226,7 +1258,7 @@ function refreshHint() {
 
   const target = getTargetedInteractable();
   if (target) {
-    hint.textContent = `Click to interact with the ${target.item.name}.`;
+    hint.textContent = `Click to interact with ${interactableDisplayName(target.item)}.`;
     subhint.textContent = target.item.prompt();
     return;
   }
@@ -1291,7 +1323,6 @@ function fadeTitleCard() {
 }
 
 function setStationControlsHidden(hidden) {
-  brushButton.classList.toggle("hidden", hidden);
   correctButton.classList.toggle("hidden", hidden);
   lickButton.classList.toggle("hidden", hidden);
   wipeButton.classList.toggle("hidden", hidden);
@@ -1465,7 +1496,7 @@ function showBenchTutorial() {
   resetDialogButtons();
   dialogTitle.textContent = "Center Bench Tutorial";
   dialogBody.textContent =
-    "The girl at the center bench finally looks up. 'Listen closely. First, clock in at the wall clock to begin the shift. When you sit at a bench, use Pick up brush to paint, Switch to fingernails to clean up only the excess around a numeral, Sharpen brush to restore a fine point, Wipe paint directly if the open numeral needs a full clean correction, Send watch in once all twelve numerals are painted cleanly, and Empty the dish if your mixture goes bad. The three vessels build the paint: powder, tar, and water. In the main watch view, click a gray numeral marker to open it. In the zoomed view, paint inside the guide lines until the numeral is clean enough to count. If the edges get ragged, correct them before you send the watch in. Then clock out at the wall when you're finished.'";
+    "The girl at the center bench finally looks up. 'Listen closely. First, clock in at the wall clock to begin the shift. When you sit at a bench, click the brush lying by the dishes when you want to paint, use Switch to fingernails to clean up only the excess around a numeral, Sharpen brush to restore a fine point, Wipe paint directly if the open numeral needs a full clean correction, Send watch in once all twelve numerals are painted cleanly, and Empty the dish if your mixture goes bad. The three vessels build the paint: powder, tar, and water. In the main watch view, click a gray numeral marker to open it. In the zoomed view, paint inside the guide lines until the numeral is clean enough to count. If the edges get ragged, correct them before you send the watch in. Then clock out at the wall when you're finished.'";
   dialogButton.textContent = "Understood";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "bench-tutorial";
@@ -2207,7 +2238,6 @@ function updatePaintStats() {
   paintStats.textContent =
     `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}`;
   mixPrompt.textContent = mixTextureFeedback();
-  brushButton.classList.toggle("active", paintState.tool === "brush");
   correctButton.classList.toggle("active", paintState.tool === "nail");
   wipeButton.disabled = paintState.zoomedDialIndex === -1 || !currentDial || !dialNeedsCorrection(currentDial);
   submitButton.textContent = correctionNeeded > 0 ? "Send watch in anyway" : "Send watch in";
@@ -2312,13 +2342,44 @@ function findNearestTracePoint(x, y) {
 function bowlUnderCursor(x, y) {
   const regions = paintState.zoomedDialIndex === -1
     ? componentRegions
-    : [{ index: 3, x: STATION_LAYOUT.zoomPaint.x, y: STATION_LAYOUT.zoomPaint.y, rx: STATION_LAYOUT.zoomPaint.rx, ry: STATION_LAYOUT.zoomPaint.ry }];
+    : [{ index: 3, label: "Paint dish", x: STATION_LAYOUT.zoomPaint.x, y: STATION_LAYOUT.zoomPaint.y, rx: STATION_LAYOUT.zoomPaint.rx, ry: STATION_LAYOUT.zoomPaint.ry }];
 
   for (const region of regions) {
     const dx = (x - region.x) / region.rx;
     const dy = (y - region.y) / region.ry;
     if (dx * dx + dy * dy <= 1) return region;
   }
+  return null;
+}
+
+function brushPropBounds() {
+  return {
+    x: STATION_LAYOUT.brushProp.x - STATION_LAYOUT.brushProp.w / 2,
+    y: STATION_LAYOUT.brushProp.y - STATION_LAYOUT.brushProp.h / 2,
+    w: STATION_LAYOUT.brushProp.w,
+    h: STATION_LAYOUT.brushProp.h,
+  };
+}
+
+function pointInsideRect(x, y, rect) {
+  return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
+}
+
+function stationHoverTargetAt(x, y) {
+  if (paintState.mode !== "watch") return null;
+
+  if (paintState.zoomedDialIndex === -1) {
+    const brushBounds = brushPropBounds();
+    if (pointInsideRect(x, y, brushBounds)) {
+      return { type: "brush", label: "Pick up brush", centerX: STATION_LAYOUT.brushProp.x, topY: brushBounds.y };
+    }
+  }
+
+  const region = bowlUnderCursor(x, y);
+  if (region) {
+    return { type: "ingredient", label: region.label, centerX: region.x, topY: region.y - region.ry };
+  }
+
   return null;
 }
 
@@ -2739,20 +2800,26 @@ function drawMosaicCrucible(cx, cy, rx, ry, palette, fillLevel, materialTint) {
   }
 }
 
-function drawMixDish(centerX, centerY) {
+function drawMixDish(centerX, centerY, hovered = false) {
   const total = paintState.mix[0] + paintState.mix[1] + paintState.mix[2];
   const dish = STATION_LAYOUT.dish;
   if (total > 0 && imageReady(assetImages.mixedPaint)) {
     const drawn = drawAssetContained(assetImages.mixedPaint, centerX, centerY, dish.w, dish.h, 0.98);
     if (drawn) {
       paintCtx.save();
-      paintCtx.fillStyle = `rgba(0, 0, 0, ${Math.max(0, (1 - paintState.mixQuality) * 0.62)})`;
+      paintCtx.fillStyle = `rgba(0, 0, 0, ${Math.max(0, (1 - paintState.mixQuality) * 0.62) + (hovered ? 0 : 0.18)})`;
       paintCtx.beginPath();
       paintCtx.ellipse(centerX, centerY, dish.rx, dish.ry, 0, 0, Math.PI * 2);
       paintCtx.fill();
       paintCtx.restore();
     }
   } else {
+    if (!hovered) {
+      paintCtx.fillStyle = "rgba(0, 0, 0, 0.38)";
+      paintCtx.beginPath();
+      paintCtx.ellipse(centerX, centerY, dish.rx, dish.ry, 0, 0, Math.PI * 2);
+      paintCtx.fill();
+    }
     paintCtx.strokeStyle = "rgba(255,255,255,0.16)";
     paintCtx.lineWidth = 2;
     paintCtx.beginPath();
@@ -2791,6 +2858,44 @@ function drawAssetContained(image, x, y, boxWidth, boxHeight, alpha = 1) {
   paintCtx.drawImage(image, x - width / 2, y - height / 2, width, height);
   paintCtx.restore();
   return { x: x - width / 2, y: y - height / 2, w: width, h: height };
+}
+
+function drawAssetContainedMasked(image, x, y, boxWidth, boxHeight, hovered, alpha = 1) {
+  const drawn = drawAssetContained(image, x, y, boxWidth, boxHeight, alpha);
+  if (!drawn || hovered) return drawn;
+  paintCtx.save();
+  paintCtx.fillStyle = "rgba(0, 0, 0, 0.38)";
+  paintCtx.fillRect(drawn.x, drawn.y, drawn.w, drawn.h);
+  paintCtx.restore();
+  return drawn;
+}
+
+function drawWorkbenchBrush(hovered) {
+  const image = assetImages.workbenchBrush;
+  const bounds = brushPropBounds();
+  if (!imageReady(image)) {
+    if (!hovered) {
+      paintCtx.save();
+      paintCtx.fillStyle = "rgba(0, 0, 0, 0.42)";
+      paintCtx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
+      paintCtx.restore();
+    }
+    return bounds;
+  }
+
+  const sx = image.naturalWidth * 0.405;
+  const sy = image.naturalHeight * 0.035;
+  const sw = image.naturalWidth * 0.19;
+  const sh = image.naturalHeight * 0.93;
+  paintCtx.save();
+  paintCtx.globalAlpha = 0.98;
+  paintCtx.drawImage(image, sx, sy, sw, sh, bounds.x, bounds.y, bounds.w, bounds.h);
+  if (!hovered) {
+    paintCtx.fillStyle = "rgba(0, 0, 0, 0.4)";
+    paintCtx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
+  }
+  paintCtx.restore();
+  return bounds;
 }
 
 function drawAssetCover(image, x, y, boxWidth, boxHeight, alpha = 1) {
@@ -3000,6 +3105,7 @@ function drawWatchMinigame() {
   const centerX = WATCH_CENTER_X;
   const centerY = WATCH_CENTER_Y;
   const stationMode = currentStationMode();
+  const hoveredStationTarget = stationHoverTargetAt(paintState.pointerX, paintState.pointerY);
 
   paintCtx.clearRect(0, 0, w, h);
   paintCtx.fillStyle = "#000";
@@ -3007,12 +3113,37 @@ function drawWatchMinigame() {
 
   paintCtx.save();
   paintCtx.imageSmoothingEnabled = true;
-  drawAssetContained(assetImages.yellowPowder, STATION_LAYOUT.powder.x, STATION_LAYOUT.powder.y, STATION_LAYOUT.powder.w, STATION_LAYOUT.powder.h, paintState.mix[0] > 0 ? 0.98 : 0.58);
-  drawAssetContained(assetImages.gumArabic, STATION_LAYOUT.gum.x, STATION_LAYOUT.gum.y, STATION_LAYOUT.gum.w, STATION_LAYOUT.gum.h, paintState.mix[1] > 0 ? 0.98 : 0.58);
-  drawAssetContained(assetImages.waterPlate, STATION_LAYOUT.water.x, STATION_LAYOUT.water.y, STATION_LAYOUT.water.w, STATION_LAYOUT.water.h, paintState.mix[2] > 0 ? 0.98 : 0.58);
+  drawAssetContainedMasked(
+    assetImages.yellowPowder,
+    STATION_LAYOUT.powder.x,
+    STATION_LAYOUT.powder.y,
+    STATION_LAYOUT.powder.w,
+    STATION_LAYOUT.powder.h,
+    hoveredStationTarget?.label === "Powder",
+    paintState.mix[0] > 0 ? 0.98 : 0.58,
+  );
+  drawAssetContainedMasked(
+    assetImages.gumArabic,
+    STATION_LAYOUT.gum.x,
+    STATION_LAYOUT.gum.y,
+    STATION_LAYOUT.gum.w,
+    STATION_LAYOUT.gum.h,
+    hoveredStationTarget?.label === "Tar",
+    paintState.mix[1] > 0 ? 0.98 : 0.58,
+  );
+  drawAssetContainedMasked(
+    assetImages.waterPlate,
+    STATION_LAYOUT.water.x,
+    STATION_LAYOUT.water.y,
+    STATION_LAYOUT.water.w,
+    STATION_LAYOUT.water.h,
+    hoveredStationTarget?.label === "Water",
+    paintState.mix[2] > 0 ? 0.98 : 0.58,
+  );
+  drawWorkbenchBrush(hoveredStationTarget?.type === "brush");
   const drewWatchFace = drawAssetCentered(currentWatchFaceImage(), centerX, centerY, WATCH_DRAW_WIDTH, WATCH_DRAW_HEIGHT, 1);
   paintCtx.restore();
-  drawMixDish(STATION_LAYOUT.dish.x, STATION_LAYOUT.dish.y);
+  drawMixDish(STATION_LAYOUT.dish.x, STATION_LAYOUT.dish.y, hoveredStationTarget?.label === "Paint dish");
   if (!drewWatchFace) {
     paintCtx.strokeStyle = "rgba(255,255,255,0.18)";
     paintCtx.lineWidth = 2;
@@ -3045,6 +3176,10 @@ function drawWatchMinigame() {
   paintCtx.stroke();
   paintCtx.restore();
 
+  if (hoveredStationTarget) {
+    drawHoverLabel(paintCtx, hoveredStationTarget.centerX, hoveredStationTarget.topY, hoveredStationTarget.label);
+  }
+
   drawImageCursor(stationMode);
 }
 
@@ -3053,6 +3188,7 @@ function drawZoomedDialView() {
   const h = paintCanvas.height;
   const dial = activeDial();
   if (!dial) return;
+  const hoveredStationTarget = stationHoverTargetAt(paintState.pointerX, paintState.pointerY);
 
   paintCtx.clearRect(0, 0, w, h);
   paintCtx.fillStyle = "#000";
@@ -3067,7 +3203,15 @@ function drawZoomedDialView() {
   paintCtx.fillText("Press Escape to pull back from the numeral.", w / 2, h - 28);
 
   if (imageReady(assetImages.mixedPaint)) {
-    drawAssetContained(assetImages.mixedPaint, STATION_LAYOUT.zoomPaint.x, STATION_LAYOUT.zoomPaint.y, STATION_LAYOUT.zoomPaint.w, STATION_LAYOUT.zoomPaint.h, 1);
+    drawAssetContainedMasked(
+      assetImages.mixedPaint,
+      STATION_LAYOUT.zoomPaint.x,
+      STATION_LAYOUT.zoomPaint.y,
+      STATION_LAYOUT.zoomPaint.w,
+      STATION_LAYOUT.zoomPaint.h,
+      hoveredStationTarget?.label === "Paint dish",
+      1,
+    );
   }
   paintCtx.fillStyle = "rgba(255,255,255,0.56)";
   paintCtx.font = "13px Georgia";
@@ -3117,6 +3261,10 @@ function drawZoomedDialView() {
   paintCtx.fill();
   paintCtx.stroke();
   paintCtx.restore();
+
+  if (hoveredStationTarget) {
+    drawHoverLabel(paintCtx, hoveredStationTarget.centerX, hoveredStationTarget.topY, hoveredStationTarget.label);
+  }
 
   drawImageCursor(currentStationMode());
   drawThoughtPopup();
@@ -3388,10 +3536,6 @@ dialogAltButton.addEventListener("click", () => {
   startShift(true);
 });
 
-brushButton.addEventListener("click", () => {
-  switchToBrushMode();
-});
-
 correctButton.addEventListener("click", () => {
   switchToNailMode();
 });
@@ -3519,7 +3663,7 @@ paintCanvas.addEventListener("mousedown", (event) => {
     return;
   }
 
-  if (paintState.zoomedDialIndex === -1 && Math.hypot(position.x - STATION_LAYOUT.brushProp.x, position.y - STATION_LAYOUT.brushProp.y) < STATION_LAYOUT.brushProp.r) {
+  if (paintState.zoomedDialIndex === -1 && pointInsideRect(position.x, position.y, brushPropBounds())) {
     switchToBrushMode("You pick up the brush from the side of the station.");
     return;
   }

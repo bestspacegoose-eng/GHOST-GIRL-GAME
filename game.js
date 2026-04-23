@@ -24,7 +24,6 @@ const mixPrompt = document.getElementById("mixPrompt");
 const paintStats = document.getElementById("paintStats");
 const correctButton = document.getElementById("correctButton");
 const lickButton = document.getElementById("lickButton");
-const wipeImageButton = document.getElementById("wipeImageButton");
 const mixResetButton = document.getElementById("mixResetButton");
 
 const WIDTH = canvas.width;
@@ -69,6 +68,7 @@ const STATION_LAYOUT = {
   water: { x: 58, y: 356, w: 114, h: 90, rx: 42, ry: 30 },
   dish: { x: 112, y: 504, w: 156, h: 116, rx: 52, ry: 34 },
   zoomPaint: { x: 96, y: 108, w: 122, h: 90, rx: 44, ry: 30 },
+  zoomWipe: { x: 96, y: 252, w: 126, h: 144 },
   brushProp: { x: 246, y: 488, w: 54, h: 196 },
   nailProp: { x: 252, y: 338, r: 30 },
 };
@@ -106,6 +106,7 @@ const ASSET_PATHS = {
   gumArabic: "./assets/gum-arabic.png",
   waterPlate: "./assets/water-plate.png",
   mixedPaint: "./assets/mixed-paint.png",
+  directWipeHand: "./assets/direct-wipe-hand.png",
   thoughtPopup: "./assets/thought-popup.png",
   groceries: "./assets/groceries.png",
   workbenchBrush: "./assets/workbench-brush.png",
@@ -1363,7 +1364,6 @@ function fadeTitleCard() {
 function setStationControlsHidden(hidden) {
   correctButton.classList.toggle("hidden", hidden);
   lickButton.classList.toggle("hidden", hidden);
-  wipeImageButton.classList.toggle("hidden", hidden || paintState.zoomedDialIndex === -1);
   mixResetButton.classList.toggle("hidden", hidden);
 }
 
@@ -2353,8 +2353,6 @@ function updatePaintStats() {
     `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}`;
   mixPrompt.textContent = mixTextureFeedback();
   correctButton.classList.toggle("active", paintState.tool === "nail");
-  wipeImageButton.classList.toggle("hidden", paintState.zoomedDialIndex === -1);
-  wipeImageButton.disabled = paintState.zoomedDialIndex === -1 || !currentDial || !dialNeedsCorrection(currentDial);
 }
 
 function spendHealth(amount) {
@@ -2477,6 +2475,15 @@ function brushPropBounds() {
   };
 }
 
+function zoomWipeBounds() {
+  return {
+    x: STATION_LAYOUT.zoomWipe.x - STATION_LAYOUT.zoomWipe.w / 2,
+    y: STATION_LAYOUT.zoomWipe.y - STATION_LAYOUT.zoomWipe.h / 2,
+    w: STATION_LAYOUT.zoomWipe.w,
+    h: STATION_LAYOUT.zoomWipe.h,
+  };
+}
+
 function pointInsideRect(x, y, rect) {
   return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
 }
@@ -2488,6 +2495,11 @@ function stationHoverTargetAt(x, y) {
     const brushBounds = brushPropBounds();
     if (pointInsideRect(x, y, brushBounds)) {
       return { type: "brush", label: "Pick up brush", centerX: STATION_LAYOUT.brushProp.x, topY: brushBounds.y };
+    }
+  } else {
+    const wipeBounds = zoomWipeBounds();
+    if (pointInsideRect(x, y, wipeBounds)) {
+      return { type: "wipe-direct", label: "Wipe paint directly", centerX: STATION_LAYOUT.zoomWipe.x, topY: wipeBounds.y };
     }
   }
 
@@ -3071,6 +3083,30 @@ function drawWorkbenchBrush(hovered) {
   return bounds;
 }
 
+function drawZoomWipeHand(hovered, enabled) {
+  const image = assetImages.directWipeHand;
+  const bounds = zoomWipeBounds();
+  if (!imageReady(image)) {
+    paintCtx.save();
+    paintCtx.fillStyle = enabled
+      ? (hovered ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)")
+      : "rgba(80,80,80,0.2)";
+    paintCtx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
+    paintCtx.restore();
+    return bounds;
+  }
+
+  const drawn = drawAssetContained(image, STATION_LAYOUT.zoomWipe.x, STATION_LAYOUT.zoomWipe.y, STATION_LAYOUT.zoomWipe.w, STATION_LAYOUT.zoomWipe.h, enabled ? 0.98 : 0.5);
+  if (!drawn) return bounds;
+  if (!hovered) {
+    paintCtx.save();
+    paintCtx.fillStyle = enabled ? "rgba(0, 0, 0, 0.26)" : "rgba(0, 0, 0, 0.48)";
+    paintCtx.fillRect(drawn.x, drawn.y, drawn.w, drawn.h);
+    paintCtx.restore();
+  }
+  return drawn;
+}
+
 function drawAssetCover(image, x, y, boxWidth, boxHeight, alpha = 1) {
   if (!imageReady(image)) return null;
   const scale = Math.max(boxWidth / image.naturalWidth, boxHeight / image.naturalHeight);
@@ -3390,6 +3426,11 @@ function drawZoomedDialView() {
   paintCtx.fillStyle = "rgba(255,255,255,0.56)";
   paintCtx.font = "13px Georgia";
   paintCtx.fillText("Dip brush", STATION_LAYOUT.zoomPaint.x, 170);
+
+  const wipeEnabled = dialNeedsCorrection(dial);
+  drawZoomWipeHand(hoveredStationTarget?.type === "wipe-direct", wipeEnabled);
+  paintCtx.fillStyle = wipeEnabled ? "rgba(255,255,255,0.56)" : "rgba(255,255,255,0.28)";
+  paintCtx.fillText("Wipe directly", STATION_LAYOUT.zoomWipe.x, STATION_LAYOUT.zoomWipe.y + STATION_LAYOUT.zoomWipe.h / 2 + 14);
 
   paintCtx.strokeStyle = "rgba(185, 185, 185, 0.28)";
   paintCtx.lineWidth = 8;
@@ -3773,11 +3814,6 @@ lickButton.addEventListener("click", () => {
   drawWatchMinigame();
 });
 
-wipeImageButton.addEventListener("click", () => {
-  wipeNearestDial();
-  drawWatchMinigame();
-});
-
 mixResetButton.addEventListener("click", () => {
   resetMix();
   paintPrompt.textContent = "You empty the dish and start the mixture again from nothing.";
@@ -3877,6 +3913,12 @@ paintCanvas.addEventListener("mousedown", (event) => {
   const region = bowlUnderCursor(position.x, position.y);
   if (region) {
     addIngredient(region);
+    drawWatchMinigame();
+    return;
+  }
+
+  if (paintState.zoomedDialIndex !== -1 && pointInsideRect(position.x, position.y, zoomWipeBounds())) {
+    wipeNearestDial();
     drawWatchMinigame();
     return;
   }

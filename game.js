@@ -69,7 +69,7 @@ const STATION_LAYOUT = {
   dish: { x: 112, y: 504, w: 156, h: 116, rx: 52, ry: 34 },
   zoomPaint: { x: 96, y: 108, w: 122, h: 90, rx: 44, ry: 30 },
   zoomWipe: { x: 96, y: 252, w: 126, h: 144 },
-  brushProp: { x: 246, y: 488, w: 54, h: 196 },
+  brushProp: { x: 186, y: 250, w: 54, h: 196 },
   nailProp: { x: 252, y: 338, r: 30 },
 };
 const GROCERY_ITEMS = [
@@ -2645,6 +2645,8 @@ function paintAt(x, y) {
     return;
   }
 
+  dullBrushOnUse();
+
   const hit = findNearestTracePoint(x, y);
   if (!hit) {
     paintPrompt.textContent = "The stroke slips outside the guide and leaves a visible mistake.";
@@ -3022,6 +3024,10 @@ function fanBrush(messageBase) {
   } else {
     paintPrompt.textContent = messageBase;
   }
+}
+
+function dullBrushOnUse() {
+  paintState.brushSize = Math.min(6, paintState.brushSize + 0.018);
 }
 
 function drawAssetCentered(image, x, y, width, height, alpha = 1) {
@@ -3610,19 +3616,19 @@ function drawImageCursor(mode) {
   }
 
   if (mode === "brush") {
-    let width = 74;
-    let height = 74;
+    let width = 66 + paintState.brushSize * 18;
+    let height = width * (543 / 544);
     let tipX = 84 * (width / 544);
     let tipY = 503 * (height / 543);
 
     if (image === assetImages.roughBrush) {
-      width = 74;
-      height = 125;
+      width = 74 + Math.max(0, paintState.brushSize - 1.1) * 14;
+      height = width * (917 / 544);
       tipX = 72 * (width / 544);
       tipY = 865 * (height / 917);
     } else if (image === assetImages.fannedBrush) {
-      width = 74;
-      height = 124;
+      width = 80 + Math.max(0, paintState.brushSize - 2.2) * 10;
+      height = width * (907 / 540);
       tipX = 86 * (width / 540);
       tipY = 874 * (height / 907);
     }

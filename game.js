@@ -16,6 +16,7 @@ const dialogBody = document.getElementById("dialogBody");
 const dialogAltButton = document.getElementById("dialogAltButton");
 const dialogButton = document.getElementById("dialogButton");
 const minigameOverlay = document.getElementById("minigameOverlay");
+const minigameHeading = minigameOverlay.querySelector("h2");
 const paintCanvas = document.getElementById("paintCanvas");
 const paintCtx = paintCanvas.getContext("2d");
 const paintPrompt = document.getElementById("paintPrompt");
@@ -73,6 +74,23 @@ const STATION_LAYOUT = {
   brushProp: { x: 236, y: 460, r: 48 },
   nailProp: { x: 252, y: 338, r: 30 },
 };
+const GROCERY_ITEMS = [
+  { id: "steak", label: "Round Steak", unit: "lb", priceTenths: 395 },
+  { id: "bacon", label: "Bacon", unit: "lb", priceTenths: 523 },
+  { id: "milk", label: "Milk", unit: "qt", priceTenths: 167 },
+  { id: "butter", label: "Butter", unit: "lb", priceTenths: 701 },
+  { id: "eggs", label: "Eggs", unit: "doz", priceTenths: 681 },
+  { id: "flour", label: "Flour", unit: "lb", priceTenths: 81 },
+  { id: "potatoes", label: "Potatoes", unit: "lb", priceTenths: 63 },
+  { id: "sugar", label: "Sugar", unit: "lb", priceTenths: 194 },
+];
+const GROCERY_LAYOUT = {
+  panel: { x: 334, y: 54, w: 270, h: 474 },
+  rowStartY: 102,
+  rowHeight: 42,
+  rowGap: 8,
+  finish: { x: 422, y: 546, w: 152, h: 42 },
+};
 const ASSET_PATHS = {
   backgroundRoom: "./assets/background-radium-girls.jpg",
   roomClock: "./assets/room-clock.png",
@@ -89,6 +107,7 @@ const ASSET_PATHS = {
   waterPlate: "./assets/water-plate.png",
   mixedPaint: "./assets/mixed-paint.png",
   thoughtPopup: "./assets/thought-popup.png",
+  groceries: "./assets/groceries.png",
 };
 
 const keys = new Set();
@@ -131,6 +150,11 @@ const gameState = {
   thresholdThoughtQueued: false,
   thresholdThoughtShown: false,
   savedBenchWork: {},
+  shiftThoughtLog: [],
+  lastShiftThoughtLog: [],
+  groceryBudgetTenths: 0,
+  groceryFundsTenths: 0,
+  groceryCart: {},
 };
 
 const paintState = {
@@ -888,6 +912,13 @@ function currentThoughtPool() {
   return poolSet[dayIndex];
 }
 
+function rememberShiftThought(text) {
+  if (!gameState.shiftActive || !text) return;
+  if (gameState.shiftThoughtLog.includes(text)) return;
+  gameState.shiftThoughtLog.push(text);
+  if (gameState.shiftThoughtLog.length > 6) gameState.shiftThoughtLog.shift();
+}
+
 function nextThoughtDelay() {
   if (gameState.currentDay <= 2) return 60;
   const healthFactor = 1 - Math.max(0, Math.min(100, gameState.hiddenStats.health)) / 100;
@@ -968,6 +999,7 @@ function thoughtTextFrame(popup) {
 function spawnThoughtPopup(forcedText = null) {
   const pool = currentThoughtPool();
   const text = forcedText || pool[Math.floor(Math.random() * pool.length)];
+  rememberShiftThought(text);
   const dark = gameState.hiddenStats.health < 50;
   const aspect = thoughtPopupAspect();
   let width = dark ? 352 : 328;
@@ -1159,6 +1191,11 @@ function formatCurrency(cents) {
   return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
 }
 
+function formatTenthsCents(tenths) {
+  const sign = tenths < 0 ? "-" : "";
+  return `${sign}${(Math.abs(tenths) / 10).toFixed(1)}c`;
+}
+
 function formatShiftTime() {
   if (!gameState.shiftActive && !gameState.shiftEnded) return "Shift not started";
 
@@ -1197,6 +1234,12 @@ function refreshHint() {
   if (paintState.active && paintState.mode === "fracture") {
     hint.textContent = "The broken clock waits under your hands.";
     subhint.textContent = "Drag each piece back into place so that your mind slots into place.";
+    return;
+  }
+
+  if (paintState.active && paintState.mode === "groceries") {
+    hint.textContent = "Spend the day's pay before you head home.";
+    subhint.textContent = "Click a grocery item to buy one unit, then press Finish shopping.";
     return;
   }
 
@@ -1290,6 +1333,7 @@ function startShift(force = false) {
   gameState.shiftElapsed = 0;
   gameState.lastShiftProgress = 0;
   gameState.savedBenchWork = {};
+  gameState.shiftThoughtLog = [];
   gameState.dialsPaintedToday = 0;
   gameState.watchesSubmittedToday = 0;
   gameState.dayEarningsCents = 0;
@@ -1449,12 +1493,28 @@ function showSolidarityEnding() {
   gameState.dialogMode = "restart";
 }
 
+function advanceToNextDay(message) {
+  gameState.currentDay += 1;
+  gameState.shiftEnded = false;
+  gameState.shiftElapsed = 0;
+  gameState.lastShiftProgress = 0;
+  sendToDayStart(message);
+}
+
 function endShift(reason) {
   if (!gameState.shiftActive) return;
 
   gameState.shiftActive = false;
   gameState.shiftEnded = true;
+  gameState.lastShiftThoughtLog = [...gameState.shiftThoughtLog];
   closeMinigame();
+
+  if (gameState.hiddenStats.health <= 0) {
+    const ending = finalEndingForHealth();
+    showEnding(ending.title, ending.body);
+    updateHud();
+    return;
+  }
 
   if (gameState.dayEarningsCents < 50) {
     gameState.lowPayDaysInRow += 1;
@@ -1480,40 +1540,141 @@ function endShift(reason) {
     return;
   }
 
-  if (gameState.currentDay < 6 && gameState.hiddenStats.health < 60 && !gameState.warnedLowHealth) {
-    gameState.warnedLowHealth = true;
-    showLowHealthWarning();
-    updateHud();
-    return;
-  }
-
   dialogTitle.textContent = `Shift manager - ${DAY_NAMES[gameState.currentDay]}`;
   dialogBody.textContent =
     `${reason === "timeout" ? "The bell cuts off the shift." : "The manager calls the day."} ` +
     `${managerLineForDay()} ${endOfDayReflection()} ${darkRoomGathering()}`;
-  dialogButton.textContent = "Next day";
+  dialogButton.textContent = "Buy groceries";
   dialogOverlay.classList.remove("hidden");
-  gameState.dialogMode = "next-day";
+  gameState.dialogMode = "post-shift-report";
   updateHud();
+}
+
+function groceryRowRect(index) {
+  return {
+    x: GROCERY_LAYOUT.panel.x + 16,
+    y: GROCERY_LAYOUT.rowStartY + index * (GROCERY_LAYOUT.rowHeight + GROCERY_LAYOUT.rowGap),
+    w: GROCERY_LAYOUT.panel.w - 32,
+    h: GROCERY_LAYOUT.rowHeight,
+  };
+}
+
+function groceryFinishRect() {
+  return { ...GROCERY_LAYOUT.finish };
+}
+
+function groceryItemAt(x, y) {
+  for (let i = 0; i < GROCERY_ITEMS.length; i += 1) {
+    const rect = groceryRowRect(i);
+    if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) {
+      return GROCERY_ITEMS[i];
+    }
+  }
+  return null;
+}
+
+function groceryItemsPurchasedCount() {
+  return Object.values(gameState.groceryCart).reduce((sum, count) => sum + count, 0);
+}
+
+function groceryCartSummary() {
+  const parts = GROCERY_ITEMS
+    .filter((item) => (gameState.groceryCart[item.id] || 0) > 0)
+    .map((item) => `${gameState.groceryCart[item.id]} ${item.label.toLowerCase()}`);
+  return parts.length > 0 ? parts.join(", ") : "nothing but the money still in your pocket";
+}
+
+function groceryReflectionText() {
+  const health = gameState.hiddenStats.health;
+  const lastThoughts = gameState.lastShiftThoughtLog.slice(-2);
+  const remembered = lastThoughts.length === 0
+    ? ""
+    : lastThoughts.length === 1
+      ? `The thought from the bench keeps circling back: "${lastThoughts[0]}"`
+      : `The thoughts from the bench keep tangling together: "${lastThoughts[0]}" and "${lastThoughts[1]}"`;
+
+  let condition;
+  if (health >= 80) {
+    condition = "The market is bright and busy, and for a moment you can almost pretend the shift stayed behind at the factory.";
+  } else if (health >= 50) {
+    condition = "Even with the bustle of the grocer around you, the ache in your jaw and the weakness in your hands follow you down the aisles.";
+  } else {
+    condition = "The walk through the grocer feels longer than it should. Every shelf seems a little too far away, and your body feels spent before you have even begun choosing what to bring home.";
+  }
+
+  return remembered ? `${condition} ${remembered}` : condition;
+}
+
+function updateGroceryStats() {
+  paintStats.textContent =
+    `Remaining ${formatTenthsCents(gameState.groceryFundsTenths)}. ` +
+    `Bought ${groceryItemsPurchasedCount()} item${groceryItemsPurchasedCount() === 1 ? "" : "s"}. ` +
+    `Basket: ${groceryCartSummary()}.`;
+}
+
+function openGroceriesTrip() {
+  paintState.active = true;
+  paintState.mode = "groceries";
+  paintState.isPainting = false;
+  paintState.correcting = false;
+  paintState.pointerX = paintCanvas.width / 2;
+  paintState.pointerY = paintCanvas.height / 2;
+  paintState.cursorX = paintCanvas.width / 2;
+  paintState.cursorY = paintCanvas.height / 2;
+  paintState.lastPointerMoveAt = performance.now();
+  gameState.groceryBudgetTenths = Math.max(0, Math.round(gameState.dayEarningsCents * 10));
+  gameState.groceryFundsTenths = gameState.groceryBudgetTenths;
+  gameState.groceryCart = Object.fromEntries(GROCERY_ITEMS.map((item) => [item.id, 0]));
+  minigameHeading.textContent = "Groceries";
+  paintPrompt.textContent = groceryReflectionText();
+  mixPrompt.textContent = `Today's tally gives you ${formatTenthsCents(gameState.groceryBudgetTenths)} to spend. Click an item to buy one unit for the family.`;
+  updateGroceryStats();
+  setStationControlsHidden(true);
+  minigameOverlay.classList.remove("hidden");
+  drawWatchMinigame();
+}
+
+function buyGrocery(item) {
+  if (!item) return;
+  if (gameState.groceryFundsTenths < item.priceTenths) {
+    paintPrompt.textContent = `${item.label} costs ${formatTenthsCents(item.priceTenths)}, more than you have left from today's pay.`;
+    updateGroceryStats();
+    return;
+  }
+
+  gameState.groceryFundsTenths -= item.priceTenths;
+  gameState.groceryCart[item.id] = (gameState.groceryCart[item.id] || 0) + 1;
+  paintPrompt.textContent = `You add ${item.label.toLowerCase()} to the basket and recalculate what else the family can manage tonight.`;
+  updateGroceryStats();
+}
+
+function finishGroceriesTrip() {
+  const groceriesHome = groceryCartSummary();
+  closeMinigame();
+
+  if (gameState.currentDay < 6 && gameState.hiddenStats.health < 60 && !gameState.warnedLowHealth) {
+    gameState.warnedLowHealth = true;
+    showLowHealthWarning();
+    setMessage(
+      "The grocery sack weighs against your leg on the walk home.",
+      `You bring home ${groceriesHome}.`,
+    );
+    updateHud();
+    return;
+  }
+
+  advanceToNextDay(`You bring home ${groceriesHome}. Clock in again when the title card fades away.`);
 }
 
 function continueAfterDialog() {
   dialogOverlay.classList.add("hidden");
   resetDialogButtons();
 
-  if (gameState.dialogMode === "next-day") {
-    gameState.currentDay += 1;
-    gameState.shiftEnded = false;
-    gameState.shiftElapsed = 0;
-    gameState.lastShiftProgress = 0;
-    sendToDayStart("Clock in again when the title card fades away.");
+  if (gameState.dialogMode === "post-shift-report") {
+    openGroceriesTrip();
   } else if (gameState.dialogMode === "low-health-warning") {
-    gameState.currentDay += 1;
-    gameState.shiftEnded = false;
-    gameState.shiftElapsed = 0;
-    gameState.lastShiftProgress = 0;
     gameState.fracturePending = true;
-    sendToDayStart("Something is wrong now, even away from the bench.");
+    advanceToNextDay("Something is wrong now, even away from the bench.");
   } else if (gameState.dialogMode === "restart") {
     resetWeek();
   }
@@ -1544,6 +1705,11 @@ function resetWeek() {
   gameState.thresholdThoughtQueued = false;
   gameState.thresholdThoughtShown = false;
   gameState.savedBenchWork = {};
+  gameState.shiftThoughtLog = [];
+  gameState.lastShiftThoughtLog = [];
+  gameState.groceryBudgetTenths = 0;
+  gameState.groceryFundsTenths = 0;
+  gameState.groceryCart = {};
   paintState.active = false;
   showTitleCard();
   setMessage(
@@ -1984,6 +2150,7 @@ function openMinigame(label) {
     buildDialState();
     moveCursorToActiveDial();
   }
+  minigameHeading.textContent = "Watch Painting";
   setStationControlsHidden(false);
   minigameOverlay.classList.remove("hidden");
   document.exitPointerLock();
@@ -2007,6 +2174,7 @@ function closeMinigame() {
   paintState.thoughtPopup = null;
   paintState.fracturePieces = [];
   paintState.draggedPieceIndex = -1;
+  minigameHeading.textContent = "Watch Painting";
   setStationControlsHidden(false);
   minigameOverlay.classList.add("hidden");
 }
@@ -2625,6 +2793,18 @@ function drawAssetContained(image, x, y, boxWidth, boxHeight, alpha = 1) {
   return { x: x - width / 2, y: y - height / 2, w: width, h: height };
 }
 
+function drawAssetCover(image, x, y, boxWidth, boxHeight, alpha = 1) {
+  if (!imageReady(image)) return null;
+  const scale = Math.max(boxWidth / image.naturalWidth, boxHeight / image.naturalHeight);
+  const width = image.naturalWidth * scale;
+  const height = image.naturalHeight * scale;
+  paintCtx.save();
+  paintCtx.globalAlpha = alpha;
+  paintCtx.drawImage(image, x + (boxWidth - width) / 2, y + (boxHeight - height) / 2, width, height);
+  paintCtx.restore();
+  return { x: x + (boxWidth - width) / 2, y: y + (boxHeight - height) / 2, w: width, h: height };
+}
+
 function currentWatchFaceImage() {
   if (allDialsReady() && imageReady(assetImages.completedWatchFace)) {
     return assetImages.completedWatchFace;
@@ -2732,9 +2912,81 @@ function drawFracturePuzzle() {
   drawImageCursor("nail");
 }
 
+function drawGroceriesView() {
+  const w = paintCanvas.width;
+  const h = paintCanvas.height;
+
+  paintCtx.clearRect(0, 0, w, h);
+  if (!drawAssetCover(assetImages.groceries, 0, 0, w, h, 1)) {
+    paintCtx.fillStyle = "#1c1c1c";
+    paintCtx.fillRect(0, 0, w, h);
+  }
+
+  paintCtx.fillStyle = "rgba(0, 0, 0, 0.56)";
+  paintCtx.fillRect(0, 0, w, h);
+
+  paintCtx.fillStyle = "rgba(8, 8, 8, 0.82)";
+  paintCtx.fillRect(GROCERY_LAYOUT.panel.x, GROCERY_LAYOUT.panel.y, GROCERY_LAYOUT.panel.w, GROCERY_LAYOUT.panel.h);
+  paintCtx.strokeStyle = "rgba(255,255,255,0.18)";
+  paintCtx.lineWidth = 2;
+  paintCtx.strokeRect(GROCERY_LAYOUT.panel.x, GROCERY_LAYOUT.panel.y, GROCERY_LAYOUT.panel.w, GROCERY_LAYOUT.panel.h);
+
+  paintCtx.textAlign = "left";
+  paintCtx.textBaseline = "middle";
+  paintCtx.fillStyle = "rgba(255,255,255,0.92)";
+  paintCtx.font = "24px Georgia";
+  paintCtx.fillText("GROCER", GROCERY_LAYOUT.panel.x + 16, 76);
+
+  paintCtx.font = "14px Georgia";
+  for (let i = 0; i < GROCERY_ITEMS.length; i += 1) {
+    const item = GROCERY_ITEMS[i];
+    const rect = groceryRowRect(i);
+    const affordable = gameState.groceryFundsTenths >= item.priceTenths;
+    const count = gameState.groceryCart[item.id] || 0;
+
+    paintCtx.fillStyle = affordable ? "rgba(255,255,255,0.08)" : "rgba(120,80,80,0.18)";
+    paintCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    paintCtx.strokeStyle = affordable ? "rgba(255,255,255,0.18)" : "rgba(180,110,110,0.28)";
+    paintCtx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+
+    paintCtx.fillStyle = "#f5f5f5";
+    paintCtx.fillText(`${item.label} (${item.unit})`, rect.x + 12, rect.y + rect.h / 2);
+    paintCtx.textAlign = "right";
+    paintCtx.fillStyle = affordable ? "#d9f57a" : "#f0a0a0";
+    paintCtx.fillText(formatTenthsCents(item.priceTenths), rect.x + rect.w - 56, rect.y + rect.h / 2);
+    paintCtx.fillStyle = "rgba(255,255,255,0.84)";
+    paintCtx.fillText(`x${count}`, rect.x + rect.w - 12, rect.y + rect.h / 2);
+    paintCtx.textAlign = "left";
+  }
+
+  const finish = groceryFinishRect();
+  paintCtx.fillStyle = "rgba(217, 245, 122, 0.16)";
+  paintCtx.fillRect(finish.x, finish.y, finish.w, finish.h);
+  paintCtx.strokeStyle = "rgba(217, 245, 122, 0.7)";
+  paintCtx.strokeRect(finish.x, finish.y, finish.w, finish.h);
+  paintCtx.textAlign = "center";
+  paintCtx.fillStyle = "#f5f5f5";
+  paintCtx.font = "18px Georgia";
+  paintCtx.fillText("Finish shopping", finish.x + finish.w / 2, finish.y + finish.h / 2);
+
+  paintCtx.textAlign = "left";
+  paintCtx.fillStyle = "rgba(255,255,255,0.92)";
+  paintCtx.font = "18px Georgia";
+  paintCtx.fillText(`Remaining: ${formatTenthsCents(gameState.groceryFundsTenths)}`, 36, 74);
+  paintCtx.font = "14px Georgia";
+  paintCtx.fillText(`Basket: ${groceryCartSummary()}`, 36, 102);
+
+  drawImageCursor("mix");
+}
+
 function drawWatchMinigame() {
   if (paintState.mode === "fracture") {
     drawFracturePuzzle();
+    return;
+  }
+
+  if (paintState.mode === "groceries") {
+    drawGroceriesView();
     return;
   }
 
@@ -3173,6 +3425,14 @@ mixResetButton.addEventListener("click", () => {
 
 paintCanvas.addEventListener("mousemove", (event) => {
   const position = pointerInsidePaintCanvas(event);
+  if (paintState.mode === "groceries") {
+    paintState.pointerX = position.x;
+    paintState.pointerY = position.y;
+    paintState.cursorX = position.x;
+    paintState.cursorY = position.y;
+    return;
+  }
+
   if (paintState.mode === "fracture") {
     paintState.pointerX = position.x;
     paintState.pointerY = position.y;
@@ -3210,6 +3470,21 @@ paintCanvas.addEventListener("mousedown", (event) => {
   paintState.pointerX = position.x;
   paintState.pointerY = position.y;
   paintState.lastPointerMoveAt = performance.now();
+
+  if (paintState.mode === "groceries") {
+    const finish = groceryFinishRect();
+    if (position.x >= finish.x && position.x <= finish.x + finish.w && position.y >= finish.y && position.y <= finish.y + finish.h) {
+      finishGroceriesTrip();
+      return;
+    }
+
+    const item = groceryItemAt(position.x, position.y);
+    if (item) {
+      buyGrocery(item);
+      drawWatchMinigame();
+    }
+    return;
+  }
 
   if (paintState.mode === "fracture") {
     paintState.cursorX = position.x;
@@ -3303,6 +3578,11 @@ document.addEventListener("keydown", (event) => {
     gameState.fracturePending = true;
     gameState.fractureResolved = false;
     openFracturePuzzle("Debug shortcut: the broken watch scene has been opened directly so you can inspect it.");
+    return;
+  }
+
+  if (event.code === "Escape" && paintState.active && paintState.mode === "groceries") {
+    finishGroceriesTrip();
     return;
   }
 

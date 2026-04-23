@@ -24,7 +24,7 @@ const mixPrompt = document.getElementById("mixPrompt");
 const paintStats = document.getElementById("paintStats");
 const correctButton = document.getElementById("correctButton");
 const lickButton = document.getElementById("lickButton");
-const wipeButton = document.getElementById("wipeButton");
+const wipeImageButton = document.getElementById("wipeImageButton");
 const mixResetButton = document.getElementById("mixResetButton");
 
 const WIDTH = canvas.width;
@@ -1363,7 +1363,7 @@ function fadeTitleCard() {
 function setStationControlsHidden(hidden) {
   correctButton.classList.toggle("hidden", hidden);
   lickButton.classList.toggle("hidden", hidden);
-  wipeButton.classList.toggle("hidden", hidden);
+  wipeImageButton.classList.toggle("hidden", hidden || paintState.zoomedDialIndex === -1);
   mixResetButton.classList.toggle("hidden", hidden);
 }
 
@@ -2353,7 +2353,8 @@ function updatePaintStats() {
     `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}`;
   mixPrompt.textContent = mixTextureFeedback();
   correctButton.classList.toggle("active", paintState.tool === "nail");
-  wipeButton.disabled = paintState.zoomedDialIndex === -1 || !currentDial || !dialNeedsCorrection(currentDial);
+  wipeImageButton.classList.toggle("hidden", paintState.zoomedDialIndex === -1);
+  wipeImageButton.disabled = paintState.zoomedDialIndex === -1 || !currentDial || !dialNeedsCorrection(currentDial);
 }
 
 function spendHealth(amount) {
@@ -3772,7 +3773,7 @@ lickButton.addEventListener("click", () => {
   drawWatchMinigame();
 });
 
-wipeButton.addEventListener("click", () => {
+wipeImageButton.addEventListener("click", () => {
   wipeNearestDial();
   drawWatchMinigame();
 });

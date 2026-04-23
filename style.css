@@ -306,6 +306,40 @@ canvas {
   text-align: left;
 }
 
+.station-image-button {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  margin-top: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.station-image-button img {
+  display: block;
+  width: 100%;
+  max-width: 180px;
+  height: auto;
+}
+
+.station-image-button span {
+  width: 100%;
+  text-align: left;
+}
+
+.station-image-button.hidden {
+  display: none;
+}
+
+.station-image-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .station-button.active {
   background: #3a3a24;
   border-color: rgba(217, 245, 122, 0.42);

@@ -33,6 +33,7 @@ const loadButton = document.getElementById("loadButton");
 const deleteSaveButton = document.getElementById("deleteSaveButton");
 const newWeekButton = document.getElementById("newWeekButton");
 const closeMenuButton = document.getElementById("closeMenuButton");
+const bgMusic = document.getElementById("bgMusic");
 
 const WIDTH = canvas.width;
 const HEIGHT = canvas.height;
@@ -286,6 +287,12 @@ const bellState = {
   pendingPlay: false,
   lastPlayAt: -Infinity,
   stopTimer: 0,
+};
+
+const backgroundMusicState = {
+  unlocked: false,
+  ready: false,
+  pendingStart: false,
 };
 
 const TUTORIAL_STEPS = [
@@ -1273,6 +1280,34 @@ function toggleMenu() {
   } else {
     openMenu();
   }
+}
+
+function postBackgroundMusicCommand(func, args = []) {
+  if (!bgMusic?.contentWindow) return;
+  bgMusic.contentWindow.postMessage(JSON.stringify({
+    event: "command",
+    func,
+    args,
+  }), "*");
+}
+
+function startBackgroundMusic(force = false) {
+  if (!bgMusic) return;
+  if (!force && backgroundMusicState.unlocked) return;
+  backgroundMusicState.unlocked = true;
+  backgroundMusicState.pendingStart = false;
+  postBackgroundMusicCommand("unMute");
+  postBackgroundMusicCommand("setVolume", [32]);
+  postBackgroundMusicCommand("playVideo");
+}
+
+function primeBackgroundMusic() {
+  if (!bgMusic) return;
+  if (backgroundMusicState.ready) {
+    startBackgroundMusic();
+    return;
+  }
+  backgroundMusicState.pendingStart = true;
 }
 
 function ensureCompletionBellWidget() {
@@ -6281,6 +6316,17 @@ function primeCompletionBell() {
   ensureCompletionBellWidget();
 }
 
+if (bgMusic) {
+  bgMusic.addEventListener("load", () => {
+    backgroundMusicState.ready = true;
+    postBackgroundMusicCommand("mute");
+    postBackgroundMusicCommand("playVideo");
+    if (backgroundMusicState.pendingStart) {
+      startBackgroundMusic(true);
+    }
+  });
+}
+
 window.addEventListener("mouseup", releasePaintOrDrag);
 window.addEventListener("pointerup", releasePaintOrDrag);
 window.addEventListener("pointercancel", releasePaintOrDrag);
@@ -6290,6 +6336,9 @@ paintCanvas.addEventListener("touchcancel", releasePaintOrDrag);
 window.addEventListener("pointerdown", primeCompletionBell, { once: true });
 window.addEventListener("keydown", primeCompletionBell, { once: true });
 window.addEventListener("touchstart", primeCompletionBell, { once: true, passive: true });
+window.addEventListener("pointerdown", primeBackgroundMusic, { once: true });
+window.addEventListener("keydown", primeBackgroundMusic, { once: true });
+window.addEventListener("touchstart", primeBackgroundMusic, { once: true, passive: true });
 
 document.addEventListener("keydown", (event) => {
   keys.add(event.code);

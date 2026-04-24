@@ -3339,6 +3339,7 @@ function recalculateDialCoverage(dial) {
 
 function trimDialEdgeNoise(dial, sealed = false) {
   if (!dial || !dial.strayPoints || dial.strayPoints.length === 0) return;
+  const before = dial.strayPoints.length;
   const baseTolerance = sealed ? 7.2 : 6;
   const radiusScale = sealed ? 0.92 : 0.78;
   dial.strayPoints = dial.strayPoints.filter((mark) => {
@@ -3346,6 +3347,11 @@ function trimDialEdgeNoise(dial, sealed = false) {
     const distanceToGuide = nearestGuideDistance(dial.targetPoints, mark.x, mark.y);
     return distanceToGuide > baseTolerance + markRadius * radiusScale;
   });
+  const removed = before - dial.strayPoints.length;
+  if (removed > 0) {
+    const cleanupCredit = sealed ? 0.016 : 0.01;
+    dial.mess = Math.max(0, dial.mess - (removed * cleanupCredit));
+  }
 }
 
 function computeDialStraySeverity(dial) {
@@ -3363,6 +3369,21 @@ function computeDialStraySeverity(dial) {
     severity += overspill * alphaWeight * radiusWeight;
   }
   return severity;
+}
+
+function visibleSpillCount(dial, minOverspill = 0.85, minRadius = 0) {
+  const marks = Array.isArray(dial?.strayPoints) ? dial.strayPoints : [];
+  if (marks.length === 0) return 0;
+  let count = 0;
+  for (const mark of marks) {
+    const markRadius = Math.max(0.8, mark.r || 0);
+    if (markRadius < minRadius) continue;
+    const distanceToGuide = nearestGuideDistance(dial.targetPoints, mark.x, mark.y);
+    const edgeAllowance = 4.5 + markRadius * 0.58;
+    const overspill = Math.max(0, distanceToGuide - edgeAllowance);
+    if (overspill >= minOverspill) count += 1;
+  }
+  return count;
 }
 
 function smoothDialShapeOnLock(dial) {
@@ -3482,12 +3503,32 @@ function smoothDialShapeOnLock(dial) {
 
 function dialNeedsCorrection(dial) {
   if (dial.coverage < 0.9) return false;
-  const marks = Array.isArray(dial.strayPoints) ? dial.strayPoints : [];
+  const visibleSpills = visibleSpillCount(dial, 0.85);
+  const visibleLargeSpills = visibleSpillCount(dial, 1.12, 5.2);
   const straySeverity = Number.isFinite(dial.straySeverity)
     ? dial.straySeverity
     : computeDialStraySeverity(dial);
-  const largeSpills = marks.filter((mark) => Math.max(0.8, mark.r || 0) >= 5.2).length;
-  return dial.mess > 0.29 || straySeverity > 11.5 || (largeSpills >= 3 && straySeverity > 7.4);
+  const messThreshold = visibleSpills === 0 ? 0.44 : 0.33;
+  const severityThreshold = visibleSpills === 0 ? 13.8 : 12.2;
+  return dial.mess > messThreshold || straySeverity > severityThreshold || (visibleLargeSpills >= 3 && straySeverity > 7.8);
+}
+
+function wipeHealthCostForDial(dial) {
+  if (!dial) return 0;
+  const visibleSpills = visibleSpillCount(dial, 0.45);
+  const visibleLargeSpills = visibleSpillCount(dial, 1.12, 5.2);
+  const straySeverity = Number.isFinite(dial.straySeverity)
+    ? dial.straySeverity
+    : computeDialStraySeverity(dial);
+  const mess = Math.max(0, dial.mess || 0);
+
+  const load =
+    Math.min(1, visibleSpills / 10) * 0.42 +
+    Math.min(1, visibleLargeSpills / 4) * 0.28 +
+    Math.min(1, straySeverity / 13.5) * 0.2 +
+    Math.min(1, mess / 0.5) * 0.1;
+
+  return Math.min(3, Math.max(0.25, load * 3));
 }
 
 function correctionCount() {
@@ -3514,6 +3555,7 @@ function updatePaintStats() {
 }
 
 function spendHealth(amount) {
+  if (paintState.tutorial) return;
   const previousHealth = gameState.hiddenStats.health;
   gameState.hiddenStats.health = Math.max(0, gameState.hiddenStats.health - amount);
   if (
@@ -4155,7 +4197,8 @@ function wipeNearestDial() {
   const preservedPaintLoad = paintState.paintLoaded;
   const preservedTool = paintState.tool;
   const preservedCorrecting = paintState.correcting;
-  spendHealth(2);
+  const healthCost = wipeHealthCostForDial(target);
+  spendHealth(healthCost);
   perfectDial(target);
   paintState.brushSize = preservedBrushSize;
   paintState.paintLoaded = preservedPaintLoad;

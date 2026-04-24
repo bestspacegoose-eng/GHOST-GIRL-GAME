@@ -391,6 +391,20 @@ canvas {
   color: var(--accent);
 }
 
+.info-canvas {
+  display: block;
+  width: min(100%, 208px);
+  aspect-ratio: 1 / 1;
+  margin: 18px auto 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.info-canvas.hidden {
+  display: none;
+}
+
 .tool-actions {
   display: grid;
   gap: 10px;

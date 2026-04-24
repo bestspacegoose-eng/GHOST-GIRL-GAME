@@ -22,8 +22,11 @@ const paintCtx = paintCanvas.getContext("2d");
 const paintPrompt = document.getElementById("paintPrompt");
 const mixPrompt = document.getElementById("mixPrompt");
 const paintStats = document.getElementById("paintStats");
+const infoCanvas = document.getElementById("infoCanvas");
+const infoCtx = infoCanvas ? infoCanvas.getContext("2d") : null;
 const correctButton = document.getElementById("correctButton");
 const lickButton = document.getElementById("lickButton");
+const checkNumeralButton = document.getElementById("checkNumeralButton");
 const mixResetButton = document.getElementById("mixResetButton");
 const menuButton = document.getElementById("menuButton");
 const menuOverlay = document.getElementById("menuOverlay");
@@ -263,6 +266,7 @@ const paintState = {
   tutorial: null,
   autoSubmitTimer: -1,
   watchNumeralStyle: NUMERAL_STYLE_KEYS[0],
+  showCoverageAssist: false,
   groceryTiming: {
     active: false,
     itemId: "",
@@ -284,6 +288,8 @@ const paintState = {
     target: 0.75,
   },
 };
+
+let postShiftConversationState = null;
 
 const bellState = {
   iframe: null,
@@ -668,6 +674,62 @@ const WORKER_NAME_REVEAL_DAY = {
   "worker-8": 1,
   "worker-9": 0,
 };
+const WORKER_AFTER_SHIFT_DIALOGUE = {
+  "worker-1": {
+    work:
+      "When you ask how she keeps her numerals so even, Agnes admits she counts the curve out under her breath before every turn. \"If I let the room decide the pace, the room wins,\" she says. Another woman nearby murmurs that the room always thinks it can win.",
+    home:
+      "Asked about home, Agnes says her pay goes straight into her mother's hands before she ever thinks of keeping any for herself. She says it without complaint, only fatigue, and smooths a thumb over the heel of her palm as if she is already counting what tonight's coins need to cover.",
+  },
+  "worker-2": {
+    work:
+      "Ruth tells you the manager notices overflow before he notices effort. \"That is why I mind the inside edge first,\" she says. \"He cannot tell a steady hand from a frightened one, but he can count a ruined dial.\"",
+    home:
+      "When you ask about home, Ruth huffs out something almost like a laugh. She says her younger brother keeps asking whether the shine comes off in the wash. \"I tell him it had better,\" she says, though the answer clearly does not comfort her.",
+  },
+  "worker-3": {
+    work:
+      "Clara tips her head when you ask about the work. \"Half of it is nerve,\" she says. \"The other half is pretending the manager isn't standing over your shoulder measuring the time in your spine.\" When another girl snorts, Clara only smiles wider.",
+    home:
+      "On home, Clara's voice softens. She says she keeps up the teasing because if she stops, she will have to admit how scared everyone looks once the lamps are out. \"I can manage scared,\" she says. \"Quiet is what gets me.\"",
+  },
+  "worker-4": {
+    work:
+      "Evelyn answers your question about the paint as if she has been waiting for someone to ask it properly. She says the mixture should drag just enough to obey. \"If it glides, it lies,\" she tells you. \"And if it lies, the numeral will show it by morning.\"",
+    home:
+      "When you ask about home, Evelyn says her father watches the pay envelope before he ever asks how her shift went. She does not sound bitter, only resigned, and adds that good money makes it easier for people to call dangerous work a blessing.",
+  },
+  "worker-5": {
+    work:
+      "Mae keeps her eyes lowered when you ask about the bench, but this time she answers at length. She says most ruined faces come from panic after the first bad stroke, not the stroke itself. \"Girls drown the second pass trying to fix the first,\" she says quietly.",
+    home:
+      "On the subject of home, Mae admits she still does mending after her shift because there is always somebody's sleeve or hem waiting on the chair. She says it so softly that it feels less like conversation and more like a confession.",
+  },
+  "worker-6": {
+    work:
+      "Lillian says the lamp changes everything. Under a bright one, she can pretend her hand is steadier than it feels. Under a bad one, every numeral turns mean. \"You learn which bench forgives you,\" she says, \"and which one never will.\"",
+    home:
+      "Asked about going home, Lillian says the quiet there can be worse than the factory noise because it leaves too much room to notice the ache in her jaw and the looseness in her teeth. She says it plainly, as though naming it is the only kindness left.",
+  },
+  "worker-7": {
+    work:
+      "Nora tells you the trick is not speed but recovery. \"Everyone misses a line,\" she says. \"The girls who last are the ones who lose less time to hating themselves for it.\" The bluntness lands harder than comfort and somehow helps more.",
+    home:
+      "When you ask about home, Nora says she mostly wants a washbasin and ten minutes where nobody asks anything of her. Then she glances aside and admits that once she gets there, she still ends up helping with supper, because that is how these nights go.",
+  },
+  "worker-8": {
+    work:
+      "Pearl says the paint always tells on the person mixing it. Thin paint betrays impatience, heavy paint betrays fear. \"A good face looks calm even when the girl painting it wasn't,\" she says. There is pride in that, and a little grief too.",
+    home:
+      "Asked about home, Pearl says the younger children still think the glow is pretty when they catch it on her cuffs. She says they do not know enough yet to be afraid of beautiful things that stay too long on the skin.",
+  },
+  "worker-9": {
+    work:
+      "Vi hesitates before answering, then admits the first sign for her was the shaking. She says it started small enough to excuse, then grew into something she had to plan around. \"You can work around a tremor,\" she says, \"until the day you suddenly can't.\"",
+    home:
+      "On home, Vi says she keeps an extra rag in her pocket because she hates letting anyone see the glow before she reaches the washbasin. \"As if hiding it for five more minutes changes anything,\" she adds, almost embarrassed by the hope in that habit.",
+  },
+};
 const FAMILIAR_WORKERS_REQUIRED = 3;
 
 const spritePalettes = {
@@ -871,6 +933,41 @@ function workerDisplayName(id) {
   return progress.nameKnown ? workerName(id) : "???";
 }
 
+function advanceWorkerProgress(id) {
+  const progress = workerProgressFor(id);
+  const firstTalk = progress.talks === 0;
+  const revealEligible = !progress.nameKnown && gameState.currentDay >= workerNameRevealDay(id);
+  let revealText = "";
+  let withheldText = "";
+
+  if (revealEligible) {
+    progress.nameKnown = true;
+    revealText = `"I'm ${workerName(id)}," she says.`;
+  } else if (firstTalk && !progress.nameKnown) {
+    withheldText = "She still keeps her name to herself.";
+  }
+
+  const previousFamiliarity = progress.familiarity;
+  progress.talks += 1;
+  progress.lastDaySpoken = gameState.currentDay;
+  progress.familiarity = workerFamiliarityFromTalks(progress.talks);
+
+  let familiarityText = "";
+  if (progress.familiarity === "acquainted" && previousFamiliarity === "stranger") {
+    familiarityText = "She starts to recognize you now.";
+  } else if (progress.familiarity === "familiar" && previousFamiliarity !== "familiar") {
+    familiarityText = "You have reached familiar standing with her.";
+  }
+
+  return {
+    progress,
+    firstTalk,
+    revealText,
+    withheldText,
+    familiarityText,
+  };
+}
+
 function familiarWorkersCount() {
   const progress = ensureWorkerProgressState();
   return Object.values(progress).filter((entry) => entry.familiarity === "familiar").length;
@@ -912,35 +1009,117 @@ function workerDialogueLines(id) {
 }
 
 function workerDialogueForInteraction(id) {
-  const progress = workerProgressFor(id);
-  const firstTalk = progress.talks === 0;
+  const relationship = advanceWorkerProgress(id);
   const [dailyPrimary, dailySecondary] = workerDialogueLines(id);
-  let primary = firstTalk
+  let primary = relationship.firstTalk
     ? "She finally pauses and gives you a measured look."
     : dailyPrimary;
-  let secondary = firstTalk ? dailyPrimary : (dailySecondary || "");
+  let secondary = relationship.firstTalk ? dailyPrimary : (dailySecondary || "");
 
-  const revealEligible = !progress.nameKnown && gameState.currentDay >= workerNameRevealDay(id);
-  if (revealEligible) {
-    progress.nameKnown = true;
-    primary = `"I'm ${workerName(id)}," she says. ${primary}`;
-  } else if (firstTalk && !progress.nameKnown) {
-    secondary = `${secondary}${secondary ? " " : ""}She still keeps her name to herself.`;
+  if (relationship.revealText) {
+    primary = `${relationship.revealText} ${primary}`;
+  } else if (relationship.withheldText) {
+    secondary = `${secondary}${secondary ? " " : ""}${relationship.withheldText}`;
   }
 
-  const previousFamiliarity = progress.familiarity;
-  progress.talks += 1;
-  progress.lastDaySpoken = gameState.currentDay;
-  progress.familiarity = workerFamiliarityFromTalks(progress.talks);
-
-  if (progress.familiarity === "acquainted" && previousFamiliarity === "stranger") {
-    secondary = `${secondary}${secondary ? " " : ""}She starts to recognize you now.`;
-  }
-  if (progress.familiarity === "familiar" && previousFamiliarity !== "familiar") {
-    secondary = `${secondary}${secondary ? " " : ""}You have reached familiar standing with her.`;
+  if (relationship.familiarityText) {
+    secondary = `${secondary}${secondary ? " " : ""}${relationship.familiarityText}`;
   }
 
   return [primary, secondary];
+}
+
+function afterShiftConversationCandidates() {
+  return Object.keys(WORKER_PROFILES)
+    .filter((id) => !isWorkerRemoved(id))
+    .sort((a, b) => {
+      const progressA = workerProgressFor(a);
+      const progressB = workerProgressFor(b);
+      const score = (progress) =>
+        progress.talks * 2
+        + (progress.familiarity === "familiar" ? 4 : progress.familiarity === "acquainted" ? 2 : 0)
+        + (progress.nameKnown ? 1 : 0)
+        + (progress.lastDaySpoken === gameState.currentDay ? 1 : 0);
+      return score(progressB) - score(progressA) || a.localeCompare(b);
+    });
+}
+
+function pickAfterShiftConversationWorker() {
+  const candidates = afterShiftConversationCandidates();
+  if (candidates.length === 0) return null;
+  const shortlist = candidates.slice(0, Math.min(4, candidates.length));
+  const index = (gameState.currentDay + gameState.totalDialsPainted + familiarWorkersCount()) % shortlist.length;
+  return shortlist[index];
+}
+
+function afterShiftConversationTitle(id) {
+  const label = workerDisplayName(id);
+  return label === "???" ? "After The Bell" : `${label} - After The Bell`;
+}
+
+function afterShiftConversationPrompt(id, relationship) {
+  const progress = workerProgressFor(id);
+  const label = progress.nameKnown ? workerName(id) : "One of the women";
+  const preface = relationship.firstTalk
+    ? `${label} lingers near the benches instead of turning straight for the door.`
+    : `${label} slows beside you once the lamps go low, less guarded than she is during the shift.`;
+  const appearance = workerAppearanceText(id);
+  const notes = [relationship.revealText, relationship.withheldText, relationship.familiarityText]
+    .filter(Boolean)
+    .join(" ");
+  return `${preface} ${appearance}${notes ? ` ${notes}` : ""} What do you ask her about?`;
+}
+
+function afterShiftConversationLine(id, topic) {
+  const profile = WORKER_AFTER_SHIFT_DIALOGUE[id];
+  if (profile && profile[topic]) return profile[topic];
+  return topic === "home"
+    ? "She looks away for a moment, then admits home is mostly another list of things that still need doing before she can rest."
+    : "She says the work gets easier to repeat long before it gets easier to live with.";
+}
+
+function openAfterShiftConversation() {
+  const workerId = pickAfterShiftConversationWorker();
+  if (!workerId) {
+    gameState.dialogMode = "post-shift-report";
+    continueAfterDialog();
+    return;
+  }
+
+  const relationship = advanceWorkerProgress(workerId);
+  postShiftConversationState = {
+    workerId,
+    remainingTopics: ["work", "home"],
+  };
+
+  resetDialogButtons();
+  dialogTitle.textContent = afterShiftConversationTitle(workerId);
+  dialogBody.textContent = afterShiftConversationPrompt(workerId, relationship);
+  dialogButton.textContent = "Ask about the work";
+  dialogAltButton.textContent = "Ask about home";
+  dialogAltButton.classList.remove("hidden");
+  dialogOverlay.classList.remove("hidden");
+  gameState.dialogMode = "post-shift-talk-choice";
+}
+
+function showAfterShiftConversationTopic(topic) {
+  if (!postShiftConversationState || !postShiftConversationState.remainingTopics.includes(topic)) return;
+  const workerId = postShiftConversationState.workerId;
+  postShiftConversationState.remainingTopics = postShiftConversationState.remainingTopics.filter((entry) => entry !== topic);
+
+  resetDialogButtons();
+  dialogTitle.textContent = afterShiftConversationTitle(workerId);
+  dialogBody.textContent = afterShiftConversationLine(workerId, topic);
+  dialogButton.textContent = "Continue to chores";
+
+  if (postShiftConversationState.remainingTopics.length > 0) {
+    const remaining = postShiftConversationState.remainingTopics[0];
+    dialogAltButton.textContent = remaining === "work" ? "Ask about the work" : "Ask about home";
+    dialogAltButton.classList.remove("hidden");
+  }
+
+  dialogOverlay.classList.remove("hidden");
+  gameState.dialogMode = "post-shift-talk-result";
 }
 
 function interactableDisplayName(item) {
@@ -1548,6 +1727,7 @@ function loadGameFromLocal() {
   if (paintState.active) {
     closeMinigame();
   }
+  postShiftConversationState = null;
 
   gameState.currentDay = Math.max(0, Math.min(6, Number(loadedGame.currentDay ?? 0)));
   gameState.shiftActive = Boolean(loadedGame.shiftActive);
@@ -1636,6 +1816,8 @@ function loadGameFromLocal() {
   }
 
   minigameOverlay.classList.add("hidden");
+  hideInfoCanvas();
+  paintCanvas.style.cursor = "none";
   setStationControlsHidden(false);
   updateCoverage();
   updateHud();
@@ -2029,13 +2211,13 @@ function refreshHint() {
 
   if (paintState.active && paintState.mode === "groceries") {
     hint.textContent = "Spend your saved wages before you head home.";
-    subhint.textContent = "Click + to start a shrinking-bubble haggle for that item, - to put something back, and finish when the basket is settled.";
+    subhint.textContent = "Click + to start a pulsing haggle for that item, - to put something back, and finish when the basket is settled.";
     return;
   }
 
   if (paintState.active && paintState.mode === "hemming") {
     hint.textContent = "Repair clothes before bed.";
-    subhint.textContent = "Click a stitch dot to start timing, then click again for bad/okay/good/perfect quality.";
+    subhint.textContent = "Click a stitch dot to start timing, then use the side-panel ring to land bad/okay/good/perfect quality.";
     return;
   }
 
@@ -2092,6 +2274,7 @@ function fadeTitleCard() {
 function setStationControlsHidden(hidden) {
   correctButton.classList.toggle("hidden", hidden);
   lickButton.classList.toggle("hidden", hidden);
+  checkNumeralButton.classList.toggle("hidden", hidden);
   mixResetButton.classList.toggle("hidden", hidden);
 }
 
@@ -2350,6 +2533,8 @@ function endShift(reason) {
     `${managerLineForDay()} ${endOfDayReflection()} ${darkRoomGathering()}`;
   gameState.postShiftActivity = Math.random() < 0.5 ? "groceries" : "hemming";
   dialogButton.textContent = gameState.postShiftActivity === "groceries" ? "Buy groceries" : "Go hem clothes";
+  dialogAltButton.textContent = "Talk with the women";
+  dialogAltButton.classList.remove("hidden");
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "post-shift-report";
   updateHud();
@@ -2808,7 +2993,7 @@ function startHemmingTiming(taskIndex) {
     periodMs: Math.max(440, Math.round((basePeriodMs + randomPeriodOffsetMs) / minigameSpeedMultiplier())),
     target: 0.66 + Math.random() * 0.24,
   };
-  paintPrompt.textContent = `Thread ready for ${task.label}. Click again when the timing ring lines up.`;
+  paintPrompt.textContent = `Thread ready for ${task.label}. Click again when the timing ring in the side panel lines up.`;
   return true;
 }
 
@@ -2913,7 +3098,7 @@ function openHemmingTrip() {
   gameState.hemmingTasks = createHemmingTasks();
   minigameHeading.textContent = "Evening Hemming";
   paintPrompt.textContent = hemmingReflectionText();
-  mixPrompt.textContent = "Click a stitch dot to start timing, then click again for bad/okay/good/perfect stitch quality.";
+  mixPrompt.textContent = "Click a stitch dot to start timing. Watch the ring in the side panel, then click again for bad/okay/good/perfect stitch quality.";
   updateHemmingStats();
   setStationControlsHidden(true);
   minigameOverlay.classList.remove("hidden");
@@ -2932,7 +3117,7 @@ function stitchPointForTask(taskIndex, stitchIndex) {
 
 function applyHemStitch(x, y) {
   if (paintState.hemmingTiming.active) {
-    resolveHemmingTiming();
+    paintPrompt.textContent = "Watch the timing ring in the side panel, then click there when the marker lines up.";
     return;
   }
 
@@ -3048,6 +3233,7 @@ function continueAfterDialog() {
   resetDialogButtons();
 
   if (gameState.dialogMode === "post-shift-report") {
+    postShiftConversationState = null;
     if (gameState.postShiftActivity === "hemming") {
       openHemmingTrip();
     } else {
@@ -3075,6 +3261,7 @@ function continueAfterDialog() {
 
 function resetWeek() {
   dialogOverlay.classList.add("hidden");
+  postShiftConversationState = null;
   gameState.currentDay = 0;
   gameState.shiftActive = false;
   gameState.shiftEnded = false;
@@ -3632,6 +3819,7 @@ function enterDialZoom(index) {
   const dial = paintState.dials[index];
   if (!dial) return;
   paintState.zoomedDialIndex = index;
+  paintState.showCoverageAssist = false;
   paintState.paintLoaded = MAX_PAINT_LOAD;
   zoomCursorToDial(index);
   paintPrompt.textContent = `The ${dial.label} fills the dark. Paint inside the faint guide while the brush still holds paint.`;
@@ -3641,6 +3829,7 @@ function enterDialZoom(index) {
 }
 
 function exitDialZoom(message = "You pull back from the numeral to survey the full watch face.") {
+  paintState.showCoverageAssist = false;
   paintState.zoomedDialIndex = -1;
   moveCursorToActiveDial();
   paintPrompt.textContent = message;
@@ -3827,6 +4016,7 @@ function openMinigame(label) {
   paintState.isPainting = false;
   paintState.correcting = false;
   paintState.tool = "mix";
+  paintState.showCoverageAssist = false;
   paintState.thoughtPopup = null;
   paintState.tutorial = null;
   paintState.autoSubmitTimer = -1;
@@ -3860,6 +4050,7 @@ function closeMinigame() {
   paintState.isPainting = false;
   paintState.correcting = false;
   paintState.tool = "mix";
+  paintState.showCoverageAssist = false;
   paintState.mode = "watch";
   paintState.zoomedDialIndex = -1;
   paintState.paintLoaded = 0;
@@ -3871,6 +4062,8 @@ function closeMinigame() {
   paintState.groceryTiming.active = false;
   minigameHeading.textContent = "Watch Painting";
   setStationControlsHidden(false);
+  paintCanvas.style.cursor = "none";
+  hideInfoCanvas();
   minigameOverlay.classList.add("hidden");
 }
 
@@ -4142,6 +4335,43 @@ function correctionCount() {
   return paintState.dials.filter(dialNeedsCorrection).length;
 }
 
+function coverageHotspotsForDial(dial, limit = 8) {
+  if (!dial) return [];
+  const points = dialRenderPoints(dial);
+  if (!points || points.length === 0) return [];
+  ensureDialPaintLevel(dial);
+
+  const candidates = [];
+  for (let i = 0; i < points.length; i += 1) {
+    const level = Math.max(0, Math.min(PAINT_POINT_COMPLETE, dial.paintLevel[i] || 0));
+    const missing = PAINT_POINT_COVERAGE_THRESHOLD - level;
+    if (missing < 0.08) continue;
+    candidates.push({
+      x: points[i].x,
+      y: points[i].y,
+      score: missing + (dial.paintedMask[i] ? 0 : 0.18),
+      radius: 10 + missing * 18,
+    });
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  const hotspots = [];
+  const minSpacing = paintState.zoomedDialIndex !== -1 ? 30 : 18;
+  for (const candidate of candidates) {
+    if (hotspots.every((existing) => Math.hypot(existing.x - candidate.x, existing.y - candidate.y) >= minSpacing)) {
+      hotspots.push(candidate);
+      if (hotspots.length >= limit) break;
+    }
+  }
+  return hotspots;
+}
+
+function updateCheckNumeralButton() {
+  if (!checkNumeralButton) return;
+  const zoomedWatch = paintState.active && paintState.mode === "watch" && paintState.zoomedDialIndex !== -1;
+  checkNumeralButton.classList.toggle("active", zoomedWatch && paintState.showCoverageAssist);
+}
+
 function updatePaintStats() {
   const finished = paintState.dials.filter((dial) => dial.locked || dialCountsAsPainted(dial)).length;
   const correctionNeeded = correctionCount();
@@ -4159,6 +4389,7 @@ function updatePaintStats() {
     `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}`;
   mixPrompt.textContent = mixTextureFeedback();
   correctButton.classList.toggle("active", paintState.tool === "nail");
+  updateCheckNumeralButton();
 }
 
 function spendHealth(amount) {
@@ -4176,8 +4407,6 @@ function spendHealth(amount) {
 
 function switchToNailMode(source = "toggle") {
   if (paintState.tool !== "nail") {
-    gameState.hiddenStats.fingernailUses += 1;
-    spendHealth(0.5);
     fanBrush("You set the brush aside.");
   }
   paintState.tool = "nail";
@@ -4198,10 +4427,43 @@ function switchToBrushMode(message = "You pick the brush back up and return to t
   drawWatchMinigame();
 }
 
+function toggleCheckNumeralGuide() {
+  if (!paintState.active || paintState.mode !== "watch") return;
+  const dial = activeDial();
+  if (paintState.zoomedDialIndex === -1 || !dial) {
+    paintPrompt.textContent = "Open a numeral first, then use Check numeral to see where it still needs another pass.";
+    updatePaintStats();
+    drawWatchMinigame();
+    return;
+  }
+  if (dial.locked || dial.coverage >= 0.995) {
+    paintState.showCoverageAssist = false;
+    paintPrompt.textContent = dialNeedsCorrection(dial)
+      ? "Coverage is there already. What remains is cleanup around the edge."
+      : `Numeral ${dial.label} is already fully covered.`;
+    updatePaintStats();
+    drawWatchMinigame();
+    return;
+  }
+
+  paintState.showCoverageAssist = !paintState.showCoverageAssist;
+  if (paintState.showCoverageAssist) {
+    const hotspots = coverageHotspotsForDial(dial, 7);
+    paintPrompt.textContent = hotspots.length > 0
+      ? "Check numeral marks the dimmer gaps that still need another pass of paint."
+      : "This numeral is already carrying enough paint across the guide.";
+  } else {
+    paintPrompt.textContent = `The ${dial.label} fills the dark. Paint inside the faint guide while the brush still holds paint.`;
+  }
+  updatePaintStats();
+  drawWatchMinigame();
+}
+
 function prepareNextWatch(message) {
   clearBenchWork();
   paintState.correcting = false;
   paintState.tool = "mix";
+  paintState.showCoverageAssist = false;
   paintState.zoomedDialIndex = -1;
   paintState.readyToSubmit = false;
   resetMix();
@@ -4795,6 +5057,9 @@ function correctAt(x, y) {
     return;
   }
 
+  gameState.hiddenStats.fingernailUses += 1;
+  spendHealth(0.2);
+
   const correctionRadius = paintState.zoomedDialIndex === -1 ? 12 : 24;
   let cleanedMarks = 0;
   let nearbyPaintPoints = 0;
@@ -5058,7 +5323,7 @@ function fanBrush(messageBase) {
 }
 
 function dullBrushOnUse() {
-  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + (0.00335 * minigameSpeedMultiplier()));
+  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + (0.001675 * minigameSpeedMultiplier()));
 }
 
 function drawAssetCentered(image, x, y, width, height, alpha = 1) {
@@ -5390,24 +5655,52 @@ function drawGroceriesView() {
   drawImageCursor("mix");
 }
 
-function drawHemmingTimingCircle(timing) {
-  const cx = 96;
-  const cy = paintCanvas.height - 88;
-  const radius = 52;
+function hideInfoCanvas() {
+  if (!infoCanvas || !infoCtx) return;
+  infoCanvas.classList.add("hidden");
+  infoCtx.clearRect(0, 0, infoCanvas.width, infoCanvas.height);
+}
 
-  paintCtx.save();
-  paintCtx.fillStyle = "rgba(0, 0, 0, 0.74)";
-  paintCtx.beginPath();
-  paintCtx.arc(cx, cy, radius + 20, 0, Math.PI * 2);
-  paintCtx.fill();
+function drawHemmingTimingWidget(timing) {
+  if (!infoCanvas || !infoCtx) return;
+  infoCanvas.classList.remove("hidden");
 
-  paintCtx.strokeStyle = "rgba(255,255,255,0.26)";
-  paintCtx.lineWidth = 7;
-  paintCtx.beginPath();
-  paintCtx.arc(cx, cy, radius, 0, Math.PI * 2);
-  paintCtx.stroke();
+  const w = infoCanvas.width;
+  const h = infoCanvas.height;
+  const cx = w / 2;
+  const cy = h / 2 + 8;
+  const radius = 58;
 
-  const targetAngle = timing.targetAngle;
+  infoCtx.clearRect(0, 0, w, h);
+  infoCtx.save();
+  infoCtx.fillStyle = "rgba(6, 8, 10, 0.94)";
+  infoCtx.fillRect(0, 0, w, h);
+  infoCtx.strokeStyle = "rgba(255,255,255,0.12)";
+  infoCtx.lineWidth = 2;
+  infoCtx.strokeRect(1, 1, w - 2, h - 2);
+
+  infoCtx.textAlign = "center";
+  infoCtx.textBaseline = "middle";
+  infoCtx.fillStyle = "rgba(255,255,255,0.9)";
+  infoCtx.font = "bold 13px Georgia";
+  infoCtx.fillText("TIME STITCH", cx, 22);
+
+  infoCtx.strokeStyle = "rgba(255,255,255,0.24)";
+  infoCtx.lineWidth = 7;
+  infoCtx.beginPath();
+  infoCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+  infoCtx.stroke();
+
+  if (!timing || !timing.active) {
+    infoCtx.fillStyle = "rgba(255,255,255,0.74)";
+    infoCtx.font = "12px Georgia";
+    infoCtx.fillText("click a stitch dot", cx, cy - 3);
+    infoCtx.fillStyle = "rgba(255,255,255,0.58)";
+    infoCtx.fillText("to begin timing", cx, cy + 16);
+    infoCtx.restore();
+    return;
+  }
+
   const targetWindows = [
     { key: "okay", color: "rgba(211, 169, 118, 0.52)", width: HEMMING_TIMING_WINDOWS.okay },
     { key: "good", color: "rgba(202, 226, 150, 0.68)", width: HEMMING_TIMING_WINDOWS.good },
@@ -5415,29 +5708,24 @@ function drawHemmingTimingCircle(timing) {
   ];
   for (const zone of targetWindows) {
     const spread = zone.width * Math.PI * 2;
-    paintCtx.strokeStyle = zone.color;
-    paintCtx.lineWidth = zone.key === "perfect" ? 10 : 7;
-    paintCtx.beginPath();
-    paintCtx.arc(cx, cy, radius, targetAngle - spread, targetAngle + spread);
-    paintCtx.stroke();
+    infoCtx.strokeStyle = zone.color;
+    infoCtx.lineWidth = zone.key === "perfect" ? 10 : 7;
+    infoCtx.beginPath();
+    infoCtx.arc(cx, cy, radius, timing.targetAngle - spread, timing.targetAngle + spread);
+    infoCtx.stroke();
   }
 
   const markerX = cx + Math.cos(timing.angle) * radius;
   const markerY = cy + Math.sin(timing.angle) * radius;
-  paintCtx.fillStyle = "rgba(255, 248, 212, 0.98)";
-  paintCtx.beginPath();
-  paintCtx.arc(markerX, markerY, 6.3, 0, Math.PI * 2);
-  paintCtx.fill();
+  infoCtx.fillStyle = "rgba(255, 248, 212, 0.98)";
+  infoCtx.beginPath();
+  infoCtx.arc(markerX, markerY, 6.3, 0, Math.PI * 2);
+  infoCtx.fill();
 
-  paintCtx.fillStyle = "rgba(255,255,255,0.92)";
-  paintCtx.textAlign = "center";
-  paintCtx.textBaseline = "middle";
-  paintCtx.font = "bold 13px Georgia";
-  paintCtx.fillText("TIME STITCH", cx, cy - 5);
-  paintCtx.font = "12px Georgia";
-  paintCtx.fillStyle = "rgba(255,255,255,0.74)";
-  paintCtx.fillText("click now", cx, cy + 14);
-  paintCtx.restore();
+  infoCtx.fillStyle = "rgba(255,255,255,0.74)";
+  infoCtx.font = "12px Georgia";
+  infoCtx.fillText("click again", cx, h - 28);
+  infoCtx.restore();
 }
 
 function drawHemmingView() {
@@ -5532,14 +5820,15 @@ function drawHemmingView() {
   paintCtx.font = "18px Georgia";
   paintCtx.fillText("Finish hemming", finish.x + finish.w / 2, finish.y + finish.h / 2);
 
-  if (timing && timing.active) {
-    drawHemmingTimingCircle(timing);
-  }
-
-  drawImageCursor("hemming");
+  drawHemmingTimingWidget(timing);
 }
 
 function drawWatchMinigame() {
+  paintCanvas.style.cursor = paintState.mode === "hemming" ? "pointer" : "none";
+  if (paintState.mode !== "hemming") {
+    hideInfoCanvas();
+  }
+
   if (paintState.mode === "fracture") {
     drawFracturePuzzle();
     return;
@@ -5726,6 +6015,25 @@ function drawZoomedDialView() {
       paintCtx.arc(hotspot.x, hotspot.y, markerRadius - 4, 0, Math.PI * 2);
       paintCtx.stroke();
       paintCtx.setLineDash([7, 4]);
+    }
+    paintCtx.restore();
+  }
+
+  if (paintState.showCoverageAssist) {
+    const coverageHotspots = coverageHotspotsForDial(dial, 7);
+    const pulse = 0.72 + ((Math.sin(performance.now() * 0.008) + 1) * 0.14);
+    paintCtx.save();
+    for (const hotspot of coverageHotspots) {
+      const markerRadius = hotspot.radius;
+      paintCtx.strokeStyle = `rgba(130, 220, 255, ${pulse})`;
+      paintCtx.lineWidth = 3;
+      paintCtx.beginPath();
+      paintCtx.arc(hotspot.x, hotspot.y, markerRadius, 0, Math.PI * 2);
+      paintCtx.stroke();
+      paintCtx.fillStyle = "rgba(130, 220, 255, 0.14)";
+      paintCtx.beginPath();
+      paintCtx.arc(hotspot.x, hotspot.y, Math.max(5, markerRadius - 6), 0, Math.PI * 2);
+      paintCtx.fill();
     }
     paintCtx.restore();
   }
@@ -6185,16 +6493,42 @@ bindPress(dialogButton, () => {
     startShift(true);
     return;
   }
+
+  if (gameState.dialogMode === "post-shift-talk-choice") {
+    showAfterShiftConversationTopic("work");
+    return;
+  }
+
+  if (gameState.dialogMode === "post-shift-talk-result") {
+    postShiftConversationState = null;
+    gameState.dialogMode = "post-shift-report";
+  }
   continueAfterDialog();
 });
 
 bindPress(dialogAltButton, () => {
-  if (gameState.dialogMode !== "day-five-choice") return;
-  dialogOverlay.classList.add("hidden");
-  resetDialogButtons();
-  gameState.dayFiveCutsceneSeen = true;
-  gameState.joinedWorkers = false;
-  startShift(true);
+  if (gameState.dialogMode === "day-five-choice") {
+    dialogOverlay.classList.add("hidden");
+    resetDialogButtons();
+    gameState.dayFiveCutsceneSeen = true;
+    gameState.joinedWorkers = false;
+    startShift(true);
+    return;
+  }
+
+  if (gameState.dialogMode === "post-shift-report") {
+    openAfterShiftConversation();
+    return;
+  }
+
+  if (gameState.dialogMode === "post-shift-talk-choice") {
+    showAfterShiftConversationTopic("home");
+    return;
+  }
+
+  if (gameState.dialogMode === "post-shift-talk-result" && postShiftConversationState?.remainingTopics.length) {
+    showAfterShiftConversationTopic(postShiftConversationState.remainingTopics[0]);
+  }
 });
 
 bindPress(correctButton, () => {
@@ -6203,7 +6537,7 @@ bindPress(correctButton, () => {
 
 bindPress(lickButton, () => {
   gameState.hiddenStats.brushLicks += 1;
-  spendHealth(2);
+  spendHealth(0.5);
   const preservedPaintLoad = paintState.paintLoaded;
   paintState.tool = "brush";
   paintState.correcting = false;
@@ -6214,10 +6548,25 @@ bindPress(lickButton, () => {
   drawWatchMinigame();
 });
 
+bindPress(checkNumeralButton, () => {
+  toggleCheckNumeralGuide();
+});
+
 bindPress(mixResetButton, () => {
   resetMix();
   paintPrompt.textContent = "You empty the dish and start the mixture again from nothing.";
   updatePaintStats();
+  drawWatchMinigame();
+});
+
+bindPress(infoCanvas, () => {
+  if (!paintState.active || paintState.mode !== "hemming") return;
+  if (!paintState.hemmingTiming.active) {
+    paintPrompt.textContent = "Click a stitch dot to begin the next timing pass.";
+    drawWatchMinigame();
+    return;
+  }
+  resolveHemmingTiming();
   drawWatchMinigame();
 });
 

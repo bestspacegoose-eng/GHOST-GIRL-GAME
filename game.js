@@ -4827,7 +4827,23 @@ function applyPaintingDrift(position) {
   };
 }
 
-dialogButton.addEventListener("click", () => {
+function bindPress(element, handler) {
+  let lastPressAt = -Infinity;
+  const run = () => {
+    const now = performance.now();
+    if (now - lastPressAt < 120) return;
+    lastPressAt = now;
+    handler();
+  };
+  element.addEventListener("click", run);
+  element.addEventListener("pointerup", (event) => {
+    if (typeof event.button === "number" && event.button !== 0) return;
+    event.preventDefault();
+    run();
+  });
+}
+
+bindPress(dialogButton, () => {
   if (gameState.dialogMode === "day-one-intro") {
     dialogOverlay.classList.add("hidden");
     resetDialogButtons();
@@ -4847,7 +4863,7 @@ dialogButton.addEventListener("click", () => {
   continueAfterDialog();
 });
 
-dialogAltButton.addEventListener("click", () => {
+bindPress(dialogAltButton, () => {
   if (gameState.dialogMode !== "day-five-choice") return;
   dialogOverlay.classList.add("hidden");
   resetDialogButtons();
@@ -4856,11 +4872,11 @@ dialogAltButton.addEventListener("click", () => {
   startShift(true);
 });
 
-correctButton.addEventListener("click", () => {
+bindPress(correctButton, () => {
   switchToNailMode();
 });
 
-lickButton.addEventListener("click", () => {
+bindPress(lickButton, () => {
   gameState.hiddenStats.brushLicks += 1;
   spendHealth(2);
   const preservedPaintLoad = paintState.paintLoaded;
@@ -4873,7 +4889,7 @@ lickButton.addEventListener("click", () => {
   drawWatchMinigame();
 });
 
-mixResetButton.addEventListener("click", () => {
+bindPress(mixResetButton, () => {
   resetMix();
   paintPrompt.textContent = "You empty the dish and start the mixture again from nothing.";
   updatePaintStats();
@@ -4920,7 +4936,11 @@ paintCanvas.addEventListener("mousemove", (event) => {
   }
 });
 
-paintCanvas.addEventListener("mousedown", (event) => {
+let lastPaintCanvasPressAt = -Infinity;
+function handlePaintCanvasPress(event) {
+  const now = performance.now();
+  if (now - lastPaintCanvasPressAt < 90) return;
+  lastPaintCanvasPressAt = now;
   if (!paintState.active) return;
 
   const position = pointerInsidePaintCanvas(event);
@@ -5048,6 +5068,13 @@ paintCanvas.addEventListener("mousedown", (event) => {
   const paintingPosition = refreshPaintCursor();
   paintAt(paintingPosition.x, paintingPosition.y);
   drawWatchMinigame();
+}
+
+paintCanvas.addEventListener("mousedown", handlePaintCanvasPress);
+paintCanvas.addEventListener("pointerdown", (event) => {
+  if (typeof event.button === "number" && event.button !== 0) return;
+  event.preventDefault();
+  handlePaintCanvasPress(event);
 });
 
 window.addEventListener("mouseup", () => {
@@ -5096,11 +5123,21 @@ document.addEventListener("keyup", (event) => {
   keys.delete(event.code);
 });
 
-canvas.addEventListener("click", (event) => {
+let lastRoomCanvasPressAt = -Infinity;
+function handleRoomCanvasPress(event) {
+  const now = performance.now();
+  if (now - lastRoomCanvasPressAt < 90) return;
+  lastRoomCanvasPressAt = now;
   if (paintState.active || !dialogOverlay.classList.contains("hidden")) return;
   const rect = canvas.getBoundingClientRect();
-  roomState.cursorX = ((event.clientX - rect.left) / rect.width) * WIDTH;
-  roomState.cursorY = ((event.clientY - rect.top) / rect.height) * HEIGHT;
+  const rectWidth = rect.width || canvas.width || 1;
+  const rectHeight = rect.height || canvas.height || 1;
+  roomState.cursorX = ((event.clientX - rect.left) / rectWidth) * WIDTH;
+  roomState.cursorY = ((event.clientY - rect.top) / rectHeight) * HEIGHT;
+
+  if (gameState.dayTransition && !titleCard.classList.contains("visible")) {
+    gameState.dayTransition = false;
+  }
 
   if (gameState.dayTransition) {
     fadeTitleCard();
@@ -5120,6 +5157,13 @@ canvas.addEventListener("click", (event) => {
       "Click the wall clock, a worker, or the back bench in the workshop photo.",
     );
   }
+}
+
+canvas.addEventListener("click", handleRoomCanvasPress);
+canvas.addEventListener("pointerup", (event) => {
+  if (typeof event.button === "number" && event.button !== 0) return;
+  event.preventDefault();
+  handleRoomCanvasPress(event);
 });
 
 canvas.addEventListener("mousemove", (event) => {

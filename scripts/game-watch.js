@@ -55,6 +55,7 @@ function buildDialState() {
       mess: 0,
       corrected: false,
       credited: false,
+      locked: false,
     });
   }
 
@@ -77,6 +78,7 @@ function cloneDials(dials) {
       : dial.targetPoints.map((_, index) => (dial.paintedMask[index] ? PAINT_POINT_COMPLETE : 0)),
     strayPoints: dial.strayPoints.map((point) => ({ ...point })),
     guideMode: dial.guideMode || "stroke",
+    locked: Boolean(dial.locked),
   }));
 }
 
@@ -137,8 +139,13 @@ function moveCursorToActiveDial() {
 }
 
 function updateActiveDialIndex() {
-  const nextIndex = paintState.dials.findIndex((dial) => dial.coverage < 0.74 || dialNeedsCorrection(dial));
-  paintState.activeDialIndex = nextIndex === -1 ? 0 : nextIndex;
+  const nextIndex = paintState.dials.findIndex((dial) => !dial.locked && (dial.coverage < 0.74 || dialNeedsCorrection(dial)));
+  if (nextIndex !== -1) {
+    paintState.activeDialIndex = nextIndex;
+    return;
+  }
+  const firstUnlocked = paintState.dials.findIndex((dial) => !dial.locked);
+  paintState.activeDialIndex = firstUnlocked === -1 ? 0 : firstUnlocked;
 }
 
 function digitSegments(digit) {
@@ -591,7 +598,7 @@ function allDialsReady() {
 }
 
 function dialNeedsCorrection(dial) {
-  return dial.coverage >= 0.96 && (dial.mess > 0.24 || dial.strayPoints.length > 0);
+  return dial.coverage >= 0.9 && (dial.mess > 0.24 || dial.strayPoints.length > 0);
 }
 
 function correctionCount() {
@@ -599,7 +606,7 @@ function correctionCount() {
 }
 
 function updatePaintStats() {
-  const finished = paintState.dials.filter((dial) => dial.coverage >= 1).length;
+  const finished = paintState.dials.filter((dial) => dial.locked || dialCountsAsPainted(dial)).length;
   const correctionNeeded = correctionCount();
   const mixPercent = Math.round(paintState.mixQuality * 100);
   const brushState =
@@ -675,8 +682,8 @@ function prepareNextWatch(message) {
 function findNearestDial(x, y) {
   let best = null;
   const dialSet = paintState.zoomedDialIndex === -1
-    ? paintState.dials
-    : [activeDial()].filter(Boolean);
+    ? paintState.dials.filter((dial) => !dial.locked)
+    : [activeDial()].filter((dial) => dial && !dial.locked);
 
   for (const dial of dialSet) {
     const dialX = paintState.zoomedDialIndex === -1 ? dial.x : ZOOM_CENTER_X;
@@ -696,8 +703,8 @@ function findNearestTracePoint(x, y) {
   let best = null;
 
   const dialSet = paintState.zoomedDialIndex === -1
-    ? paintState.dials
-    : [activeDial()].filter(Boolean);
+    ? paintState.dials.filter((dial) => !dial.locked)
+    : [activeDial()].filter((dial) => dial && !dial.locked);
 
   for (const dial of dialSet) {
     const renderPoints = dialRenderPoints(dial);
@@ -801,7 +808,7 @@ function addIngredient(region) {
 }
 
 function dialCountsAsPainted(dial) {
-  return dial.coverage >= 0.96 && !dialNeedsCorrection(dial);
+  return dial.coverage >= 0.94 && !dialNeedsCorrection(dial);
 }
 
 function creditCompletedDials() {
@@ -823,11 +830,14 @@ function creditCompletedDials() {
 }
 
 function paintTone() {
-  const alpha = 0.58 + paintState.mixQuality * 0.32;
+  const mixQuality = Math.max(0, Math.min(1, paintState.mixQuality));
+  const alpha = 0.28 + mixQuality * 0.72;
+  const fillAlpha = Math.min(1, alpha + 0.08);
+  const strayAlpha = 0.3 + mixQuality * 0.54;
   return {
     stroke: `rgba(236, 216, 120, ${alpha})`,
-    fill: `rgba(240, 222, 132, ${alpha + 0.06})`,
-    stray: `rgba(228, 204, 104, ${0.5 + paintState.mixQuality * 0.22})`,
+    fill: `rgba(240, 222, 132, ${fillAlpha})`,
+    stray: `rgba(228, 204, 104, ${strayAlpha})`,
   };
 }
 
@@ -876,11 +886,12 @@ function drawDialPaint(dial, zoomed = false) {
   }
 
   paintCtx.fillStyle = tone.fill;
+  const mixOpacity = 0.28 + Math.max(0, Math.min(1, paintState.mixQuality)) * 0.72;
   for (let i = 0; i < points.length; i += 1) {
     const pointLevel = Math.max(0, Math.min(PAINT_POINT_COMPLETE, levelSet[i] || 0));
     if (pointLevel <= 0) continue;
     const point = points[i];
-    const opacity = Math.max(0.1, pointLevel / PAINT_POINT_COMPLETE);
+    const opacity = Math.max(0.08, Math.min(1, (pointLevel / PAINT_POINT_COMPLETE) * mixOpacity));
     paintCtx.save();
     paintCtx.globalAlpha = opacity;
     paintCtx.beginPath();
@@ -953,14 +964,22 @@ function paintAt(x, y) {
     return;
   }
 
+  if (paintState.zoomedDialIndex !== -1) {
+    const focusedDial = activeDial();
+    if (focusedDial?.locked) {
+      paintPrompt.textContent = `Numeral ${focusedDial.label} is already complete and sealed. Move to another marker.`;
+      return;
+    }
+  }
+
   dullBrushOnUse();
 
   const hit = findNearestTracePoint(x, y);
   if (!hit) {
     paintPrompt.textContent = "The stroke slips outside the guide and leaves a visible mistake.";
     const relevantDials = paintState.zoomedDialIndex === -1
-      ? paintState.dials
-      : [activeDial()].filter(Boolean);
+      ? paintState.dials.filter((dial) => !dial.locked)
+      : [activeDial()].filter((dial) => dial && !dial.locked);
     for (const dial of relevantDials) {
       const dialCenterX = paintState.zoomedDialIndex === -1 ? dial.x : ZOOM_CENTER_X;
       const dialCenterY = paintState.zoomedDialIndex === -1 ? dial.y : ZOOM_CENTER_Y;
@@ -1148,6 +1167,11 @@ function correctAt(x, y) {
     return;
   }
 
+  if (target.dial.locked) {
+    paintPrompt.textContent = `Numeral ${target.dial.label} is already complete and sealed.`;
+    return;
+  }
+
   const correctionRadius = paintState.zoomedDialIndex === -1 ? 12 : 24;
   let cleanedMarks = 0;
   let nearbyPaintPoints = 0;
@@ -1210,6 +1234,11 @@ function wipeNearestDial() {
     return;
   }
 
+  if (target.locked) {
+    paintPrompt.textContent = `Numeral ${target.label} is already complete and sealed.`;
+    return;
+  }
+
   const preservedBrushSize = paintState.brushSize;
   const preservedPaintLoad = paintState.paintLoaded;
   const preservedTool = paintState.tool;
@@ -1233,9 +1262,33 @@ function wipeNearestDial() {
 }
 
 function updateCoverage() {
-  for (const dial of paintState.dials) {
-    const painted = dial.paintedMask.filter(Boolean).length;
-    dial.coverage = dial.targetPoints.length === 0 ? 0 : painted / dial.targetPoints.length;
+  for (const [dialIndex, dial] of paintState.dials.entries()) {
+    if (!dial.paintLevel || dial.paintLevel.length !== dial.paintedMask.length) {
+      dial.paintLevel = dial.paintedMask.map((painted) => (painted ? PAINT_POINT_COMPLETE : 0));
+    }
+    let effectivePaint = 0;
+    for (let i = 0; i < dial.targetPoints.length; i += 1) {
+      const level = Math.max(0, Math.min(PAINT_POINT_COMPLETE, dial.paintLevel[i] || 0));
+      if (level >= PAINT_POINT_COVERAGE_THRESHOLD) {
+        dial.paintedMask[i] = true;
+        effectivePaint += 1;
+        continue;
+      }
+      if (dial.paintedMask[i]) {
+        effectivePaint += 1;
+        continue;
+      }
+      if (level >= PAINT_POINT_SOFT_COVERAGE_THRESHOLD) {
+        effectivePaint += Math.min(1, level / PAINT_POINT_COVERAGE_THRESHOLD);
+      }
+    }
+    dial.coverage = dial.targetPoints.length === 0 ? 0 : effectivePaint / dial.targetPoints.length;
+    if (!dial.locked && dialCountsAsPainted(dial)) {
+      dial.locked = true;
+      if (paintState.zoomedDialIndex === dialIndex) {
+        paintPrompt.textContent = `Numeral ${dial.label} is complete and sealed.`;
+      }
+    }
   }
   updateActiveDialIndex();
 }

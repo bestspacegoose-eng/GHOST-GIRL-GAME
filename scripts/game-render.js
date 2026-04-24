@@ -99,7 +99,7 @@ function drawMixDish(centerX, centerY, hovered = false) {
 }
 
 function fanBrush(messageBase) {
-  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.2);
+  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.17);
   if (paintState.brushSize >= BRUSH_FANNED_THRESHOLD) {
     paintPrompt.textContent = `${messageBase} The brush has fully fanned out.`;
   } else if (paintState.brushSize >= BRUSH_ROUGH_THRESHOLD) {
@@ -110,7 +110,7 @@ function fanBrush(messageBase) {
 }
 
 function dullBrushOnUse() {
-  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.012);
+  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.009);
 }
 
 function drawAssetCentered(image, x, y, width, height, alpha = 1) {
@@ -543,7 +543,7 @@ function drawHemmingView() {
     drawHemmingTimingCircle(timing);
   }
 
-  drawImageCursor("mix");
+  drawImageCursor("hemming");
 }
 
 function drawWatchMinigame() {
@@ -842,10 +842,61 @@ function drawTutorialPanel() {
   paintCtx.restore();
 }
 
+let cachedHemmingCursorImage = null;
+
+function drawableImageReady(image) {
+  if (!image) return false;
+  if (typeof image.naturalWidth === "number") {
+    return image.naturalWidth > 0;
+  }
+  return Boolean(image.width && image.height);
+}
+
+function preparedHemmingCursorImage() {
+  if (cachedHemmingCursorImage) return cachedHemmingCursorImage;
+  const source = assetImages.cursorHemming;
+  if (!imageReady(source)) return null;
+
+  const offscreen = document.createElement("canvas");
+  offscreen.width = source.naturalWidth;
+  offscreen.height = source.naturalHeight;
+  const offCtx = offscreen.getContext("2d");
+  offCtx.drawImage(source, 0, 0);
+
+  const imageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
+  const data = imageData.data;
+  const sampleA = (10 * offscreen.width + 10) * 4;
+  const sampleB = (10 * offscreen.width + 60) * 4;
+  const bgA = [data[sampleA], data[sampleA + 1], data[sampleA + 2]];
+  const bgB = [data[sampleB], data[sampleB + 1], data[sampleB + 2]];
+
+  const distanceTo = (r, g, b, bg) =>
+    Math.abs(r - bg[0]) + Math.abs(g - bg[1]) + Math.abs(b - bg[2]);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const distA = distanceTo(r, g, b, bgA);
+    const distB = distanceTo(r, g, b, bgB);
+    if (distA < 46 || distB < 46) {
+      data[i + 3] = 0;
+    }
+  }
+
+  offCtx.putImageData(imageData, 0, 0);
+  cachedHemmingCursorImage = offscreen;
+  return cachedHemmingCursorImage;
+}
+
 function drawImageCursor(mode) {
   let image;
+  let useHemmingCursor = false;
   if (mode === "mix") {
     image = assetImages.cursorMix;
+  } else if (mode === "hemming") {
+    image = preparedHemmingCursorImage() || assetImages.cursorHemming;
+    useHemmingCursor = true;
   } else if (mode === "brush") {
     image =
       paintState.brushSize >= BRUSH_FANNED_THRESHOLD
@@ -857,7 +908,7 @@ function drawImageCursor(mode) {
     image = assetImages.cursorNail;
   }
 
-  if (!imageReady(image)) {
+  if (!drawableImageReady(image)) {
     paintCtx.save();
     paintCtx.strokeStyle = "rgba(255,255,255,0.9)";
     paintCtx.lineWidth = 2;
@@ -906,6 +957,21 @@ function drawImageCursor(mode) {
     const tipX = 72 * scaleX;
     const tipY = 60 * scaleY;
     paintCtx.drawImage(image, paintState.cursorX - tipX, paintState.cursorY - tipY, width, height);
+    return;
+  }
+
+  if (useHemmingCursor) {
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    const sx = sourceWidth * 0.42;
+    const sy = sourceHeight * 0.11;
+    const sw = sourceWidth * 0.35;
+    const sh = sourceHeight * 0.89;
+    const width = 74;
+    const height = width * (sh / sw);
+    const tipX = width * 0.92;
+    const tipY = height * 0.045;
+    paintCtx.drawImage(image, sx, sy, sw, sh, paintState.cursorX - tipX, paintState.cursorY - tipY, width, height);
     return;
   }
 

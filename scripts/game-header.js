@@ -67,6 +67,7 @@ const MAX_PAINT_LOAD = 1;
 const PAINT_DRAIN_PER_STROKE = 0.012;
 const PAINT_POINT_COMPLETE = 1;
 const PAINT_POINT_COVERAGE_THRESHOLD = 0.92;
+const PAINT_POINT_SOFT_COVERAGE_THRESHOLD = 0.62;
 const STATION_LAYOUT = {
   powder: { x: 98, y: 210, w: 118, h: 156, rx: 44, ry: 48 },
   gum: { x: 170, y: 356, w: 114, h: 90, rx: 42, ry: 30 },
@@ -133,6 +134,7 @@ const ASSET_PATHS = {
   waterPlate: "./assets/water-plate.png",
   mixedPaint: "./assets/mixed-paint.png",
   directWipeHand: "./assets/direct-wipe-hand.png",
+  cursorHemming: "./assets/cursor-hemming.png",
   thoughtPopup: "./assets/thought-popup.png",
   groceries: "./assets/groceries.png",
   workbenchBrush: "./assets/workbench-brush.png",

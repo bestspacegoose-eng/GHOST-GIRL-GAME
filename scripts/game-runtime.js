@@ -264,6 +264,11 @@ paintCanvas.addEventListener("mousedown", (event) => {
     }
     const dial = findNearestDial(position.x, position.y)?.dial;
     if (dial) {
+      if (dial.locked) {
+        paintPrompt.textContent = `Numeral ${dial.label} is already complete and sealed.`;
+        drawWatchMinigame();
+        return;
+      }
       enterDialZoom(paintState.dials.indexOf(dial));
       return;
     }
@@ -336,8 +341,11 @@ document.addEventListener("keyup", (event) => {
   keys.delete(event.code);
 });
 
-canvas.addEventListener("click", () => {
+canvas.addEventListener("click", (event) => {
   if (paintState.active || !dialogOverlay.classList.contains("hidden")) return;
+  const rect = canvas.getBoundingClientRect();
+  roomState.cursorX = ((event.clientX - rect.left) / rect.width) * WIDTH;
+  roomState.cursorY = ((event.clientY - rect.top) / rect.height) * HEIGHT;
 
   if (gameState.dayTransition) {
     fadeTitleCard();

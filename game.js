@@ -190,6 +190,7 @@ const gameState = {
   postShiftActivity: "groceries",
   postHomeSummary: "",
   hemmingTasks: [],
+  workerProgress: {},
   tutorialSeen: false,
 };
 
@@ -573,6 +574,30 @@ const WORKER_PROFILES = {
     ],
   },
 };
+const WORKER_NAMES = {
+  "worker-1": "Agnes",
+  "worker-2": "Ruth",
+  "worker-3": "Clara",
+  "worker-4": "Evelyn",
+  "worker-5": "Mae",
+  "worker-6": "Lillian",
+  "worker-7": "Nora",
+  "worker-8": "Pearl",
+  "worker-9": "Vi",
+};
+const WORKER_NAME_REVEAL_DAY = {
+  "worker-1": 1,
+  "worker-2": 2,
+  "worker-3": 0,
+  "worker-4": 2,
+  "worker-5": 3,
+  "worker-6": 4,
+  "worker-7": 3,
+  "worker-8": 1,
+  "worker-9": 0,
+};
+const FAMILIAR_WORKERS_REQUIRED = 3;
+
 const spritePalettes = {
   clock: {
     ".": null,
@@ -716,6 +741,73 @@ function dayVariantIndex(id, length) {
   return (gameState.currentDay * 3 + numeric * 5) % length;
 }
 
+function buildDefaultWorkerProgress() {
+  const progress = {};
+  for (const id of Object.keys(WORKER_PROFILES)) {
+    progress[id] = {
+      talks: 0,
+      familiarity: "stranger",
+      nameKnown: false,
+      lastDaySpoken: -1,
+    };
+  }
+  return progress;
+}
+
+function ensureWorkerProgressState() {
+  if (!gameState.workerProgress || typeof gameState.workerProgress !== "object") {
+    gameState.workerProgress = buildDefaultWorkerProgress();
+    return gameState.workerProgress;
+  }
+  for (const [id, defaultState] of Object.entries(buildDefaultWorkerProgress())) {
+    if (!gameState.workerProgress[id]) {
+      gameState.workerProgress[id] = { ...defaultState };
+    }
+  }
+  return gameState.workerProgress;
+}
+
+function workerProgressFor(id) {
+  const state = ensureWorkerProgressState();
+  if (!state[id]) {
+    state[id] = {
+      talks: 0,
+      familiarity: "stranger",
+      nameKnown: false,
+      lastDaySpoken: -1,
+    };
+  }
+  return state[id];
+}
+
+function workerFamiliarityFromTalks(talks) {
+  if (talks >= 2) return "familiar";
+  if (talks >= 1) return "acquainted";
+  return "stranger";
+}
+
+function workerNameRevealDay(id) {
+  return WORKER_NAME_REVEAL_DAY[id] ?? 6;
+}
+
+function workerName(id) {
+  return WORKER_NAMES[id] || "Unknown worker";
+}
+
+function workerDisplayName(id) {
+  const progress = workerProgressFor(id);
+  return progress.nameKnown ? workerName(id) : "???";
+}
+
+function familiarWorkersCount() {
+  const progress = ensureWorkerProgressState();
+  return Object.values(progress).filter((entry) => entry.familiarity === "familiar").length;
+}
+
+function canStandWithWorkers() {
+  return familiarWorkersCount() >= FAMILIAR_WORKERS_REQUIRED;
+}
+
 function workerAppearanceText(id) {
   const profile = WORKER_PROFILES[id];
   if (!profile) return "";
@@ -726,8 +818,18 @@ function workerAppearanceText(id) {
 function workerPromptText(id) {
   const profile = WORKER_PROFILES[id];
   if (!profile) return "She keeps her focus on the tray.";
+  const progress = workerProgressFor(id);
   const descriptor = profile.description[dayVariantIndex(id, profile.description.length)];
-  return `A ${descriptor} woman at the bench. ${workerAppearanceText(id)}`;
+  const lead = progress.nameKnown
+    ? `${workerDisplayName(id)} at the bench.`
+    : `A ${descriptor} woman at the bench.`;
+  if (progress.familiarity === "familiar") {
+    return `${lead} She looks up when you approach. ${workerAppearanceText(id)}`;
+  }
+  if (progress.familiarity === "acquainted") {
+    return `${lead} She recognizes you now. ${workerAppearanceText(id)}`;
+  }
+  return `${lead} ${workerAppearanceText(id)}`;
 }
 
 function workerDialogueLines(id) {
@@ -737,9 +839,41 @@ function workerDialogueLines(id) {
   return profile.dailyDialogue[dayIndex];
 }
 
+function workerDialogueForInteraction(id) {
+  const progress = workerProgressFor(id);
+  const firstTalk = progress.talks === 0;
+  const [dailyPrimary, dailySecondary] = workerDialogueLines(id);
+  let primary = firstTalk
+    ? "She finally pauses and gives you a measured look."
+    : dailyPrimary;
+  let secondary = firstTalk ? dailyPrimary : (dailySecondary || "");
+
+  const revealEligible = !progress.nameKnown && gameState.currentDay >= workerNameRevealDay(id);
+  if (revealEligible) {
+    progress.nameKnown = true;
+    primary = `"I'm ${workerName(id)}," she says. ${primary}`;
+  } else if (firstTalk && !progress.nameKnown) {
+    secondary = `${secondary}${secondary ? " " : ""}She still keeps her name to herself.`;
+  }
+
+  const previousFamiliarity = progress.familiarity;
+  progress.talks += 1;
+  progress.lastDaySpoken = gameState.currentDay;
+  progress.familiarity = workerFamiliarityFromTalks(progress.talks);
+
+  if (progress.familiarity === "acquainted" && previousFamiliarity === "stranger") {
+    secondary = `${secondary}${secondary ? " " : ""}She starts to recognize you now.`;
+  }
+  if (progress.familiarity === "familiar" && previousFamiliarity !== "familiar") {
+    secondary = `${secondary}${secondary ? " " : ""}You have reached familiar standing with her.`;
+  }
+
+  return [primary, secondary];
+}
+
 function interactableDisplayName(item) {
   if (!item) return "";
-  if (item.kind === "worker") return "???";
+  if (item.kind === "worker") return workerDisplayName(item.id);
   if (item.kind === "bench") return "Workbench";
   if (item.kind === "clock") return "Wall Clock";
   return item.name;
@@ -864,16 +998,17 @@ const interactables = [
     x: 8.2,
     y: 4.15,
     prompt() {
-      return !gameState.shiftActive && !gameState.shiftEnded
+      return !gameState.shiftActive && !gameState.shiftEnded && gameState.currentDay === 0 && !gameState.tutorialSeen
         ? "She looks like she might explain the work if you ask before the bell."
-        : "She glances sideways without stopping her hand.";
+        : workerPromptText("worker-3");
     },
     interact() {
-      if (!gameState.shiftActive && !gameState.shiftEnded) {
+      if (!gameState.shiftActive && !gameState.shiftEnded && gameState.currentDay === 0 && !gameState.tutorialSeen) {
         showBenchTutorial();
         return;
       }
-      setMessage("You're the new girl, right? Is that why you're dilly dallying?");
+      const [primary, secondary] = workerDialogueForInteraction("worker-3");
+      setMessage(primary, secondary);
     },
   },
   {
@@ -951,7 +1086,7 @@ for (const entry of interactables) {
   if (entry.kind !== "worker") continue;
   entry.prompt = () => workerPromptText(entry.id);
   entry.interact = () => {
-    const [primary, secondary] = workerDialogueLines(entry.id);
+    const [primary, secondary] = workerDialogueForInteraction(entry.id);
     setMessage(primary, secondary);
   };
 }
@@ -1395,8 +1530,11 @@ function refreshHint() {
 
   if (!gameState.shiftActive && !gameState.shiftEnded) {
     if (gameState.currentDay === 4 && !gameState.dayFiveCutsceneSeen) {
+      const familiarCount = familiarWorkersCount();
       hint.textContent = "The girls are gathering before the bell.";
-      subhint.textContent = "Click the wall clock to decide whether to stand with them or return to the bench.";
+      subhint.textContent = canStandWithWorkers()
+        ? "Click the wall clock to decide whether to stand with them or return to the bench."
+        : `You need familiar standing with at least ${FAMILIAR_WORKERS_REQUIRED} workers to stand with them (${familiarCount}/${FAMILIAR_WORKERS_REQUIRED}).`;
       return;
     }
     hint.textContent = "Clock in when you're ready.";
@@ -1603,13 +1741,26 @@ function showBenchTutorial() {
 function showDayFiveCutscene() {
   resetDialogButtons();
   dialogTitle.textContent = "Day 5 - Before The Bell";
-  dialogBody.textContent =
-    "The remaining girls gather before the shift whistle. They speak in hushed bursts about the dial painters who came together in real life to demand compensation: the New Jersey women led by Grace Fryer, and later the Illinois workers who kept pressing their claims even while their health failed. The room goes still while they decide whether to stand together now, or let the benches swallow another day.";
-  dialogAltButton.textContent = "Return to the bench";
-  dialogAltButton.classList.remove("hidden");
-  dialogButton.textContent = "Stand with the girls";
+  const familiarCount = familiarWorkersCount();
+  const unlocksSolidarity = canStandWithWorkers();
+  const sharedIntro =
+    "The remaining girls gather before the shift whistle. They speak in hushed bursts about the dial painters who came together in real life to demand compensation: the New Jersey women led by Grace Fryer, and later the Illinois workers who kept pressing their claims even while their health failed.";
+  if (unlocksSolidarity) {
+    dialogBody.textContent =
+      `${sharedIntro} The room goes still while they decide whether to stand together now, or let the benches swallow another day. ` +
+      `You have earned familiar standing with ${familiarCount} workers, enough that they ask you to choose with them.`;
+    dialogAltButton.textContent = "Return to the bench";
+    dialogAltButton.classList.remove("hidden");
+    dialogButton.textContent = "Stand with the girls";
+    gameState.dialogMode = "day-five-choice";
+  } else {
+    dialogBody.textContent =
+      `${sharedIntro} You are still outside the inner circle: familiar standing with ${familiarCount}/${FAMILIAR_WORKERS_REQUIRED} workers. ` +
+      "No one asks you to join the stand yet, and the line moves on without your voice in that room.";
+    dialogButton.textContent = "Return to the bench";
+    gameState.dialogMode = "day-five-locked";
+  }
   dialogOverlay.classList.remove("hidden");
-  gameState.dialogMode = "day-five-choice";
 }
 
 function showSolidarityEnding() {
@@ -2261,6 +2412,7 @@ function resetWeek() {
   gameState.postShiftActivity = "groceries";
   gameState.postHomeSummary = "";
   gameState.hemmingTasks = [];
+  gameState.workerProgress = buildDefaultWorkerProgress();
   paintState.active = false;
   paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS[0];
   paintState.hemmingTiming.active = false;
@@ -5054,6 +5206,15 @@ bindPress(dialogButton, () => {
     gameState.dayFiveCutsceneSeen = true;
     gameState.joinedWorkers = true;
     showSolidarityEnding();
+    return;
+  }
+
+  if (gameState.dialogMode === "day-five-locked") {
+    dialogOverlay.classList.add("hidden");
+    resetDialogButtons();
+    gameState.dayFiveCutsceneSeen = true;
+    gameState.joinedWorkers = false;
+    startShift(true);
     return;
   }
   continueAfterDialog();

@@ -397,9 +397,60 @@ function drawGroceriesView() {
   drawImageCursor("mix");
 }
 
+function drawHemmingTimingCircle(timing) {
+  const cx = 96;
+  const cy = paintCanvas.height - 88;
+  const radius = 52;
+
+  paintCtx.save();
+  paintCtx.fillStyle = "rgba(0, 0, 0, 0.74)";
+  paintCtx.beginPath();
+  paintCtx.arc(cx, cy, radius + 20, 0, Math.PI * 2);
+  paintCtx.fill();
+
+  paintCtx.strokeStyle = "rgba(255,255,255,0.26)";
+  paintCtx.lineWidth = 7;
+  paintCtx.beginPath();
+  paintCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+  paintCtx.stroke();
+
+  const targetAngle = timing.targetAngle;
+  const targetWindows = [
+    { key: "okay", color: "rgba(211, 169, 118, 0.52)", width: HEMMING_TIMING_WINDOWS.okay },
+    { key: "good", color: "rgba(202, 226, 150, 0.68)", width: HEMMING_TIMING_WINDOWS.good },
+    { key: "perfect", color: "rgba(245, 255, 186, 0.96)", width: HEMMING_TIMING_WINDOWS.perfect },
+  ];
+  for (const zone of targetWindows) {
+    const spread = zone.width * Math.PI * 2;
+    paintCtx.strokeStyle = zone.color;
+    paintCtx.lineWidth = zone.key === "perfect" ? 10 : 7;
+    paintCtx.beginPath();
+    paintCtx.arc(cx, cy, radius, targetAngle - spread, targetAngle + spread);
+    paintCtx.stroke();
+  }
+
+  const markerX = cx + Math.cos(timing.angle) * radius;
+  const markerY = cy + Math.sin(timing.angle) * radius;
+  paintCtx.fillStyle = "rgba(255, 248, 212, 0.98)";
+  paintCtx.beginPath();
+  paintCtx.arc(markerX, markerY, 6.3, 0, Math.PI * 2);
+  paintCtx.fill();
+
+  paintCtx.fillStyle = "rgba(255,255,255,0.92)";
+  paintCtx.textAlign = "center";
+  paintCtx.textBaseline = "middle";
+  paintCtx.font = "bold 13px Georgia";
+  paintCtx.fillText("TIME STITCH", cx, cy - 5);
+  paintCtx.font = "12px Georgia";
+  paintCtx.fillStyle = "rgba(255,255,255,0.74)";
+  paintCtx.fillText("click now", cx, cy + 14);
+  paintCtx.restore();
+}
+
 function drawHemmingView() {
   const w = paintCanvas.width;
   const h = paintCanvas.height;
+  const timing = currentHemmingTimingState();
 
   paintCtx.clearRect(0, 0, w, h);
   const bg = paintCtx.createLinearGradient(0, 0, 0, h);
@@ -439,6 +490,10 @@ function drawHemmingView() {
     paintCtx.textAlign = "right";
     paintCtx.fillStyle = "rgba(255,255,255,0.76)";
     paintCtx.fillText(`${task.stitchesDone}/${task.stitchesNeeded}`, rect.x + rect.w - 12, rect.y + 22);
+    paintCtx.fillStyle = "rgba(255,255,255,0.55)";
+    paintCtx.font = "12px Georgia";
+    paintCtx.fillText(taskHemmingQualityLabel(task), rect.x + rect.w - 12, rect.y + rect.h - 48);
+    paintCtx.font = "14px Georgia";
     paintCtx.textAlign = "left";
 
     const lineY = rect.y + rect.h - 19;
@@ -454,13 +509,21 @@ function drawHemmingView() {
     for (let stitch = 0; stitch < task.stitchesNeeded; stitch += 1) {
       const spot = stitchPointForTask(index, stitch);
       const done = stitch < task.stitchesDone;
+      const pendingTimed = timing
+        && timing.active
+        && timing.taskIndex === index
+        && timing.stitchIndex === stitch;
       paintCtx.beginPath();
-      paintCtx.arc(spot.x, spot.y, done ? 4.4 : 3.3, 0, Math.PI * 2);
-      paintCtx.fillStyle = done ? "rgba(255, 224, 140, 0.94)" : "rgba(208, 208, 208, 0.28)";
+      paintCtx.arc(spot.x, spot.y, done ? 4.4 : (pendingTimed ? 5.2 : 3.3), 0, Math.PI * 2);
+      paintCtx.fillStyle = done
+        ? "rgba(255, 224, 140, 0.94)"
+        : pendingTimed
+          ? "rgba(249, 244, 186, 0.95)"
+          : "rgba(208, 208, 208, 0.28)";
       paintCtx.fill();
       if (!done) {
-        paintCtx.strokeStyle = "rgba(255,255,255,0.22)";
-        paintCtx.lineWidth = 1.2;
+        paintCtx.strokeStyle = pendingTimed ? "rgba(255, 245, 194, 0.88)" : "rgba(255,255,255,0.22)";
+        paintCtx.lineWidth = pendingTimed ? 2.1 : 1.2;
         paintCtx.stroke();
       }
     }
@@ -475,6 +538,10 @@ function drawHemmingView() {
   paintCtx.fillStyle = "#f5f5f5";
   paintCtx.font = "18px Georgia";
   paintCtx.fillText("Finish hemming", finish.x + finish.w / 2, finish.y + finish.h / 2);
+
+  if (timing && timing.active) {
+    drawHemmingTimingCircle(timing);
+  }
 
   drawImageCursor("mix");
 }
@@ -895,4 +962,3 @@ function endFractureDrag() {
     completeFracturePuzzle();
   }
 }
-

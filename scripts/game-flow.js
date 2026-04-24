@@ -251,8 +251,130 @@ function createHemmingTasks() {
       label,
       stitchesNeeded: base + healthPush + Math.floor(Math.random() * 3),
       stitchesDone: 0,
+      ratings: [],
     };
   });
+}
+
+function emptyHemmingGradeCounts() {
+  return { bad: 0, okay: 0, good: 0, perfect: 0 };
+}
+
+function hemmingGradeWeight(grade) {
+  if (grade === "perfect") return 4;
+  if (grade === "good") return 3;
+  if (grade === "okay") return 2;
+  return 1;
+}
+
+function taskHemmingGradeCounts(task) {
+  const counts = emptyHemmingGradeCounts();
+  if (!task || !task.ratings) return counts;
+  for (const grade of task.ratings) {
+    if (counts[grade] !== undefined) counts[grade] += 1;
+  }
+  return counts;
+}
+
+function taskHemmingQuality(task) {
+  if (!task || !task.ratings || task.ratings.length === 0) return "bad";
+  const total = task.ratings.reduce((sum, grade) => sum + hemmingGradeWeight(grade), 0);
+  const average = total / task.ratings.length;
+  if (average >= 3.55) return "perfect";
+  if (average >= 2.75) return "good";
+  if (average >= 1.95) return "okay";
+  return "bad";
+}
+
+function taskHemmingQualityLabel(task) {
+  if (!task || !task.ratings || task.ratings.length === 0) return "Unrated";
+  const quality = taskHemmingQuality(task);
+  if (quality === "perfect") return "Perfect";
+  if (quality === "good") return "Good";
+  if (quality === "okay") return "Okay";
+  return "Bad";
+}
+
+function hemmingOverallGradeCounts() {
+  const counts = emptyHemmingGradeCounts();
+  for (const task of gameState.hemmingTasks) {
+    if (!task.ratings) continue;
+    for (const grade of task.ratings) {
+      if (counts[grade] !== undefined) counts[grade] += 1;
+    }
+  }
+  return counts;
+}
+
+function currentHemmingTimingState(now = performance.now()) {
+  const timing = paintState.hemmingTiming;
+  if (!timing || !timing.active) return null;
+  const elapsed = Math.max(0, now - timing.startedAt);
+  const phase = (elapsed % timing.periodMs) / timing.periodMs;
+  return {
+    ...timing,
+    phase,
+    angle: phase * Math.PI * 2 - Math.PI / 2,
+    targetAngle: timing.target * Math.PI * 2 - Math.PI / 2,
+  };
+}
+
+function timingGradeFromDiff(diff) {
+  if (diff <= HEMMING_TIMING_WINDOWS.perfect) return "perfect";
+  if (diff <= HEMMING_TIMING_WINDOWS.good) return "good";
+  if (diff <= HEMMING_TIMING_WINDOWS.okay) return "okay";
+  return "bad";
+}
+
+function startHemmingTiming(taskIndex) {
+  const task = gameState.hemmingTasks[taskIndex];
+  if (!task || task.stitchesDone >= task.stitchesNeeded) return false;
+  paintState.hemmingTiming = {
+    active: true,
+    taskIndex,
+    stitchIndex: task.stitchesDone,
+    startedAt: performance.now(),
+    periodMs: 1200 - Math.min(280, gameState.currentDay * 38),
+    target: 0.66 + Math.random() * 0.24,
+  };
+  paintPrompt.textContent = `Thread ready for ${task.label}. Click again when the timing ring lines up.`;
+  return true;
+}
+
+function resolveHemmingTiming() {
+  const timing = currentHemmingTimingState();
+  if (!timing) return false;
+  const task = gameState.hemmingTasks[timing.taskIndex];
+  if (!task || task.stitchesDone >= task.stitchesNeeded) {
+    paintState.hemmingTiming.active = false;
+    return false;
+  }
+
+  const rawDiff = Math.abs(timing.phase - timing.target);
+  const wrappedDiff = Math.min(rawDiff, 1 - rawDiff);
+  const grade = timingGradeFromDiff(wrappedDiff);
+  task.ratings.push(grade);
+  task.stitchesDone = Math.min(task.stitchesNeeded, task.stitchesDone + 1);
+  paintState.hemmingTiming.active = false;
+
+  const gradeWord = grade === "perfect"
+    ? "perfect"
+    : grade === "good"
+      ? "good"
+      : grade === "okay"
+        ? "okay"
+        : "bad";
+  if (task.stitchesDone >= task.stitchesNeeded) {
+    paintPrompt.textContent = `${task.label} finished with ${taskHemmingQualityLabel(task).toLowerCase()} stitching.`;
+  } else {
+    paintPrompt.textContent = `${gradeWord.toUpperCase()} timing. Continue along ${task.label}.`;
+  }
+
+  updateHemmingStats();
+  if (hemmingAllFinished()) {
+    mixPrompt.textContent = "Every hem is stitched. Finish chores when you're ready to head to bed.";
+  }
+  return true;
 }
 
 function hemmingTotalStitchesNeeded() {
@@ -273,9 +395,13 @@ function hemmingAllFinished() {
 
 function hemmingSummary() {
   const completed = hemmingCompletedCount();
+  const counts = hemmingOverallGradeCounts();
+  const stitched = counts.bad + counts.okay + counts.good + counts.perfect;
   if (completed <= 0) return "no finished hems tonight";
-  if (completed >= gameState.hemmingTasks.length) return "every hem finished before bed";
-  return `${completed} hem${completed === 1 ? "" : "s"} finished`;
+  if (completed >= gameState.hemmingTasks.length) {
+    return `every hem finished (${counts.perfect} perfect, ${counts.good} good, ${counts.okay} okay, ${counts.bad} bad)`;
+  }
+  return `${completed} hem${completed === 1 ? "" : "s"} finished with ${stitched} timed stitches`;
 }
 
 function hemmingReflectionText() {
@@ -293,9 +419,11 @@ function hemmingReflectionText() {
 }
 
 function updateHemmingStats() {
+  const counts = hemmingOverallGradeCounts();
   paintStats.textContent =
     `Hemmed ${hemmingCompletedCount()}/${gameState.hemmingTasks.length} garments. ` +
-    `Stitches ${hemmingTotalStitchesDone()}/${hemmingTotalStitchesNeeded()}.`;
+    `Stitches ${hemmingTotalStitchesDone()}/${hemmingTotalStitchesNeeded()}. ` +
+    `Perfect ${counts.perfect} Good ${counts.good} Okay ${counts.okay} Bad ${counts.bad}.`;
 }
 
 function openHemmingTrip() {
@@ -308,10 +436,13 @@ function openHemmingTrip() {
   paintState.cursorX = paintCanvas.width / 2;
   paintState.cursorY = paintCanvas.height / 2;
   paintState.lastPointerMoveAt = performance.now();
+  paintState.hemmingTiming.active = false;
+  paintState.hemmingTiming.taskIndex = -1;
+  paintState.hemmingTiming.stitchIndex = -1;
   gameState.hemmingTasks = createHemmingTasks();
   minigameHeading.textContent = "Evening Hemming";
   paintPrompt.textContent = hemmingReflectionText();
-  mixPrompt.textContent = "Click each glowing stitch mark along the hem line to finish the garment repairs for home.";
+  mixPrompt.textContent = "Click a stitch dot to start timing, then click again for bad/okay/good/perfect stitch quality.";
   updateHemmingStats();
   setStationControlsHidden(true);
   minigameOverlay.classList.remove("hidden");
@@ -329,6 +460,11 @@ function stitchPointForTask(taskIndex, stitchIndex) {
 }
 
 function applyHemStitch(x, y) {
+  if (paintState.hemmingTiming.active) {
+    resolveHemmingTiming();
+    return;
+  }
+
   let best = null;
   for (let i = 0; i < gameState.hemmingTasks.length; i += 1) {
     const task = gameState.hemmingTasks[i];
@@ -341,21 +477,10 @@ function applyHemStitch(x, y) {
   }
 
   if (!best || best.distance > 24) {
-    paintPrompt.textContent = "Guide the needle to the next stitch mark on the hem.";
+    paintPrompt.textContent = "Click the next stitch dot to begin timing that stitch.";
     return;
   }
-
-  best.task.stitchesDone += 1;
-  if (best.task.stitchesDone >= best.task.stitchesNeeded) {
-    paintPrompt.textContent = `${best.task.label} is mended for tomorrow.`;
-  } else {
-    paintPrompt.textContent = "One stitch catches. Keep following the hem line.";
-  }
-
-  updateHemmingStats();
-  if (hemmingAllFinished()) {
-    mixPrompt.textContent = "Every hem is mended. Finish chores when you're ready to head to bed.";
-  }
+  startHemmingTiming(best.taskIndex);
 }
 
 function hemmingHomeSceneText() {
@@ -372,16 +497,36 @@ function hemmingHomeSceneText() {
     opening = "You finish as much mending as you can with trembling hands and a jaw that will not stop throbbing.";
   }
 
+  const perHem = gameState.hemmingTasks
+    .map((task) => {
+      if (task.stitchesDone < task.stitchesNeeded) {
+        return `${task.label} is still unfinished at the hem.`;
+      }
+      const quality = taskHemmingQuality(task);
+      if (quality === "perfect") {
+        return `${task.label} has tiny, even stitches that look nearly professional.`;
+      }
+      if (quality === "good") {
+        return `${task.label} holds together with solid, clean stitching.`;
+      }
+      if (quality === "okay") {
+        return `${task.label} is wearable, though the seam wanders in places.`;
+      }
+      return `${task.label} is stitched, but the line is rough and visibly rushed.`;
+    })
+    .join(" ");
+
+  const counts = hemmingOverallGradeCounts();
   let family;
-  if (completed >= total) {
-    family = "Your siblings brighten when they see every hem repaired, and your parents thank you in the tired, relieved way that means they know exactly what that cost you tonight.";
+  if (completed >= total && counts.perfect + counts.good >= counts.okay + counts.bad) {
+    family = "Your siblings brighten at the repaired clothes, and your parents thank you with real relief in their voices.";
   } else if (completed > 0) {
-    family = "The younger ones quietly sort through the pieces you managed to finish while your parents count what can be worn tomorrow and what must wait.";
+    family = "The family quietly sorts what you managed tonight, grateful but still worried about the pieces that need better repair.";
   } else {
-    family = "There is little to show beyond your effort tonight, and everyone speaks softly, already planning how to stretch one more day from frayed clothes.";
+    family = "There is little to show beyond effort tonight, and everyone speaks softly while planning around worn edges.";
   }
 
-  return `${opening} ${family}`;
+  return `${opening} ${perHem} ${family}`;
 }
 
 function showHomeScene(bodyText, summaryText) {
@@ -405,6 +550,11 @@ function finishGroceriesTrip() {
 }
 
 function finishHemmingTrip() {
+  if (paintState.hemmingTiming.active) {
+    paintPrompt.textContent = "Finish the current timing stitch first.";
+    drawWatchMinigame();
+    return;
+  }
   if (!hemmingAllFinished()) {
     paintPrompt.textContent = "There are still loose hems. Finish each garment's stitch line before heading to bed.";
     drawWatchMinigame();
@@ -480,6 +630,9 @@ function resetWeek() {
   gameState.hemmingTasks = [];
   paintState.active = false;
   paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS[0];
+  paintState.hemmingTiming.active = false;
+  paintState.hemmingTiming.taskIndex = -1;
+  paintState.hemmingTiming.stitchIndex = -1;
   showTitleCard();
   setMessage(
     "A new week begins at the line.",
@@ -615,4 +768,3 @@ function extractNumeralTemplates(styleKey) {
   numeralTemplateCache[styleKey] = templates;
   return templates;
 }
-

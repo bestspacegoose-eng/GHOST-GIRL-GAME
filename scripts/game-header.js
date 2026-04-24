@@ -107,6 +107,12 @@ const HEMMING_FAMILY_ITEMS = [
   "Denny's shirt hem",
   "Maggie's apron",
 ];
+const HEMMING_GRADE_ORDER = ["bad", "okay", "good", "perfect"];
+const HEMMING_TIMING_WINDOWS = {
+  perfect: 0.045,
+  good: 0.095,
+  okay: 0.17,
+};
 const NUMERAL_SHEET_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 const NUMERAL_STYLE_KEYS = ["numeralsStyleOrnate", "numeralsStyleBlock"];
 const ASSET_PATHS = {
@@ -215,6 +221,14 @@ const paintState = {
   tutorial: null,
   autoSubmitTimer: -1,
   watchNumeralStyle: NUMERAL_STYLE_KEYS[0],
+  hemmingTiming: {
+    active: false,
+    taskIndex: -1,
+    stitchIndex: -1,
+    startedAt: 0,
+    periodMs: 1200,
+    target: 0.75,
+  },
 };
 
 const TUTORIAL_STEPS = [
@@ -1343,7 +1357,7 @@ function refreshHint() {
 
   if (paintState.active && paintState.mode === "hemming") {
     hint.textContent = "Repair clothes before bed.";
-    subhint.textContent = "Click the next stitch marks along each hem line, then press Finish hemming.";
+    subhint.textContent = "Click a stitch dot to start timing, then click again for bad/okay/good/perfect quality.";
     return;
   }
 
@@ -1595,4 +1609,3 @@ function advanceToNextDay(message) {
   gameState.lastShiftProgress = 0;
   sendToDayStart(message);
 }
-

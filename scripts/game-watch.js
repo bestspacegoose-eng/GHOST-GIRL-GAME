@@ -547,7 +547,7 @@ function openMinigame(label) {
   if (!restoreBenchWork(label)) {
     paintState.watchIndex += 1;
     paintState.brushSize = DEFAULT_BRUSH_SIZE;
-    paintState.watchNumeralStyle = chooseRandomNumeralStyle();
+    paintState.watchNumeralStyle = chooseRandomNumeralStyle(paintState.watchNumeralStyle);
     paintState.paintLoaded = 0;
     paintState.zoomedDialIndex = -1;
     paintState.readyToSubmit = false;
@@ -660,7 +660,7 @@ function prepareNextWatch(message) {
   paintState.zoomedDialIndex = -1;
   paintState.readyToSubmit = false;
   resetMix();
-  paintState.watchNumeralStyle = chooseRandomNumeralStyle();
+  paintState.watchNumeralStyle = chooseRandomNumeralStyle(paintState.watchNumeralStyle);
   buildDialState();
   moveCursorToActiveDial();
   paintState.paintLoaded = 0;
@@ -1269,4 +1269,3 @@ function updateAutoSubmit(dt) {
     sendCurrentWatch();
   }
 }
-

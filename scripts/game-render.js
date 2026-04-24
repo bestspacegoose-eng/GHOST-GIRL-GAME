@@ -99,7 +99,7 @@ function drawMixDish(centerX, centerY, hovered = false) {
 }
 
 function fanBrush(messageBase) {
-  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.3);
+  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.2);
   if (paintState.brushSize >= BRUSH_FANNED_THRESHOLD) {
     paintPrompt.textContent = `${messageBase} The brush has fully fanned out.`;
   } else if (paintState.brushSize >= BRUSH_ROUGH_THRESHOLD) {
@@ -110,7 +110,7 @@ function fanBrush(messageBase) {
 }
 
 function dullBrushOnUse() {
-  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.018);
+  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.012);
 }
 
 function drawAssetCentered(image, x, y, width, height, alpha = 1) {
@@ -780,8 +780,6 @@ function drawThoughtPopup() {
     paintCtx.lineWidth = 3;
     paintCtx.strokeRect(close.x, close.y, close.w, close.h);
     paintCtx.fillStyle = popup.dark ? "#ffe7e7" : "#111";
-    paintCtx.font = "bold 14px Georgia";
-    paintCtx.fillText("X", close.x + close.w / 2, close.y + 15);
     paintCtx.font = "bold 10px Georgia";
     paintCtx.fillText("CLOSE", close.x + close.w / 2, close.y + close.h - 10);
     paintCtx.strokeStyle = popup.dark ? "rgba(255, 220, 220, 0.96)" : "rgba(0,0,0,0.88)";

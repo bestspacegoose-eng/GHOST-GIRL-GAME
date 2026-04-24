@@ -641,9 +641,11 @@ function resetWeek() {
   updateHud();
 }
 
-function chooseRandomNumeralStyle() {
-  const index = Math.floor(Math.random() * NUMERAL_STYLE_KEYS.length);
-  return NUMERAL_STYLE_KEYS[index] || NUMERAL_STYLE_KEYS[0];
+function chooseRandomNumeralStyle(previousStyle = null) {
+  const stylePool = NUMERAL_STYLE_KEYS.filter((styleKey) => styleKey !== previousStyle);
+  const candidates = stylePool.length > 0 ? stylePool : NUMERAL_STYLE_KEYS;
+  const index = Math.floor(Math.random() * candidates.length);
+  return candidates[index] || NUMERAL_STYLE_KEYS[0];
 }
 
 function rowSortComponents(components) {

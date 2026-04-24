@@ -1033,13 +1033,31 @@ function wrapThoughtText(text, maxWidth) {
 }
 
 function fitThoughtText(text, frame) {
-  const fontSize = 14;
-  const lineHeight = 18;
+  const maxWidth = Math.max(60, frame.w);
+  const maxHeight = Math.max(48, frame.h);
+  for (let fontSize = 14; fontSize >= 11; fontSize -= 1) {
+    const lineHeight = Math.round(fontSize * 1.3);
+    let lines = [text];
+    let maxLineWidth = 0;
+    paintCtx.save();
+    paintCtx.font = `${fontSize}px Georgia`;
+    lines = wrapThoughtText(text, maxWidth);
+    for (const line of lines) {
+      maxLineWidth = Math.max(maxLineWidth, paintCtx.measureText(line).width);
+    }
+    paintCtx.restore();
+    if (maxLineWidth <= maxWidth && lines.length * lineHeight <= maxHeight) {
+      return { fontSize, lineHeight, lines, maxLineWidth };
+    }
+  }
+
+  const fontSize = 11;
+  const lineHeight = Math.round(fontSize * 1.3);
   let lines = [text];
   let maxLineWidth = 0;
   paintCtx.save();
   paintCtx.font = `${fontSize}px Georgia`;
-  lines = wrapThoughtText(text, frame.w);
+  lines = wrapThoughtText(text, maxWidth);
   for (const line of lines) {
     maxLineWidth = Math.max(maxLineWidth, paintCtx.measureText(line).width);
   }
@@ -1067,10 +1085,10 @@ function thoughtPopupFrame(popup) {
 function thoughtPanelFrame(popup) {
   const frame = thoughtPopupFrame(popup);
   return {
-    x: frame.x + frame.w * 0.145,
+    x: frame.x + frame.w * 0.252,
     y: frame.y + frame.h * 0.225,
-    w: frame.w * 0.62,
-    h: frame.h * 0.56,
+    w: frame.w * 0.496,
+    h: frame.h * 0.548,
   };
 }
 
@@ -1079,8 +1097,8 @@ function thoughtTextFrame(popup) {
   return {
     x: frame.x + 10,
     y: frame.y + 10,
-    w: frame.w - 20,
-    h: frame.h - 20,
+    w: Math.max(40, frame.w - 20),
+    h: Math.max(32, frame.h - 20),
   };
 }
 

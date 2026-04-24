@@ -3810,13 +3810,15 @@ function smoothDialShapeOnLock(dial) {
 
 function dialNeedsCorrection(dial) {
   if (dial.coverage < 0.9) return false;
-  const visibleSpills = visibleSpillCount(dial, 0.85);
-  const visibleLargeSpills = visibleSpillCount(dial, 1.12, 5.2);
+  const hotspots = correctionHotspotsForDial(dial, 10);
+  const visibleSpills = hotspots.length;
+  if (visibleSpills === 0) return false;
+  const visibleLargeSpills = hotspots.filter((hotspot) => hotspot.overspill >= 1.12 && hotspot.r >= 5.2).length;
   const straySeverity = Number.isFinite(dial.straySeverity)
     ? dial.straySeverity
     : computeDialStraySeverity(dial);
-  const messThreshold = visibleSpills === 0 ? 0.44 : 0.33;
-  const severityThreshold = visibleSpills === 0 ? 13.8 : 12.2;
+  const messThreshold = 0.33;
+  const severityThreshold = 12.2;
   return dial.mess > messThreshold || straySeverity > severityThreshold || (visibleLargeSpills >= 3 && straySeverity > 7.8);
 }
 
@@ -5367,34 +5369,24 @@ function drawZoomedDialView() {
   drawDialPaint(dial, true);
   if (dialNeedsCorrection(dial)) {
     const correctionHotspots = correctionHotspotsForDial(dial, 7);
-    if (correctionHotspots.length > 0) {
-      paintCtx.save();
-      paintCtx.setLineDash([7, 4]);
-      for (const hotspot of correctionHotspots) {
-        const markerRadius = Math.max(9, hotspot.r + 6 + hotspot.overspill * 2.1);
-        paintCtx.strokeStyle = "rgba(255, 124, 124, 0.96)";
-        paintCtx.lineWidth = 3;
-        paintCtx.beginPath();
-        paintCtx.arc(hotspot.x, hotspot.y, markerRadius, 0, Math.PI * 2);
-        paintCtx.stroke();
-        paintCtx.setLineDash([]);
-        paintCtx.strokeStyle = "rgba(255, 204, 204, 0.92)";
-        paintCtx.lineWidth = 1.6;
-        paintCtx.beginPath();
-        paintCtx.arc(hotspot.x, hotspot.y, markerRadius - 4, 0, Math.PI * 2);
-        paintCtx.stroke();
-        paintCtx.setLineDash([7, 4]);
-      }
-      paintCtx.restore();
-    } else {
-      paintCtx.strokeStyle = "rgba(255, 120, 120, 0.84)";
+    paintCtx.save();
+    paintCtx.setLineDash([7, 4]);
+    for (const hotspot of correctionHotspots) {
+      const markerRadius = Math.max(9, hotspot.r + 6 + hotspot.overspill * 2.1);
+      paintCtx.strokeStyle = "rgba(255, 124, 124, 0.96)";
       paintCtx.lineWidth = 3;
-      paintCtx.setLineDash([8, 6]);
       paintCtx.beginPath();
-      paintCtx.arc(ZOOM_CENTER_X, ZOOM_CENTER_Y, 136, 0, Math.PI * 2);
+      paintCtx.arc(hotspot.x, hotspot.y, markerRadius, 0, Math.PI * 2);
       paintCtx.stroke();
       paintCtx.setLineDash([]);
+      paintCtx.strokeStyle = "rgba(255, 204, 204, 0.92)";
+      paintCtx.lineWidth = 1.6;
+      paintCtx.beginPath();
+      paintCtx.arc(hotspot.x, hotspot.y, markerRadius - 4, 0, Math.PI * 2);
+      paintCtx.stroke();
+      paintCtx.setLineDash([7, 4]);
     }
+    paintCtx.restore();
   }
 
   const paintMeterWidth = 180;

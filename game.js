@@ -89,7 +89,7 @@ const ZOOM_CENTER_X = paintCanvas.width / 2;
 const ZOOM_CENTER_Y = paintCanvas.height / 2;
 const ZOOM_SCALE = 4.35;
 const MAX_PAINT_LOAD = 1;
-const PAINT_DRAIN_PER_STROKE = 0.012;
+const PAINT_DRAIN_PER_STROKE = 0.003;
 const PAINT_POINT_COMPLETE = 1;
 const PAINT_POINT_COVERAGE_THRESHOLD = 0.92;
 const PAINT_POINT_SOFT_COVERAGE_THRESHOLD = 0.62;
@@ -133,11 +133,11 @@ const GROCERY_DISCOUNT_RATES = {
   bad: 0,
 };
 const HEMMING_LAYOUT = {
-  panel: { x: 68, y: 58, w: 504, h: 446 },
-  rowStartY: 126,
+  panel: { x: 52, y: 42, w: 504, h: 446 },
+  rowStartY: 110,
   rowHeight: 74,
   rowGap: 12,
-  finish: { x: 414, y: 526, w: 160, h: 42 },
+  finish: { x: 398, y: 510, w: 160, h: 42 },
 };
 const HEMMING_FAMILY_ITEMS = [
   "Your blue dress",
@@ -3908,8 +3908,8 @@ function recalculateDialCoverage(dial) {
 function trimDialEdgeNoise(dial, sealed = false) {
   if (!dial || !dial.strayPoints || dial.strayPoints.length === 0) return;
   const before = dial.strayPoints.length;
-  const baseTolerance = sealed ? 7.2 : 3.2;
-  const radiusScale = sealed ? 0.92 : 0.24;
+  const baseTolerance = sealed ? 7.4 : 4.6;
+  const radiusScale = sealed ? 0.94 : 0.38;
   dial.strayPoints = dial.strayPoints.filter((mark) => {
     const markRadius = Math.max(0.8, mark.r || 0);
     const distanceToGuide = nearestGuideDistance(dial.targetPoints, mark.x, mark.y);
@@ -3968,7 +3968,7 @@ function correctionHotspotsForDial(dial, limit = 6) {
     const distanceToGuide = nearestGuideDistance(guidePoints, mark.x, mark.y);
     const edgeAllowance = (zoomed ? 6.1 : 4.8) + markRadius * (zoomed ? 0.72 : 0.58);
     const overspill = Math.max(0, distanceToGuide - edgeAllowance);
-    if (overspill < 0.42) continue;
+    if (overspill < 0.62) continue;
     const alphaWeight = Math.max(0.45, mark.a || 0.7);
     const score = overspill * alphaWeight * (0.74 + Math.min(1.2, markRadius * 0.12));
     hotspots.push({
@@ -4104,19 +4104,19 @@ function dialNeedsCorrection(dial) {
   const hotspots = correctionHotspotsForDial(dial, 10);
   const visibleSpills = hotspots.length;
   if (visibleSpills === 0) return false;
-  const visibleLargeSpills = hotspots.filter((hotspot) => hotspot.overspill >= 1.12 && hotspot.r >= 5.2).length;
-  const visibleMediumSpills = hotspots.filter((hotspot) => hotspot.overspill >= 0.72).length;
+  const visibleLargeSpills = hotspots.filter((hotspot) => hotspot.overspill >= 1.24 && hotspot.r >= 5.5).length;
+  const visibleMediumSpills = hotspots.filter((hotspot) => hotspot.overspill >= 0.86).length;
   const straySeverity = Number.isFinite(dial.straySeverity)
     ? dial.straySeverity
     : computeDialStraySeverity(dial);
-  const messThreshold = 0.24;
-  const severityThreshold = 8.4;
+  const messThreshold = 0.31;
+  const severityThreshold = 10.2;
   return (
     dial.mess > messThreshold
     || straySeverity > severityThreshold
-    || visibleLargeSpills >= 2
-    || visibleMediumSpills >= 4
-    || (visibleSpills >= 2 && straySeverity > 4.6)
+    || visibleLargeSpills >= 3
+    || visibleMediumSpills >= 5
+    || (visibleSpills >= 3 && straySeverity > 5.8)
   );
 }
 
@@ -4651,8 +4651,8 @@ function paintAt(x, y) {
   }
   const footprint = analyzeBrushFootprint(renderPoints, x, y, hitRadius);
   const overflowRatio = footprint.ratio;
-  const overflowTrigger = Math.max(0.045, 0.13 - spreadPenalty * 0.07);
-  if (overflowRatio > overflowTrigger || footprint.outsideSamples.length >= (paintState.zoomedDialIndex === -1 ? 2 : 3)) {
+  const overflowTrigger = Math.max(0.055, 0.15 - spreadPenalty * 0.062);
+  if (overflowRatio > overflowTrigger || footprint.outsideSamples.length >= (paintState.zoomedDialIndex === -1 ? 3 : 4)) {
     const overflowSeverity = Math.max(0, (overflowRatio - overflowTrigger) / Math.max(0.001, 1 - overflowTrigger));
     offGuidePoints += Math.max(
       1,
@@ -5467,7 +5467,7 @@ function drawHemmingView() {
   paintCtx.textBaseline = "middle";
   paintCtx.fillStyle = "rgba(255,255,255,0.92)";
   paintCtx.font = "24px Georgia";
-  paintCtx.fillText("HEMMING TABLE", HEMMING_LAYOUT.panel.x + 18, 88);
+  paintCtx.fillText("HEMMING TABLE", HEMMING_LAYOUT.panel.x + 18, HEMMING_LAYOUT.panel.y + 30);
 
   paintCtx.font = "14px Georgia";
   gameState.hemmingTasks.forEach((task, index) => {
@@ -6035,7 +6035,6 @@ function endFractureDrag() {
 
 function updateFractureDrift(dt) {
   if (!paintState.active || paintState.mode !== "fracture") return;
-  if (paintState.draggedPieceIndex !== -1) return;
 
   const speedScale = minigameSpeedMultiplier();
   if (speedScale <= 1) return;
@@ -6045,7 +6044,7 @@ function updateFractureDrift(dt) {
 
   for (let i = 0; i < paintState.fracturePieces.length; i += 1) {
     const piece = paintState.fracturePieces[i];
-    if (piece.placed) continue;
+    if (piece.placed || i === paintState.draggedPieceIndex) continue;
     const waveX = Math.sin(now * (1.9 + i * 0.12) + i * 0.7);
     const waveY = Math.cos(now * (2.15 + i * 0.09) + i * 0.41);
     piece.x = Math.max(0, Math.min(paintCanvas.width - piece.w, piece.x + waveX * driftStrength * dt));

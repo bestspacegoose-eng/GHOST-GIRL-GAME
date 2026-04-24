@@ -183,7 +183,8 @@ canvas {
 
 .title-card,
 .dialog-overlay,
-.minigame-overlay {
+.minigame-overlay,
+.menu-overlay {
   position: absolute;
   inset: 0;
 }

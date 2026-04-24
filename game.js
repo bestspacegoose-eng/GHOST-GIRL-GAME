@@ -56,6 +56,14 @@ const HEALTH_DRIFT_THRESHOLD = 80;
 const MINIGAME_SPEED_HEALTH_THRESHOLD = 80;
 const MAX_MINIGAME_SPEED_MULTIPLIER = 1.65;
 const LOCAL_SAVE_KEY = "ghost_girl_local_save_v1";
+const COMPLETION_BELL_TRACK_URL = "https://soundcloud.com/user-966880386/tibetan-bell-04";
+const COMPLETION_BELL_EMBED_URL =
+  `https://w.soundcloud.com/player/?url=${encodeURIComponent(COMPLETION_BELL_TRACK_URL)}`
+  + "&auto_play=false&hide_related=true&show_comments=false&show_user=false"
+  + "&show_reposts=false&show_teaser=false&visual=false&sharing=false&download=false"
+  + "&buying=false&liking=false&single_active=false";
+const COMPLETION_BELL_RETRIGGER_MS = 180;
+const COMPLETION_BELL_MAX_PLAY_MS = 2000;
 const GUARANTEED_THRESHOLD_THOUGHT = "Why does my hand feel unsteady already? It shouldn't be this hard to hold a straight line.";
 const DEFAULT_BRUSH_SIZE = 0.22;
 const BRUSH_ROUGH_THRESHOLD = 0.95;
@@ -268,6 +276,16 @@ const paintState = {
     periodMs: 1200,
     target: 0.75,
   },
+};
+
+const bellState = {
+  iframe: null,
+  widget: null,
+  scriptLoading: false,
+  widgetReady: false,
+  pendingPlay: false,
+  lastPlayAt: -Infinity,
+  stopTimer: 0,
 };
 
 const TUTORIAL_STEPS = [
@@ -1255,6 +1273,82 @@ function toggleMenu() {
   } else {
     openMenu();
   }
+}
+
+function ensureCompletionBellWidget() {
+  if (!bellState.iframe) {
+    const iframe = document.createElement("iframe");
+    iframe.className = "youtube-player-host";
+    iframe.id = "completionBellPlayer";
+    iframe.src = COMPLETION_BELL_EMBED_URL;
+    iframe.title = "Completion bell";
+    iframe.allow = "autoplay";
+    iframe.referrerPolicy = "strict-origin-when-cross-origin";
+    iframe.tabIndex = -1;
+    iframe.setAttribute("aria-hidden", "true");
+    document.body.appendChild(iframe);
+    bellState.iframe = iframe;
+  }
+
+  if (bellState.widget || bellState.widgetReady) return;
+
+  if (window.SC && typeof window.SC.Widget === "function") {
+    initializeCompletionBellWidget();
+    return;
+  }
+
+  if (bellState.scriptLoading) return;
+  bellState.scriptLoading = true;
+  const script = document.createElement("script");
+  script.src = "https://w.soundcloud.com/player/api.js";
+  script.async = true;
+  script.onload = () => {
+    bellState.scriptLoading = false;
+    initializeCompletionBellWidget();
+  };
+  script.onerror = () => {
+    bellState.scriptLoading = false;
+  };
+  document.head.appendChild(script);
+}
+
+function initializeCompletionBellWidget() {
+  if (!bellState.iframe || bellState.widget || !window.SC || typeof window.SC.Widget !== "function") return;
+  bellState.widget = window.SC.Widget(bellState.iframe);
+  bellState.widget.bind(window.SC.Widget.Events.READY, () => {
+    bellState.widgetReady = true;
+    bellState.widget.setVolume(70);
+    if (bellState.pendingPlay) {
+      bellState.pendingPlay = false;
+      playCompletionBell(true);
+    }
+  });
+}
+
+function stopCompletionBellLater() {
+  if (!bellState.widgetReady || !bellState.widget) return;
+  window.clearTimeout(bellState.stopTimer);
+  bellState.stopTimer = window.setTimeout(() => {
+    if (!bellState.widgetReady || !bellState.widget) return;
+    bellState.widget.pause();
+    bellState.widget.seekTo(0);
+  }, COMPLETION_BELL_MAX_PLAY_MS);
+}
+
+function playCompletionBell(fromPending = false) {
+  ensureCompletionBellWidget();
+  const now = performance.now();
+  if (!fromPending && now - bellState.lastPlayAt < COMPLETION_BELL_RETRIGGER_MS) return;
+  bellState.lastPlayAt = now;
+
+  if (!bellState.widgetReady || !bellState.widget) {
+    bellState.pendingPlay = true;
+    return;
+  }
+
+  bellState.widget.seekTo(0);
+  bellState.widget.play();
+  stopCompletionBellLater();
 }
 
 function buildLocalSavePayload() {
@@ -4072,6 +4166,7 @@ function creditCompletedDials() {
     gameState.dayEarningsCents += creditedNow * PAY_PER_DIAL_CENTS;
     gameState.totalEarningsCents += creditedNow * PAY_PER_DIAL_CENTS;
     gameState.totalDialsPainted += creditedNow;
+    playCompletionBell();
     updateHud();
   }
 }
@@ -6182,12 +6277,19 @@ function releasePaintOrDrag() {
   paintState.isPainting = false;
 }
 
+function primeCompletionBell() {
+  ensureCompletionBellWidget();
+}
+
 window.addEventListener("mouseup", releasePaintOrDrag);
 window.addEventListener("pointerup", releasePaintOrDrag);
 window.addEventListener("pointercancel", releasePaintOrDrag);
 window.addEventListener("blur", releasePaintOrDrag);
 paintCanvas.addEventListener("touchend", releasePaintOrDrag);
 paintCanvas.addEventListener("touchcancel", releasePaintOrDrag);
+window.addEventListener("pointerdown", primeCompletionBell, { once: true });
+window.addEventListener("keydown", primeCompletionBell, { once: true });
+window.addEventListener("touchstart", primeCompletionBell, { once: true, passive: true });
 
 document.addEventListener("keydown", (event) => {
   keys.add(event.code);

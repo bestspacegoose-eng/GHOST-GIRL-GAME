@@ -3109,6 +3109,41 @@ function drawStrayPaint(dial, zoomed = false) {
   }
 }
 
+function nearestGuideDistance(renderPoints, x, y) {
+  let best = Infinity;
+  for (const point of renderPoints) {
+    const distance = Math.hypot(point.x - x, point.y - y);
+    if (distance < best) best = distance;
+  }
+  return best;
+}
+
+function brushFootprintOverflow(renderPoints, x, y, hitRadius) {
+  if (!renderPoints || renderPoints.length === 0) return 1;
+
+  const zoomed = paintState.zoomedDialIndex !== -1;
+  const ringSampleCount = zoomed ? 18 : 14;
+  const rings = [0.58, 0.8, 1];
+  const baseTolerance = zoomed ? 14 : 5.5;
+  let outsideCount = 0;
+  let sampleCount = 0;
+
+  for (const ringFactor of rings) {
+    const ringRadius = hitRadius * ringFactor;
+    const tolerance = baseTolerance + (1 - ringFactor) * (zoomed ? 7 : 2.6);
+    for (let i = 0; i < ringSampleCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / ringSampleCount;
+      const sampleX = x + Math.cos(angle) * ringRadius;
+      const sampleY = y + Math.sin(angle) * ringRadius;
+      const distanceToGuide = nearestGuideDistance(renderPoints, sampleX, sampleY);
+      sampleCount += 1;
+      if (distanceToGuide > tolerance) outsideCount += 1;
+    }
+  }
+
+  return sampleCount === 0 ? 0 : outsideCount / sampleCount;
+}
+
 function paintAt(x, y) {
   if (paintState.mixQuality <= 0) {
     paintPrompt.textContent = "The brush drags dry. Nothing useful has been mixed yet.";
@@ -3177,6 +3212,10 @@ function paintAt(x, y) {
   if (hit.distance > strictRadius) {
     offGuidePoints += 1;
   }
+  const overflowRatio = brushFootprintOverflow(renderPoints, x, y, hitRadius);
+  if (overflowRatio > 0.18) {
+    offGuidePoints += Math.max(1, Math.round(overflowRatio * 4));
+  }
 
   const centerFactor = Math.max(0.78, 1 - hit.distance / (paintState.zoomedDialIndex === -1 ? 52 : 84));
   if (paintedPoints > 0) {
@@ -3184,17 +3223,32 @@ function paintAt(x, y) {
   } else if (overlapPoints === 0) {
     hit.dial.mess += 0.008 + (1 - paintState.mixQuality) * 0.018;
   }
+  const spreadPenalty = Math.max(0, (paintState.brushSize - BRUSH_ROUGH_THRESHOLD) / Math.max(0.001, MAX_BRUSH_SIZE - BRUSH_ROUGH_THRESHOLD));
+  if (spreadPenalty > 0 && paintedPoints > 0) {
+    hit.dial.mess += (paintState.zoomedDialIndex === -1 ? 0.009 : 0.016) * spreadPenalty;
+  }
   if (offGuidePoints > 0) {
-    const worldPoint = worldPointForDial(hit.dial, x, y);
-    hit.dial.strayPoints.push({
-      x: worldPoint.x,
-      y: worldPoint.y,
-      r: paintState.zoomedDialIndex === -1 ? 2.8 : 2.8 + paintState.brushSize * 4.6,
-      a: 0.9,
-    });
+    const spillMarks = Math.max(1, Math.ceil(1 + overflowRatio * 3));
+    for (let i = 0; i < spillMarks; i += 1) {
+      const angle = (Math.PI * 2 * i) / spillMarks + Math.random() * 0.32;
+      const radius = hitRadius * (0.52 + Math.random() * 0.54);
+      const spillX = x + Math.cos(angle) * radius;
+      const spillY = y + Math.sin(angle) * radius;
+      const worldPoint = worldPointForDial(hit.dial, spillX, spillY);
+      hit.dial.strayPoints.push({
+        x: worldPoint.x,
+        y: worldPoint.y,
+        r: (paintState.zoomedDialIndex === -1 ? 2.4 : 2.4) + paintState.brushSize * (paintState.zoomedDialIndex === -1 ? 2.2 : 3.2),
+        a: 0.9,
+      });
+    }
     if (hit.dial.strayPoints.length > 64) hit.dial.strayPoints.shift();
-    hit.dial.mess += 0.05 + (1 - paintState.mixQuality) * 0.03;
-    paintPrompt.textContent = "Paint has slipped outside the numeral and will need to be scraped back cleanly.";
+    hit.dial.mess +=
+      0.03 +
+      overflowRatio * 0.12 +
+      spreadPenalty * 0.035 +
+      (1 - paintState.mixQuality) * 0.03;
+    paintPrompt.textContent = "The spread brush bleeds past the numeral edges. This watch will need cleanup.";
   }
 
   paintState.paintLoaded = Math.max(0, paintState.paintLoaded - PAINT_DRAIN_PER_STROKE);

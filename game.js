@@ -2586,6 +2586,7 @@ function rowSortComponents(components) {
 }
 
 function extractNumeralTemplates(styleKey) {
+  if (numeralTemplateCache[styleKey] === false) return null;
   if (numeralTemplateCache[styleKey]) return numeralTemplateCache[styleKey];
   const image = assetImages[styleKey];
   if (!imageReady(image)) return null;
@@ -2594,8 +2595,15 @@ function extractNumeralTemplates(styleKey) {
   offscreen.width = image.naturalWidth;
   offscreen.height = image.naturalHeight;
   const offCtx = offscreen.getContext("2d");
-  offCtx.drawImage(image, 0, 0, offscreen.width, offscreen.height);
-  const { data } = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
+  let data;
+  try {
+    offCtx.drawImage(image, 0, 0, offscreen.width, offscreen.height);
+    ({ data } = offCtx.getImageData(0, 0, offscreen.width, offscreen.height));
+  } catch (error) {
+    numeralTemplateCache[styleKey] = false;
+    console.warn(`Numeral template extraction disabled for ${styleKey}; using built-in fallback numerals instead.`, error);
+    return null;
+  }
   const width = offscreen.width;
   const height = offscreen.height;
 
@@ -5134,31 +5142,35 @@ function preparedHemmingCursorImage() {
   offscreen.width = source.naturalWidth;
   offscreen.height = source.naturalHeight;
   const offCtx = offscreen.getContext("2d");
-  offCtx.drawImage(source, 0, 0);
+  try {
+    offCtx.drawImage(source, 0, 0);
 
-  const imageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
-  const data = imageData.data;
-  const sampleA = (10 * offscreen.width + 10) * 4;
-  const sampleB = (10 * offscreen.width + 60) * 4;
-  const bgA = [data[sampleA], data[sampleA + 1], data[sampleA + 2]];
-  const bgB = [data[sampleB], data[sampleB + 1], data[sampleB + 2]];
+    const imageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
+    const data = imageData.data;
+    const sampleA = (10 * offscreen.width + 10) * 4;
+    const sampleB = (10 * offscreen.width + 60) * 4;
+    const bgA = [data[sampleA], data[sampleA + 1], data[sampleA + 2]];
+    const bgB = [data[sampleB], data[sampleB + 1], data[sampleB + 2]];
 
-  const distanceTo = (r, g, b, bg) =>
-    Math.abs(r - bg[0]) + Math.abs(g - bg[1]) + Math.abs(b - bg[2]);
+    const distanceTo = (r, g, b, bg) =>
+      Math.abs(r - bg[0]) + Math.abs(g - bg[1]) + Math.abs(b - bg[2]);
 
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const distA = distanceTo(r, g, b, bgA);
-    const distB = distanceTo(r, g, b, bgB);
-    if (distA < 46 || distB < 46) {
-      data[i + 3] = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const distA = distanceTo(r, g, b, bgA);
+      const distB = distanceTo(r, g, b, bgB);
+      if (distA < 46 || distB < 46) {
+        data[i + 3] = 0;
+      }
     }
+    offCtx.putImageData(imageData, 0, 0);
+    cachedHemmingCursorImage = offscreen;
+  } catch (error) {
+    console.warn("Hemming cursor preprocessing unavailable in this browser context; using raw cursor image.", error);
+    cachedHemmingCursorImage = source;
   }
-
-  offCtx.putImageData(imageData, 0, 0);
-  cachedHemmingCursorImage = offscreen;
   return cachedHemmingCursorImage;
 }
 

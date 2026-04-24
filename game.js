@@ -92,6 +92,21 @@ const GROCERY_LAYOUT = {
   rowGap: 8,
   finish: { x: 422, y: 546, w: 152, h: 42 },
 };
+const HEMMING_LAYOUT = {
+  panel: { x: 68, y: 58, w: 504, h: 446 },
+  rowStartY: 126,
+  rowHeight: 74,
+  rowGap: 12,
+  finish: { x: 414, y: 526, w: 160, h: 42 },
+};
+const HEMMING_FAMILY_ITEMS = [
+  "Your blue dress",
+  "Elly's school skirt",
+  "Denny's shirt hem",
+  "Maggie's apron",
+];
+const NUMERAL_SHEET_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+const NUMERAL_STYLE_KEYS = ["numeralsStyleOrnate", "numeralsStyleBlock"];
 const ASSET_PATHS = {
   backgroundRoom: "./assets/background-radium-girls.jpg",
   roomClock: "./assets/room-clock.png",
@@ -113,6 +128,8 @@ const ASSET_PATHS = {
   thoughtPopup: "./assets/thought-popup.png",
   groceries: "./assets/groceries.png",
   workbenchBrush: "./assets/workbench-brush.png",
+  numeralsStyleOrnate: "./assets/numerals-style-ornate.png",
+  numeralsStyleBlock: "./assets/numerals-style-block.png",
 };
 
 const keys = new Set();
@@ -160,6 +177,9 @@ const gameState = {
   groceryBudgetTenths: 0,
   groceryFundsTenths: 0,
   groceryCart: {},
+  postShiftActivity: "groceries",
+  postHomeSummary: "",
+  hemmingTasks: [],
   tutorialSeen: false,
 };
 
@@ -192,6 +212,7 @@ const paintState = {
   lastPointerMoveAt: 0,
   tutorial: null,
   autoSubmitTimer: -1,
+  watchNumeralStyle: NUMERAL_STYLE_KEYS[0],
 };
 
 const TUTORIAL_STEPS = [
@@ -329,6 +350,7 @@ const assetImages = Object.fromEntries(
     return [key, image];
   }),
 );
+const numeralTemplateCache = {};
 
 const componentRegions = [
   { index: 0, label: "Powder", x: STATION_LAYOUT.powder.x, y: STATION_LAYOUT.powder.y, rx: STATION_LAYOUT.powder.rx, ry: STATION_LAYOUT.powder.ry },
@@ -1313,7 +1335,13 @@ function refreshHint() {
 
   if (paintState.active && paintState.mode === "groceries") {
     hint.textContent = "Spend the day's pay before you head home.";
-    subhint.textContent = "Click a grocery item to buy one unit, then press Finish shopping.";
+    subhint.textContent = "Click + to buy and - to remove items, then press Finish shopping.";
+    return;
+  }
+
+  if (paintState.active && paintState.mode === "hemming") {
+    hint.textContent = "Repair clothes before bed.";
+    subhint.textContent = "Click the next stitch marks along each hem line, then press Finish hemming.";
     return;
   }
 
@@ -1609,7 +1637,8 @@ function endShift(reason) {
   dialogBody.textContent =
     `${reason === "timeout" ? "The bell cuts off the shift." : "The manager calls the day."} ` +
     `${managerLineForDay()} ${endOfDayReflection()} ${darkRoomGathering()}`;
-  dialogButton.textContent = "Buy groceries";
+  gameState.postShiftActivity = Math.random() < 0.5 ? "groceries" : "hemming";
+  dialogButton.textContent = gameState.postShiftActivity === "groceries" ? "Buy groceries" : "Go hem clothes";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "post-shift-report";
   updateHud();
@@ -1796,13 +1825,173 @@ function removeGrocery(item) {
   updateGroceryStats();
 }
 
-function showHomeSceneAfterShopping() {
+function hemmingRowRect(index) {
+  return {
+    x: HEMMING_LAYOUT.panel.x + 18,
+    y: HEMMING_LAYOUT.rowStartY + index * (HEMMING_LAYOUT.rowHeight + HEMMING_LAYOUT.rowGap),
+    w: HEMMING_LAYOUT.panel.w - 36,
+    h: HEMMING_LAYOUT.rowHeight,
+  };
+}
+
+function hemmingFinishRect() {
+  return { ...HEMMING_LAYOUT.finish };
+}
+
+function createHemmingTasks() {
+  return HEMMING_FAMILY_ITEMS.map((label, index) => {
+    const base = 6 + Math.min(3, gameState.currentDay);
+    const healthPush = gameState.hiddenStats.health < 50 ? 2 : gameState.hiddenStats.health < 75 ? 1 : 0;
+    return {
+      id: `hem-${index}`,
+      label,
+      stitchesNeeded: base + healthPush + Math.floor(Math.random() * 3),
+      stitchesDone: 0,
+    };
+  });
+}
+
+function hemmingTotalStitchesNeeded() {
+  return gameState.hemmingTasks.reduce((sum, task) => sum + task.stitchesNeeded, 0);
+}
+
+function hemmingTotalStitchesDone() {
+  return gameState.hemmingTasks.reduce((sum, task) => sum + task.stitchesDone, 0);
+}
+
+function hemmingCompletedCount() {
+  return gameState.hemmingTasks.filter((task) => task.stitchesDone >= task.stitchesNeeded).length;
+}
+
+function hemmingAllFinished() {
+  return gameState.hemmingTasks.length > 0 && gameState.hemmingTasks.every((task) => task.stitchesDone >= task.stitchesNeeded);
+}
+
+function hemmingSummary() {
+  const completed = hemmingCompletedCount();
+  if (completed <= 0) return "no finished hems tonight";
+  if (completed >= gameState.hemmingTasks.length) return "every hem finished before bed";
+  return `${completed} hem${completed === 1 ? "" : "s"} finished`;
+}
+
+function hemmingReflectionText() {
+  const health = gameState.hiddenStats.health;
+  const lastThought = gameState.lastShiftThoughtLog[gameState.lastShiftThoughtLog.length - 1];
+  let opening;
+  if (health >= 80) {
+    opening = "The house is quieter than the workshop. Needle, thread, and lamp-light ask for steady work of a different kind.";
+  } else if (health >= 50) {
+    opening = "Your hands are tired from the bench, but the family mending still waits on the table tonight.";
+  } else {
+    opening = "Even lifting the fabric feels heavy now, but the loose hems cannot wait another day.";
+  }
+  return lastThought ? `${opening} "${lastThought}" keeps echoing while you sew.` : opening;
+}
+
+function updateHemmingStats() {
+  paintStats.textContent =
+    `Hemmed ${hemmingCompletedCount()}/${gameState.hemmingTasks.length} garments. ` +
+    `Stitches ${hemmingTotalStitchesDone()}/${hemmingTotalStitchesNeeded()}.`;
+}
+
+function openHemmingTrip() {
+  paintState.active = true;
+  paintState.mode = "hemming";
+  paintState.isPainting = false;
+  paintState.correcting = false;
+  paintState.pointerX = paintCanvas.width / 2;
+  paintState.pointerY = paintCanvas.height / 2;
+  paintState.cursorX = paintCanvas.width / 2;
+  paintState.cursorY = paintCanvas.height / 2;
+  paintState.lastPointerMoveAt = performance.now();
+  gameState.hemmingTasks = createHemmingTasks();
+  minigameHeading.textContent = "Evening Hemming";
+  paintPrompt.textContent = hemmingReflectionText();
+  mixPrompt.textContent = "Click each glowing stitch mark along the hem line to finish the garment repairs for home.";
+  updateHemmingStats();
+  setStationControlsHidden(true);
+  minigameOverlay.classList.remove("hidden");
+  drawWatchMinigame();
+}
+
+function stitchPointForTask(taskIndex, stitchIndex) {
+  const rect = hemmingRowRect(taskIndex);
+  const lineStart = rect.x + 190;
+  const lineEnd = rect.x + rect.w - 24;
+  const count = Math.max(1, gameState.hemmingTasks[taskIndex].stitchesNeeded);
+  const x = lineStart + ((lineEnd - lineStart) * (stitchIndex + 0.5)) / count;
+  const y = rect.y + rect.h - 19;
+  return { x, y };
+}
+
+function applyHemStitch(x, y) {
+  let best = null;
+  for (let i = 0; i < gameState.hemmingTasks.length; i += 1) {
+    const task = gameState.hemmingTasks[i];
+    if (task.stitchesDone >= task.stitchesNeeded) continue;
+    const spot = stitchPointForTask(i, task.stitchesDone);
+    const distance = Math.hypot(spot.x - x, spot.y - y);
+    if (!best || distance < best.distance) {
+      best = { task, taskIndex: i, distance };
+    }
+  }
+
+  if (!best || best.distance > 24) {
+    paintPrompt.textContent = "Guide the needle to the next stitch mark on the hem.";
+    return;
+  }
+
+  best.task.stitchesDone += 1;
+  if (best.task.stitchesDone >= best.task.stitchesNeeded) {
+    paintPrompt.textContent = `${best.task.label} is mended for tomorrow.`;
+  } else {
+    paintPrompt.textContent = "One stitch catches. Keep following the hem line.";
+  }
+
+  updateHemmingStats();
+  if (hemmingAllFinished()) {
+    mixPrompt.textContent = "Every hem is mended. Finish chores when you're ready to head to bed.";
+  }
+}
+
+function hemmingHomeSceneText() {
+  const completed = hemmingCompletedCount();
+  const total = gameState.hemmingTasks.length;
+  const health = gameState.hiddenStats.health;
+
+  let opening;
+  if (health >= 80) {
+    opening = "You carry the folded clothes into the next room while the house settles for the night.";
+  } else if (health >= 50) {
+    opening = "Your fingers ache by the time you set down the needle, but the pile of mending has thinned.";
+  } else {
+    opening = "You finish as much mending as you can with trembling hands and a jaw that will not stop throbbing.";
+  }
+
+  let family;
+  if (completed >= total) {
+    family = "Your siblings brighten when they see every hem repaired, and your parents thank you in the tired, relieved way that means they know exactly what that cost you tonight.";
+  } else if (completed > 0) {
+    family = "The younger ones quietly sort through the pieces you managed to finish while your parents count what can be worn tomorrow and what must wait.";
+  } else {
+    family = "There is little to show beyond your effort tonight, and everyone speaks softly, already planning how to stretch one more day from frayed clothes.";
+  }
+
+  return `${opening} ${family}`;
+}
+
+function showHomeScene(bodyText, summaryText) {
   resetDialogButtons();
   dialogTitle.textContent = "At Home";
-  dialogBody.textContent = groceryHomeSceneText();
+  dialogBody.textContent = bodyText;
   dialogButton.textContent = "Continue";
   dialogOverlay.classList.remove("hidden");
-  gameState.dialogMode = "post-shopping-home";
+  gameState.postHomeSummary = summaryText;
+  gameState.dialogMode = "post-home";
+}
+
+function showHomeSceneAfterShopping() {
+  showHomeScene(groceryHomeSceneText(), groceryCartSummary());
 }
 
 function finishGroceriesTrip() {
@@ -1811,24 +2000,39 @@ function finishGroceriesTrip() {
   updateHud();
 }
 
+function finishHemmingTrip() {
+  if (!hemmingAllFinished()) {
+    paintPrompt.textContent = "There are still loose hems. Finish each garment's stitch line before heading to bed.";
+    drawWatchMinigame();
+    return;
+  }
+  closeMinigame();
+  showHomeScene(hemmingHomeSceneText(), hemmingSummary());
+  updateHud();
+}
+
 function continueAfterDialog() {
   dialogOverlay.classList.add("hidden");
   resetDialogButtons();
 
   if (gameState.dialogMode === "post-shift-report") {
-    openGroceriesTrip();
-  } else if (gameState.dialogMode === "post-shopping-home") {
+    if (gameState.postShiftActivity === "hemming") {
+      openHemmingTrip();
+    } else {
+      openGroceriesTrip();
+    }
+  } else if (gameState.dialogMode === "post-home") {
     if (gameState.currentDay < 6 && gameState.hiddenStats.health < 60 && !gameState.warnedLowHealth) {
       gameState.warnedLowHealth = true;
       showLowHealthWarning();
       setMessage(
         "The walk home leaves you hollowed out.",
-        `Inside, the family gathers around ${groceryCartSummary()}.`,
+        `Inside, the family gathers around ${gameState.postHomeSummary}.`,
       );
       updateHud();
       return;
     }
-    advanceToNextDay(`You bring home ${groceryCartSummary()}. Clock in again when the title card fades away.`);
+    advanceToNextDay(`Home settles around ${gameState.postHomeSummary}. Clock in again when the title card fades away.`);
   } else if (gameState.dialogMode === "low-health-warning") {
     gameState.fracturePending = true;
     advanceToNextDay("Something is wrong now, even away from the bench.");
@@ -1867,13 +2071,178 @@ function resetWeek() {
   gameState.groceryBudgetTenths = 0;
   gameState.groceryFundsTenths = 0;
   gameState.groceryCart = {};
+  gameState.postShiftActivity = "groceries";
+  gameState.postHomeSummary = "";
+  gameState.hemmingTasks = [];
   paintState.active = false;
+  paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS[0];
   showTitleCard();
   setMessage(
     "A new week begins at the line.",
     "Click into the room, then use the wall clock to begin Monday.",
   );
   updateHud();
+}
+
+function chooseRandomNumeralStyle() {
+  const index = Math.floor(Math.random() * NUMERAL_STYLE_KEYS.length);
+  return NUMERAL_STYLE_KEYS[index] || NUMERAL_STYLE_KEYS[0];
+}
+
+function rowSortComponents(components) {
+  const sorted = [...components].sort((a, b) => (a.minY - b.minY) || (a.minX - b.minX));
+  const rows = [];
+  for (const component of sorted) {
+    const last = rows[rows.length - 1];
+    if (!last || component.minY > last.maxY + 48) {
+      rows.push({ maxY: component.maxY, items: [component] });
+      continue;
+    }
+    last.maxY = Math.max(last.maxY, component.maxY);
+    last.items.push(component);
+  }
+
+  return rows
+    .flatMap((row) => row.items.sort((a, b) => a.minX - b.minX))
+    .slice(0, NUMERAL_SHEET_DIGITS.length);
+}
+
+function extractNumeralTemplates(styleKey) {
+  if (numeralTemplateCache[styleKey]) return numeralTemplateCache[styleKey];
+  const image = assetImages[styleKey];
+  if (!imageReady(image)) return null;
+
+  const offscreen = document.createElement("canvas");
+  offscreen.width = image.naturalWidth;
+  offscreen.height = image.naturalHeight;
+  const offCtx = offscreen.getContext("2d");
+  offCtx.drawImage(image, 0, 0, offscreen.width, offscreen.height);
+  const { data } = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
+  const width = offscreen.width;
+  const height = offscreen.height;
+
+  const visited = new Uint8Array(width * height);
+  const components = [];
+  const queue = [];
+  const isInk = (x, y) => {
+    const index = (y * width + x) * 4;
+    const alpha = data[index + 3];
+    if (alpha < 25) return false;
+    const luminance = (0.2126 * data[index]) + (0.7152 * data[index + 1]) + (0.0722 * data[index + 2]);
+    return luminance < 122;
+  };
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const seed = y * width + x;
+      if (visited[seed] || !isInk(x, y)) continue;
+
+      let minX = x;
+      let maxX = x;
+      let minY = y;
+      let maxY = y;
+      let area = 0;
+      queue.length = 0;
+      queue.push(seed);
+      visited[seed] = 1;
+
+      while (queue.length > 0) {
+        const current = queue.pop();
+        const cx = current % width;
+        const cy = Math.floor(current / width);
+        area += 1;
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
+
+        const neighbors = [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+        ];
+        for (const [nx, ny] of neighbors) {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const next = ny * width + nx;
+          if (visited[next] || !isInk(nx, ny)) continue;
+          visited[next] = 1;
+          queue.push(next);
+        }
+      }
+
+      if (area >= 1200) {
+        components.push({ minX, maxX, minY, maxY, area });
+      }
+    }
+  }
+
+  const ordered = rowSortComponents(components);
+  if (ordered.length < NUMERAL_SHEET_DIGITS.length) return null;
+
+  const templates = {};
+  for (let i = 0; i < NUMERAL_SHEET_DIGITS.length; i += 1) {
+    const component = ordered[i];
+    const label = NUMERAL_SHEET_DIGITS[i];
+    const points = [];
+    const glyphW = component.maxX - component.minX + 1;
+    const glyphH = component.maxY - component.minY + 1;
+    const stride = Math.max(3, Math.round(Math.min(glyphW, glyphH) / 24));
+
+    for (let py = component.minY; py <= component.maxY; py += stride) {
+      for (let px = component.minX; px <= component.maxX; px += stride) {
+        if (!isInk(px, py)) continue;
+        points.push({ x: px, y: py });
+      }
+    }
+
+    const centerX = (component.minX + component.maxX) / 2;
+    const centerY = (component.minY + component.maxY) / 2;
+    const denom = Math.max(glyphW, glyphH) || 1;
+    templates[label] = {
+      points: points.map((point) => ({
+        x: (point.x - centerX) / denom,
+        y: (point.y - centerY) / denom,
+      })),
+      guideMode: "cloud",
+    };
+  }
+
+  numeralTemplateCache[styleKey] = templates;
+  return templates;
+}
+
+function buildStyledNumeralPoints(label, centerX, centerY, angle) {
+  const templates = extractNumeralTemplates(paintState.watchNumeralStyle);
+  if (!templates) return null;
+  const chars = label.split("");
+  const composed = [];
+  const glyphSpacing = 0.66;
+  for (let i = 0; i < chars.length; i += 1) {
+    const template = templates[chars[i]];
+    if (!template || !template.points || template.points.length === 0) return null;
+    const xOffset = chars.length === 1 ? 0 : (i - (chars.length - 1) / 2) * glyphSpacing;
+    for (const point of template.points) {
+      composed.push({
+        x: point.x + xOffset,
+        y: point.y,
+      });
+    }
+  }
+
+  if (composed.length === 0) return null;
+  const radialX = Math.cos(angle);
+  const radialY = Math.sin(angle);
+  const inwardOffset = label.length === 1 ? -6 : -16;
+  const scale = label.length === 1 ? 66 : 56;
+  const baseX = centerX + radialX * inwardOffset;
+  const baseY = centerY + radialY * inwardOffset;
+  const points = composed.map((point) => ({
+    x: baseX + point.x * scale,
+    y: baseY + point.y * scale,
+  }));
+
+  return { points, guideMode: "cloud" };
 }
 
 function buildDialState() {
@@ -1884,12 +2253,15 @@ function buildDialState() {
     const angle = -Math.PI / 2 + (i / 12) * Math.PI * 2;
     const x = WATCH_CENTER_X + Math.cos(angle) * NUMERAL_RADIUS;
     const y = WATCH_CENTER_Y + Math.sin(angle) * NUMERAL_RADIUS;
+    const styled = buildStyledNumeralPoints(labels[i], x, y, angle);
+    const targetPoints = styled ? styled.points : buildNumeralPoints(labels[i], x, y, angle);
     dials.push({
       label: labels[i],
       angle,
       x,
       y,
-      targetPoints: buildNumeralPoints(labels[i], x, y, angle),
+      targetPoints,
+      guideMode: styled ? styled.guideMode : "stroke",
       paintedMask: [],
       strayPoints: [],
       coverage: 0,
@@ -1913,6 +2285,7 @@ function cloneDials(dials) {
     targetPoints: dial.targetPoints.map((point) => ({ ...point })),
     paintedMask: [...dial.paintedMask],
     strayPoints: dial.strayPoints.map((point) => ({ ...point })),
+    guideMode: dial.guideMode || "stroke",
   }));
 }
 
@@ -1923,6 +2296,7 @@ function saveCurrentBenchWork() {
     mix: [...paintState.mix],
     mixQuality: paintState.mixQuality,
     brushSize: paintState.brushSize,
+    watchNumeralStyle: paintState.watchNumeralStyle,
     watchIndex: paintState.watchIndex,
     activeDialIndex: paintState.activeDialIndex,
     zoomedDialIndex: paintState.zoomedDialIndex,
@@ -1938,6 +2312,7 @@ function restoreBenchWork(label) {
   paintState.mix = [...saved.mix];
   paintState.mixQuality = saved.mixQuality;
   paintState.brushSize = saved.brushSize;
+  paintState.watchNumeralStyle = saved.watchNumeralStyle || NUMERAL_STYLE_KEYS[0];
   paintState.watchIndex = saved.watchIndex;
   paintState.activeDialIndex = saved.activeDialIndex;
   paintState.zoomedDialIndex = saved.zoomedDialIndex;
@@ -2381,6 +2756,7 @@ function openMinigame(label) {
   if (!restoreBenchWork(label)) {
     paintState.watchIndex += 1;
     paintState.brushSize = DEFAULT_BRUSH_SIZE;
+    paintState.watchNumeralStyle = chooseRandomNumeralStyle();
     paintState.paintLoaded = 0;
     paintState.zoomedDialIndex = -1;
     paintState.readyToSubmit = false;
@@ -2493,6 +2869,7 @@ function prepareNextWatch(message) {
   paintState.zoomedDialIndex = -1;
   paintState.readyToSubmit = false;
   resetMix();
+  paintState.watchNumeralStyle = chooseRandomNumeralStyle();
   buildDialState();
   moveCursorToActiveDial();
   paintState.brushSize = DEFAULT_BRUSH_SIZE;
@@ -2669,38 +3046,41 @@ function drawDialPaint(dial, zoomed = false) {
   const tone = paintTone();
   const lineWidth = zoomed ? 18 : 6.4;
   const dotRadius = zoomed ? 8.2 : 3.2;
+  const cloudGuide = dial.guideMode === "cloud";
 
-  paintCtx.strokeStyle = tone.stroke;
-  paintCtx.lineWidth = lineWidth;
-  paintCtx.lineJoin = "round";
-  paintCtx.lineCap = "round";
+  if (!cloudGuide) {
+    paintCtx.strokeStyle = tone.stroke;
+    paintCtx.lineWidth = lineWidth;
+    paintCtx.lineJoin = "round";
+    paintCtx.lineCap = "round";
 
-  let segmentOpen = false;
-  for (let i = 0; i < points.length; i += 1) {
-    if (!dial.paintedMask[i]) {
-      if (segmentOpen) {
-        paintCtx.stroke();
-        segmentOpen = false;
+    let segmentOpen = false;
+    for (let i = 0; i < points.length; i += 1) {
+      if (!dial.paintedMask[i]) {
+        if (segmentOpen) {
+          paintCtx.stroke();
+          segmentOpen = false;
+        }
+        continue;
       }
-      continue;
-    }
-    const point = points[i];
-    if (!segmentOpen) {
-      paintCtx.beginPath();
-      paintCtx.moveTo(point.x, point.y);
-      segmentOpen = true;
-    } else {
-      const prev = points[i - 1];
-      if (prev && Math.hypot(prev.x - point.x, prev.y - point.y) < (zoomed ? 84 : 18)) {
-        paintCtx.lineTo(point.x, point.y);
-      } else {
-        paintCtx.stroke();
+      const point = points[i];
+      if (!segmentOpen) {
         paintCtx.beginPath();
         paintCtx.moveTo(point.x, point.y);
+        segmentOpen = true;
+      } else {
+        const prev = points[i - 1];
+        if (prev && Math.hypot(prev.x - point.x, prev.y - point.y) < (zoomed ? 84 : 18)) {
+          paintCtx.lineTo(point.x, point.y);
+        } else {
+          paintCtx.stroke();
+          paintCtx.beginPath();
+          paintCtx.moveTo(point.x, point.y);
+        }
       }
     }
+    if (segmentOpen) paintCtx.stroke();
   }
-  if (segmentOpen) paintCtx.stroke();
 
   paintCtx.fillStyle = tone.fill;
   for (let i = 0; i < points.length; i += 1) {
@@ -3409,6 +3789,88 @@ function drawGroceriesView() {
   drawImageCursor("mix");
 }
 
+function drawHemmingView() {
+  const w = paintCanvas.width;
+  const h = paintCanvas.height;
+
+  paintCtx.clearRect(0, 0, w, h);
+  const bg = paintCtx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, "#1a1316");
+  bg.addColorStop(1, "#09090b");
+  paintCtx.fillStyle = bg;
+  paintCtx.fillRect(0, 0, w, h);
+
+  paintCtx.fillStyle = "rgba(255, 235, 190, 0.04)";
+  for (let y = 0; y < h; y += 26) {
+    paintCtx.fillRect(0, y, w, 1);
+  }
+
+  paintCtx.fillStyle = "rgba(8, 8, 8, 0.8)";
+  paintCtx.fillRect(HEMMING_LAYOUT.panel.x, HEMMING_LAYOUT.panel.y, HEMMING_LAYOUT.panel.w, HEMMING_LAYOUT.panel.h);
+  paintCtx.strokeStyle = "rgba(255,255,255,0.18)";
+  paintCtx.lineWidth = 2;
+  paintCtx.strokeRect(HEMMING_LAYOUT.panel.x, HEMMING_LAYOUT.panel.y, HEMMING_LAYOUT.panel.w, HEMMING_LAYOUT.panel.h);
+
+  paintCtx.textAlign = "left";
+  paintCtx.textBaseline = "middle";
+  paintCtx.fillStyle = "rgba(255,255,255,0.92)";
+  paintCtx.font = "24px Georgia";
+  paintCtx.fillText("HEMMING TABLE", HEMMING_LAYOUT.panel.x + 18, 88);
+
+  paintCtx.font = "14px Georgia";
+  gameState.hemmingTasks.forEach((task, index) => {
+    const rect = hemmingRowRect(index);
+    paintCtx.fillStyle = "rgba(255,255,255,0.07)";
+    paintCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    paintCtx.strokeStyle = "rgba(255,255,255,0.16)";
+    paintCtx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+
+    paintCtx.fillStyle = "#f5f5f5";
+    paintCtx.fillText(task.label, rect.x + 12, rect.y + 22);
+
+    paintCtx.textAlign = "right";
+    paintCtx.fillStyle = "rgba(255,255,255,0.76)";
+    paintCtx.fillText(`${task.stitchesDone}/${task.stitchesNeeded}`, rect.x + rect.w - 12, rect.y + 22);
+    paintCtx.textAlign = "left";
+
+    const lineY = rect.y + rect.h - 19;
+    const lineStart = rect.x + 190;
+    const lineEnd = rect.x + rect.w - 24;
+    paintCtx.strokeStyle = "rgba(205, 184, 156, 0.42)";
+    paintCtx.lineWidth = 2;
+    paintCtx.beginPath();
+    paintCtx.moveTo(lineStart, lineY);
+    paintCtx.lineTo(lineEnd, lineY);
+    paintCtx.stroke();
+
+    for (let stitch = 0; stitch < task.stitchesNeeded; stitch += 1) {
+      const spot = stitchPointForTask(index, stitch);
+      const done = stitch < task.stitchesDone;
+      paintCtx.beginPath();
+      paintCtx.arc(spot.x, spot.y, done ? 4.4 : 3.3, 0, Math.PI * 2);
+      paintCtx.fillStyle = done ? "rgba(255, 224, 140, 0.94)" : "rgba(208, 208, 208, 0.28)";
+      paintCtx.fill();
+      if (!done) {
+        paintCtx.strokeStyle = "rgba(255,255,255,0.22)";
+        paintCtx.lineWidth = 1.2;
+        paintCtx.stroke();
+      }
+    }
+  });
+
+  const finish = hemmingFinishRect();
+  paintCtx.fillStyle = hemmingAllFinished() ? "rgba(217, 245, 122, 0.2)" : "rgba(255,255,255,0.12)";
+  paintCtx.fillRect(finish.x, finish.y, finish.w, finish.h);
+  paintCtx.strokeStyle = hemmingAllFinished() ? "rgba(217, 245, 122, 0.78)" : "rgba(255,255,255,0.38)";
+  paintCtx.strokeRect(finish.x, finish.y, finish.w, finish.h);
+  paintCtx.textAlign = "center";
+  paintCtx.fillStyle = "#f5f5f5";
+  paintCtx.font = "18px Georgia";
+  paintCtx.fillText("Finish hemming", finish.x + finish.w / 2, finish.y + finish.h / 2);
+
+  drawImageCursor("mix");
+}
+
 function drawWatchMinigame() {
   if (paintState.mode === "fracture") {
     drawFracturePuzzle();
@@ -3417,6 +3879,11 @@ function drawWatchMinigame() {
 
   if (paintState.mode === "groceries") {
     drawGroceriesView();
+    return;
+  }
+
+  if (paintState.mode === "hemming") {
+    drawHemmingView();
     return;
   }
 
@@ -3548,18 +4015,27 @@ function drawZoomedDialView() {
   paintCtx.fillStyle = wipeEnabled ? "rgba(255,255,255,0.56)" : "rgba(255,255,255,0.28)";
   paintCtx.fillText("Wipe directly", STATION_LAYOUT.zoomWipe.x, STATION_LAYOUT.zoomWipe.y + STATION_LAYOUT.zoomWipe.h / 2 + 14);
 
-  paintCtx.strokeStyle = "rgba(185, 185, 185, 0.28)";
-  paintCtx.lineWidth = 8;
-  paintCtx.lineJoin = "round";
-  paintCtx.lineCap = "round";
-  for (let i = 1; i < points.length; i += 1) {
-    const prev = points[i - 1];
-    const next = points[i];
-    if (Math.hypot(prev.x - next.x, prev.y - next.y) > 84) continue;
-    paintCtx.beginPath();
-    paintCtx.moveTo(prev.x, prev.y);
-    paintCtx.lineTo(next.x, next.y);
-    paintCtx.stroke();
+  if (dial.guideMode === "cloud") {
+    paintCtx.fillStyle = "rgba(185, 185, 185, 0.34)";
+    for (const point of points) {
+      paintCtx.beginPath();
+      paintCtx.arc(point.x, point.y, 4.1, 0, Math.PI * 2);
+      paintCtx.fill();
+    }
+  } else {
+    paintCtx.strokeStyle = "rgba(185, 185, 185, 0.28)";
+    paintCtx.lineWidth = 8;
+    paintCtx.lineJoin = "round";
+    paintCtx.lineCap = "round";
+    for (let i = 1; i < points.length; i += 1) {
+      const prev = points[i - 1];
+      const next = points[i];
+      if (Math.hypot(prev.x - next.x, prev.y - next.y) > 84) continue;
+      paintCtx.beginPath();
+      paintCtx.moveTo(prev.x, prev.y);
+      paintCtx.lineTo(next.x, next.y);
+      paintCtx.stroke();
+    }
   }
 
   drawStrayPaint(dial, true);
@@ -3941,7 +4417,7 @@ mixResetButton.addEventListener("click", () => {
 
 paintCanvas.addEventListener("mousemove", (event) => {
   const position = pointerInsidePaintCanvas(event);
-  if (paintState.mode === "groceries") {
+  if (paintState.mode === "groceries" || paintState.mode === "hemming") {
     paintState.pointerX = position.x;
     paintState.pointerY = position.y;
     paintState.cursorX = position.x;
@@ -4004,6 +4480,17 @@ paintCanvas.addEventListener("mousedown", (event) => {
       }
       drawWatchMinigame();
     }
+    return;
+  }
+
+  if (paintState.mode === "hemming") {
+    const finish = hemmingFinishRect();
+    if (position.x >= finish.x && position.x <= finish.x + finish.w && position.y >= finish.y && position.y <= finish.y + finish.h) {
+      finishHemmingTrip();
+      return;
+    }
+    applyHemStitch(position.x, position.y);
+    drawWatchMinigame();
     return;
   }
 
@@ -4114,8 +4601,12 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (event.code === "Escape" && paintState.active && paintState.mode === "groceries") {
-    finishGroceriesTrip();
+  if (event.code === "Escape" && paintState.active && (paintState.mode === "groceries" || paintState.mode === "hemming")) {
+    if (paintState.mode === "hemming") {
+      finishHemmingTrip();
+    } else {
+      finishGroceriesTrip();
+    }
     return;
   }
 

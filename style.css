@@ -345,7 +345,13 @@ canvas {
   cursor: pointer;
 }
 
-#dialogAltButton.hidden {
+.dialog-box button {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.dialog-box button.hidden {
   display: none;
 }
 

@@ -14,6 +14,7 @@ const dialogOverlay = document.getElementById("dialogOverlay");
 const dialogTitle = document.getElementById("dialogTitle");
 const dialogBody = document.getElementById("dialogBody");
 const dialogAltButton = document.getElementById("dialogAltButton");
+const dialogThirdButton = document.getElementById("dialogThirdButton");
 const dialogButton = document.getElementById("dialogButton");
 const minigameOverlay = document.getElementById("minigameOverlay");
 const minigameHeading = minigameOverlay.querySelector("h2");
@@ -289,7 +290,7 @@ const paintState = {
   },
 };
 
-let postShiftConversationState = null;
+let workerConversationState = null;
 
 const bellState = {
   iframe: null,
@@ -678,57 +679,143 @@ const WORKER_AFTER_SHIFT_DIALOGUE = {
   "worker-1": {
     work:
       "When you ask how she keeps her numerals so even, Agnes admits she counts the curve out under her breath before every turn. \"If I let the room decide the pace, the room wins,\" she says. Another woman nearby murmurs that the room always thinks it can win.",
+    wry:
+      "When you try a dry joke about all of you going home brighter than the lamps, Agnes huffs a tired laugh. She says humor is cheaper than medicine, so the room might as well make use of it.",
     home:
       "Asked about home, Agnes says her pay goes straight into her mother's hands before she ever thinks of keeping any for herself. She says it without complaint, only fatigue, and smooths a thumb over the heel of her palm as if she is already counting what tonight's coins need to cover.",
   },
   "worker-2": {
     work:
       "Ruth tells you the manager notices overflow before he notices effort. \"That is why I mind the inside edge first,\" she says. \"He cannot tell a steady hand from a frightened one, but he can count a ruined dial.\"",
+    wry:
+      "Ruth takes your wry remark about the manager's tally book as an invitation. She says if he could tax exhaustion by the ounce, he would, and for a moment the bitterness almost sounds companionable.",
     home:
       "When you ask about home, Ruth huffs out something almost like a laugh. She says her younger brother keeps asking whether the shine comes off in the wash. \"I tell him it had better,\" she says, though the answer clearly does not comfort her.",
   },
   "worker-3": {
     work:
       "Clara tips her head when you ask about the work. \"Half of it is nerve,\" she says. \"The other half is pretending the manager isn't standing over your shoulder measuring the time in your spine.\" When another girl snorts, Clara only smiles wider.",
+    wry:
+      "Clara answers your joke with one of her own and, for the first time all day, lets it stay in the air. She says laughter is only useful if it arrives before the silence does.",
     home:
       "On home, Clara's voice softens. She says she keeps up the teasing because if she stops, she will have to admit how scared everyone looks once the lamps are out. \"I can manage scared,\" she says. \"Quiet is what gets me.\"",
   },
   "worker-4": {
     work:
       "Evelyn answers your question about the paint as if she has been waiting for someone to ask it properly. She says the mixture should drag just enough to obey. \"If it glides, it lies,\" she tells you. \"And if it lies, the numeral will show it by morning.\"",
+    wry:
+      "When you angle the conversation sideways, Evelyn's mouth finally softens. She says the only thing sharper than the powder is the way these rooms teach a girl to laugh without opening her lips.",
     home:
       "When you ask about home, Evelyn says her father watches the pay envelope before he ever asks how her shift went. She does not sound bitter, only resigned, and adds that good money makes it easier for people to call dangerous work a blessing.",
   },
   "worker-5": {
     work:
       "Mae keeps her eyes lowered when you ask about the bench, but this time she answers at length. She says most ruined faces come from panic after the first bad stroke, not the stroke itself. \"Girls drown the second pass trying to fix the first,\" she says quietly.",
+    wry:
+      "Your attempt to lighten the mood earns Mae a small, surprised smile. She admits she forgets conversation can be gentle when it is not coming from across a dinner table full of chores.",
     home:
       "On the subject of home, Mae admits she still does mending after her shift because there is always somebody's sleeve or hem waiting on the chair. She says it so softly that it feels less like conversation and more like a confession.",
   },
   "worker-6": {
     work:
       "Lillian says the lamp changes everything. Under a bright one, she can pretend her hand is steadier than it feels. Under a bad one, every numeral turns mean. \"You learn which bench forgives you,\" she says, \"and which one never will.\"",
+    wry:
+      "Lillian answers the joke with a weary kind of wit. She says if the lamps had any decency, they'd follow everyone home and finish the housework too.",
     home:
       "Asked about going home, Lillian says the quiet there can be worse than the factory noise because it leaves too much room to notice the ache in her jaw and the looseness in her teeth. She says it plainly, as though naming it is the only kindness left.",
   },
   "worker-7": {
     work:
       "Nora tells you the trick is not speed but recovery. \"Everyone misses a line,\" she says. \"The girls who last are the ones who lose less time to hating themselves for it.\" The bluntness lands harder than comfort and somehow helps more.",
+    wry:
+      "Nora meets your dry tone easily. She says black humor is the only sort the factory hasn't figured out how to dock from the pay envelope.",
     home:
       "When you ask about home, Nora says she mostly wants a washbasin and ten minutes where nobody asks anything of her. Then she glances aside and admits that once she gets there, she still ends up helping with supper, because that is how these nights go.",
   },
   "worker-8": {
     work:
       "Pearl says the paint always tells on the person mixing it. Thin paint betrays impatience, heavy paint betrays fear. \"A good face looks calm even when the girl painting it wasn't,\" she says. There is pride in that, and a little grief too.",
+    wry:
+      "Pearl lets the joke sit a moment before laughing under her breath. She says she prefers that kind of talk because it lets a girl tell the truth without sounding like she's begging to be pitied.",
     home:
       "Asked about home, Pearl says the younger children still think the glow is pretty when they catch it on her cuffs. She says they do not know enough yet to be afraid of beautiful things that stay too long on the skin.",
   },
   "worker-9": {
     work:
       "Vi hesitates before answering, then admits the first sign for her was the shaking. She says it started small enough to excuse, then grew into something she had to plan around. \"You can work around a tremor,\" she says, \"until the day you suddenly can't.\"",
+    wry:
+      "Vi startles at the joke, then answers with one of her own so quiet you nearly miss it. By the time she's done smiling, the sadness has crept back in, but at least it had to wait its turn.",
     home:
       "On home, Vi says she keeps an extra rag in her pocket because she hates letting anyone see the glow before she reaches the washbasin. \"As if hiding it for five more minutes changes anything,\" she adds, almost embarrassed by the hope in that habit.",
   },
+};
+const WORKER_SHIFT_CHOICE_DIALOGUE = {
+  "worker-1": {
+    wry:
+      "At your remark that the room must dream in numerals by now, Agnes almost smiles. \"Mine do,\" she says. \"That's when I know I stayed too late.\"",
+    personal:
+      "Asked how she's holding up, Agnes says she survives by cutting the shift into little promises: one curve, one stroke, one face at a time.",
+  },
+  "worker-2": {
+    wry:
+      "Your aside about the manager counting ruined dials instead of girls draws a dry snort from Ruth. \"He'd miscount both,\" she says.",
+    personal:
+      "When you ask how she's doing, Ruth answers \"Fine\" too fast, then amends it: \"Quick. I know how to be quick. That's different.\"",
+  },
+  "worker-3": {
+    wry:
+      "When you match her sharpness with a joke, Clara grins. \"Good,\" she says. \"I was starting to think they'd hired me a saint.\"",
+    personal:
+      "Ask how she's holding up and Clara shrugs, then admits the joking keeps her from hearing how frightened the room sounds when nobody talks.",
+  },
+  "worker-4": {
+    wry:
+      "At your crack that the paint behaves better than management, Evelyn actually laughs once. \"That depends which bowl you've got,\" she says.",
+    personal:
+      "Asked how she's faring, Evelyn says routine is doing most of the work now. \"If I stop to notice too much, the whole thing turns strange.\"",
+  },
+  "worker-5": {
+    wry:
+      "Mae looks startled by the joke, then lets out the smallest breath of laughter. \"Careful,\" she says. \"If I smile, my line goes crooked.\"",
+    personal:
+      "When you ask how she's managing, Mae admits she saves her patience for the tray because there's none left by the time she gets home.",
+  },
+  "worker-6": {
+    wry:
+      "Your dry comment about the lamp making saints of shaky hands gets a tired smile from Lillian. \"Only until the light changes,\" she says.",
+    personal:
+      "Asked how she's holding up, Lillian says the worst part is pretending the ache is ordinary long enough that everyone else believes it too.",
+  },
+  "worker-7": {
+    wry:
+      "Nora catches the joke and answers in kind. \"If I start laughing at this room, I may never stop,\" she says, which sounds truer than funny.",
+    personal:
+      "When you ask how she's doing, Nora says she prefers tasks to feelings. After a beat she adds, \"The trouble is tasks follow you home.\"",
+  },
+  "worker-8": {
+    wry:
+      "Your remark about the paint outlasting all of you earns Pearl a sideways look and a quiet, dark laugh. \"There's the spirit,\" she says.",
+    personal:
+      "Asked how she's managing, Pearl says she keeps trying to leave the day at the washbasin and keeps failing by the front door.",
+  },
+  "worker-9": {
+    wry:
+      "At your joke about everyone here learning to glow in the dark, Vi winces and smiles anyway. \"I would settle for sleeping through the dark,\" she says.",
+    personal:
+      "When you ask how she's holding up, Vi admits she plans around her shaking now, as if naming it a habit might keep it from becoming something worse.",
+  },
+};
+const WORKER_CONVERSATION_OPTIONS = {
+  shift: [
+    { id: "work", label: "Ask about the brushwork" },
+    { id: "wry", label: "Offer a dry joke" },
+    { id: "personal", label: "Ask how she's holding up" },
+  ],
+  afterShift: [
+    { id: "work", label: "Talk about the shift" },
+    { id: "wry", label: "Try a dry joke" },
+    { id: "home", label: "Ask about home" },
+  ],
 };
 const FAMILIAR_WORKERS_REQUIRED = 3;
 
@@ -935,6 +1022,7 @@ function workerDisplayName(id) {
 
 function advanceWorkerProgress(id) {
   const progress = workerProgressFor(id);
+  const hadKnownName = progress.nameKnown;
   const firstTalk = progress.talks === 0;
   const revealEligible = !progress.nameKnown && gameState.currentDay >= workerNameRevealDay(id);
   let revealText = "";
@@ -961,6 +1049,7 @@ function advanceWorkerProgress(id) {
 
   return {
     progress,
+    hadKnownName,
     firstTalk,
     revealText,
     withheldText,
@@ -1008,25 +1097,114 @@ function workerDialogueLines(id) {
   return profile.dailyDialogue[dayIndex];
 }
 
-function workerDialogueForInteraction(id) {
+function workerConversationNotes(relationship) {
+  return [relationship.revealText, relationship.withheldText, relationship.familiarityText]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function workerConversationChoices(context) {
+  return WORKER_CONVERSATION_OPTIONS[context] || WORKER_CONVERSATION_OPTIONS.shift;
+}
+
+function workerConversationTitle(id, context, relationship = null) {
+  const canUseName = relationship ? relationship.hadKnownName : workerProgressFor(id).nameKnown;
+  const label = canUseName ? workerName(id) : "???";
+  if (context === "afterShift") {
+    return canUseName ? `${label} - After The Bell` : "After The Bell";
+  }
+  return canUseName ? label : "At The Bench";
+}
+
+function workerConversationPrompt(id, context, relationship) {
+  const progress = workerProgressFor(id);
+  const label = relationship.hadKnownName ? workerName(id) : "One of the women";
+  const notes = workerConversationNotes(relationship);
+  const openness = relationship.familiarityText.includes("familiar standing")
+    ? "She makes a little more room for the conversation than she used to."
+    : relationship.familiarityText.includes("recognize")
+      ? "There is less distance in the pause this time."
+      : progress.familiarity === "familiar"
+        ? "She leaves the silence open long enough for you to choose your angle."
+        : progress.familiarity === "acquainted"
+          ? "She waits a beat to hear what you will say."
+          : "It is only a narrow opening, the sort you could lose by saying the wrong thing.";
+  const setup = context === "afterShift"
+    ? (relationship.firstTalk
+      ? `${label} lingers near the benches instead of slipping straight for the door.`
+      : `${label} slows beside you once the lamps go low, more open now that the trays are dark.`)
+    : (relationship.firstTalk
+      ? `${label} finally pauses long enough to look you over.`
+      : `${label} glances up from the tray and leaves you just enough room to speak.`);
+  return `${setup} ${workerAppearanceText(id)} ${openness}${notes ? ` ${notes}` : ""} How do you open the conversation?`;
+}
+
+function workerConversationResponse(id, context, choiceId) {
+  const progress = workerProgressFor(id);
+  if (context === "afterShift") {
+    const profile = WORKER_AFTER_SHIFT_DIALOGUE[id] || {};
+    if (profile[choiceId]) return profile[choiceId];
+    if (choiceId === "home") {
+      return "She looks away for a moment, then admits home is mostly another list of things that still need doing before she can rest.";
+    }
+    if (choiceId === "wry") {
+      return "She answers the joke with a tired smile, grateful for a moment that asks something from her besides endurance.";
+    }
+    return "She says the work gets easier to repeat long before it gets easier to live with.";
+  }
+
+  if (choiceId === "work") {
+    const [primary, secondary] = workerDialogueLines(id);
+    return [primary, secondary].filter(Boolean).join(" ");
+  }
+
+  const profile = WORKER_SHIFT_CHOICE_DIALOGUE[id] || {};
+  if (profile[choiceId]) {
+    return profile[choiceId];
+  }
+
+  if (choiceId === "personal") {
+    return progress.familiarity === "familiar"
+      ? "She answers more honestly than she means to, then returns to the tray before the feeling can settle."
+      : "She hesitates, gives you the smallest honest answer she can afford, and bends back over the dial.";
+  }
+  return "That finally earns a brief smile before the room pulls her attention back to the tray.";
+}
+
+function configureDialogChoiceButton(button, text, choiceId = "") {
+  button.textContent = text;
+  button.dataset.choiceId = choiceId;
+  button.classList.remove("hidden");
+}
+
+function openWorkerConversation(id, context = "shift") {
   const relationship = advanceWorkerProgress(id);
-  const [dailyPrimary, dailySecondary] = workerDialogueLines(id);
-  let primary = relationship.firstTalk
-    ? "She finally pauses and gives you a measured look."
-    : dailyPrimary;
-  let secondary = relationship.firstTalk ? dailyPrimary : (dailySecondary || "");
+  workerConversationState = {
+    workerId: id,
+    context,
+    relationship,
+  };
 
-  if (relationship.revealText) {
-    primary = `${relationship.revealText} ${primary}`;
-  } else if (relationship.withheldText) {
-    secondary = `${secondary}${secondary ? " " : ""}${relationship.withheldText}`;
-  }
+  const choices = workerConversationChoices(context);
+  resetDialogButtons();
+  dialogTitle.textContent = workerConversationTitle(id, context, relationship);
+  dialogBody.textContent = workerConversationPrompt(id, context, relationship);
+  configureDialogChoiceButton(dialogAltButton, choices[0].label, choices[0].id);
+  configureDialogChoiceButton(dialogThirdButton, choices[1].label, choices[1].id);
+  configureDialogChoiceButton(dialogButton, choices[2].label, choices[2].id);
+  dialogOverlay.classList.remove("hidden");
+  gameState.dialogMode = "worker-talk-choice";
+}
 
-  if (relationship.familiarityText) {
-    secondary = `${secondary}${secondary ? " " : ""}${relationship.familiarityText}`;
-  }
-
-  return [primary, secondary];
+function resolveWorkerConversationChoice(choiceId) {
+  if (!workerConversationState) return;
+  const { workerId, context } = workerConversationState;
+  resetDialogButtons();
+  dialogTitle.textContent = workerConversationTitle(workerId, context);
+  dialogBody.textContent = workerConversationResponse(workerId, context, choiceId);
+  dialogButton.textContent = context === "afterShift" ? "Continue to chores" : "Back to the room";
+  dialogOverlay.classList.remove("hidden");
+  gameState.dialogMode = "worker-talk-result";
 }
 
 function afterShiftConversationCandidates() {
@@ -1052,32 +1230,6 @@ function pickAfterShiftConversationWorker() {
   return shortlist[index];
 }
 
-function afterShiftConversationTitle(id) {
-  const label = workerDisplayName(id);
-  return label === "???" ? "After The Bell" : `${label} - After The Bell`;
-}
-
-function afterShiftConversationPrompt(id, relationship) {
-  const progress = workerProgressFor(id);
-  const label = progress.nameKnown ? workerName(id) : "One of the women";
-  const preface = relationship.firstTalk
-    ? `${label} lingers near the benches instead of turning straight for the door.`
-    : `${label} slows beside you once the lamps go low, less guarded than she is during the shift.`;
-  const appearance = workerAppearanceText(id);
-  const notes = [relationship.revealText, relationship.withheldText, relationship.familiarityText]
-    .filter(Boolean)
-    .join(" ");
-  return `${preface} ${appearance}${notes ? ` ${notes}` : ""} What do you ask her about?`;
-}
-
-function afterShiftConversationLine(id, topic) {
-  const profile = WORKER_AFTER_SHIFT_DIALOGUE[id];
-  if (profile && profile[topic]) return profile[topic];
-  return topic === "home"
-    ? "She looks away for a moment, then admits home is mostly another list of things that still need doing before she can rest."
-    : "She says the work gets easier to repeat long before it gets easier to live with.";
-}
-
 function openAfterShiftConversation() {
   const workerId = pickAfterShiftConversationWorker();
   if (!workerId) {
@@ -1085,41 +1237,7 @@ function openAfterShiftConversation() {
     continueAfterDialog();
     return;
   }
-
-  const relationship = advanceWorkerProgress(workerId);
-  postShiftConversationState = {
-    workerId,
-    remainingTopics: ["work", "home"],
-  };
-
-  resetDialogButtons();
-  dialogTitle.textContent = afterShiftConversationTitle(workerId);
-  dialogBody.textContent = afterShiftConversationPrompt(workerId, relationship);
-  dialogButton.textContent = "Ask about the work";
-  dialogAltButton.textContent = "Ask about home";
-  dialogAltButton.classList.remove("hidden");
-  dialogOverlay.classList.remove("hidden");
-  gameState.dialogMode = "post-shift-talk-choice";
-}
-
-function showAfterShiftConversationTopic(topic) {
-  if (!postShiftConversationState || !postShiftConversationState.remainingTopics.includes(topic)) return;
-  const workerId = postShiftConversationState.workerId;
-  postShiftConversationState.remainingTopics = postShiftConversationState.remainingTopics.filter((entry) => entry !== topic);
-
-  resetDialogButtons();
-  dialogTitle.textContent = afterShiftConversationTitle(workerId);
-  dialogBody.textContent = afterShiftConversationLine(workerId, topic);
-  dialogButton.textContent = "Continue to chores";
-
-  if (postShiftConversationState.remainingTopics.length > 0) {
-    const remaining = postShiftConversationState.remainingTopics[0];
-    dialogAltButton.textContent = remaining === "work" ? "Ask about the work" : "Ask about home";
-    dialogAltButton.classList.remove("hidden");
-  }
-
-  dialogOverlay.classList.remove("hidden");
-  gameState.dialogMode = "post-shift-talk-result";
+  openWorkerConversation(workerId, "afterShift");
 }
 
 function interactableDisplayName(item) {
@@ -1258,8 +1376,7 @@ const interactables = [
         showBenchTutorial();
         return;
       }
-      const [primary, secondary] = workerDialogueForInteraction("worker-3");
-      setMessage(primary, secondary);
+      openWorkerConversation("worker-3");
     },
   },
   {
@@ -1337,8 +1454,7 @@ for (const entry of interactables) {
   if (entry.kind !== "worker") continue;
   entry.prompt = () => workerPromptText(entry.id);
   entry.interact = () => {
-    const [primary, secondary] = workerDialogueForInteraction(entry.id);
-    setMessage(primary, secondary);
+    openWorkerConversation(entry.id);
   };
 }
 
@@ -1727,7 +1843,7 @@ function loadGameFromLocal() {
   if (paintState.active) {
     closeMinigame();
   }
-  postShiftConversationState = null;
+  workerConversationState = null;
 
   gameState.currentDay = Math.max(0, Math.min(6, Number(loadedGame.currentDay ?? 0)));
   gameState.shiftActive = Boolean(loadedGame.shiftActive);
@@ -2407,8 +2523,13 @@ function finalEndingForHealth() {
 
 function resetDialogButtons() {
   dialogAltButton.classList.add("hidden");
+  dialogThirdButton.classList.add("hidden");
   dialogAltButton.textContent = "Alternative";
+  dialogThirdButton.textContent = "Third option";
   dialogButton.textContent = "Continue";
+  delete dialogAltButton.dataset.choiceId;
+  delete dialogThirdButton.dataset.choiceId;
+  delete dialogButton.dataset.choiceId;
 }
 
 function showEnding(title, body) {
@@ -3231,9 +3352,9 @@ function finishHemmingTrip() {
 function continueAfterDialog() {
   dialogOverlay.classList.add("hidden");
   resetDialogButtons();
+  workerConversationState = null;
 
   if (gameState.dialogMode === "post-shift-report") {
-    postShiftConversationState = null;
     if (gameState.postShiftActivity === "hemming") {
       openHemmingTrip();
     } else {
@@ -3261,7 +3382,7 @@ function continueAfterDialog() {
 
 function resetWeek() {
   dialogOverlay.classList.add("hidden");
-  postShiftConversationState = null;
+  workerConversationState = null;
   gameState.currentDay = 0;
   gameState.shiftActive = false;
   gameState.shiftEnded = false;
@@ -6494,14 +6615,23 @@ bindPress(dialogButton, () => {
     return;
   }
 
-  if (gameState.dialogMode === "post-shift-talk-choice") {
-    showAfterShiftConversationTopic("work");
+  if (gameState.dialogMode === "worker-talk-choice") {
+    resolveWorkerConversationChoice(dialogButton.dataset.choiceId);
     return;
   }
 
-  if (gameState.dialogMode === "post-shift-talk-result") {
-    postShiftConversationState = null;
-    gameState.dialogMode = "post-shift-report";
+  if (gameState.dialogMode === "worker-talk-result") {
+    const context = workerConversationState?.context;
+    if (context === "afterShift") {
+      gameState.dialogMode = "post-shift-report";
+      continueAfterDialog();
+      return;
+    }
+    dialogOverlay.classList.add("hidden");
+    resetDialogButtons();
+    workerConversationState = null;
+    gameState.dialogMode = "";
+    return;
   }
   continueAfterDialog();
 });
@@ -6521,13 +6651,15 @@ bindPress(dialogAltButton, () => {
     return;
   }
 
-  if (gameState.dialogMode === "post-shift-talk-choice") {
-    showAfterShiftConversationTopic("home");
+  if (gameState.dialogMode === "worker-talk-choice") {
+    resolveWorkerConversationChoice(dialogAltButton.dataset.choiceId);
     return;
   }
+});
 
-  if (gameState.dialogMode === "post-shift-talk-result" && postShiftConversationState?.remainingTopics.length) {
-    showAfterShiftConversationTopic(postShiftConversationState.remainingTopics[0]);
+bindPress(dialogThirdButton, () => {
+  if (gameState.dialogMode === "worker-talk-choice") {
+    resolveWorkerConversationChoice(dialogThirdButton.dataset.choiceId);
   }
 });
 

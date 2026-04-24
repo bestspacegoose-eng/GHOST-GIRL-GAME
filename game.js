@@ -47,6 +47,9 @@ const DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATU
 const HEALTH_DRIFT_THRESHOLD = 80;
 const GUARANTEED_THRESHOLD_THOUGHT = "Why does my hand feel unsteady already? It shouldn't be this hard to hold a straight line.";
 const DEFAULT_BRUSH_SIZE = 0.22;
+const BRUSH_ROUGH_THRESHOLD = 0.95;
+const BRUSH_FANNED_THRESHOLD = 1.45;
+const MAX_BRUSH_SIZE = 1.9;
 const WATCH_FACE_ASPECT = 1536 / 1024;
 const WATCH_CENTER_X = 409;
 const WATCH_CENTER_Y = 282;
@@ -1625,11 +1628,21 @@ function groceryFinishRect() {
   return { ...GROCERY_LAYOUT.finish };
 }
 
+function groceryControlsRect(index) {
+  const rect = groceryRowRect(index);
+  return {
+    minus: { x: rect.x + rect.w - 66, y: rect.y + 9, w: 20, h: rect.h - 18 },
+    plus: { x: rect.x + rect.w - 22, y: rect.y + 9, w: 20, h: rect.h - 18 },
+    countX: rect.x + rect.w - 34,
+    priceX: rect.x + rect.w - 78,
+  };
+}
+
 function groceryItemAt(x, y) {
   for (let i = 0; i < GROCERY_ITEMS.length; i += 1) {
     const rect = groceryRowRect(i);
     if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) {
-      return GROCERY_ITEMS[i];
+      return { item: GROCERY_ITEMS[i], index: i };
     }
   }
   return null;
@@ -1644,6 +1657,14 @@ function groceryCartSummary() {
     .filter((item) => (gameState.groceryCart[item.id] || 0) > 0)
     .map((item) => `${gameState.groceryCart[item.id]} ${item.label.toLowerCase()}`);
   return parts.length > 0 ? parts.join(", ") : "nothing but the money still in your pocket";
+}
+
+function groceryCount(id) {
+  return gameState.groceryCart[id] || 0;
+}
+
+function groceryPurchasedAny(ids) {
+  return ids.some((id) => groceryCount(id) > 0);
 }
 
 function groceryReflectionText() {
@@ -1674,6 +1695,56 @@ function updateGroceryStats() {
     `Basket: ${groceryCartSummary()}.`;
 }
 
+function groceryHomeSceneText() {
+  const health = gameState.hiddenStats.health;
+  const purchases = groceryItemsPurchasedCount();
+  const broughtHome = groceryCartSummary();
+  const hasMeat = groceryPurchasedAny(["steak", "bacon"]);
+  const hasSugar = groceryCount("sugar") > 0;
+  const stapleCount =
+    groceryCount("milk") +
+    groceryCount("butter") +
+    groceryCount("eggs") +
+    groceryCount("flour") +
+    groceryCount("potatoes");
+
+  let opening;
+  if (health >= 80) {
+    opening = "Home is all lamplight and close walls after the factory.";
+  } else if (health >= 50) {
+    opening = "By the time you reach home, your body feels heavier than the grocery sack in your hand.";
+  } else {
+    opening = "You arrive home worn thin, carrying the groceries like something much heavier than they are.";
+  }
+
+  let arrival;
+  if (purchases === 0) {
+    arrival = "When you set your hands on the table, there is almost nothing to show for the day besides the ache you carried back with you.";
+  } else {
+    arrival = `You bring home ${broughtHome}.`;
+  }
+
+  let parents;
+  if (hasMeat) {
+    parents = "Your parents notice the meat first. Their relief is immediate and impossible to miss, the first real easing in their faces all evening.";
+  } else if (stapleCount > 0) {
+    parents = "Your parents glance over the plain groceries and answer with practical thanks, subdued and careful, already measuring how far such staples can stretch.";
+  } else {
+    parents = "Your parents try not to let their disappointment settle too visibly on the table, but the room still dims around what you could not bring home.";
+  }
+
+  let siblings;
+  if (hasSugar) {
+    siblings = "The younger children brighten at the sight of sugar at once, crowding close with the kind of happiness that makes the room feel younger for a minute.";
+  } else if (stapleCount > 0 || hasMeat) {
+    siblings = "The younger ones peer into the sack, then take in the plainness of it with a muted little nod before drifting back toward their places.";
+  } else {
+    siblings = "The younger ones watch your expression more than the sack, as if that will tell them whether to ask for anything at all.";
+  }
+
+  return `${opening} ${arrival} ${parents} ${siblings}`;
+}
+
 function openGroceriesTrip() {
   paintState.active = true;
   paintState.mode = "groceries";
@@ -1689,7 +1760,9 @@ function openGroceriesTrip() {
   gameState.groceryCart = Object.fromEntries(GROCERY_ITEMS.map((item) => [item.id, 0]));
   minigameHeading.textContent = "Groceries";
   paintPrompt.textContent = groceryReflectionText();
-  mixPrompt.textContent = `Today's tally gives you ${formatTenthsCents(gameState.groceryBudgetTenths)} to spend. Click an item to buy one unit for the family.`;
+  mixPrompt.textContent =
+    `Today's tally gives you ${formatTenthsCents(gameState.groceryBudgetTenths)} to spend. ` +
+    "Use + to add to the basket and - to put an item back before you finish shopping.";
   updateGroceryStats();
   setStationControlsHidden(true);
   minigameOverlay.classList.remove("hidden");
@@ -1710,22 +1783,32 @@ function buyGrocery(item) {
   updateGroceryStats();
 }
 
-function finishGroceriesTrip() {
-  const groceriesHome = groceryCartSummary();
-  closeMinigame();
-
-  if (gameState.currentDay < 6 && gameState.hiddenStats.health < 60 && !gameState.warnedLowHealth) {
-    gameState.warnedLowHealth = true;
-    showLowHealthWarning();
-    setMessage(
-      "The grocery sack weighs against your leg on the walk home.",
-      `You bring home ${groceriesHome}.`,
-    );
-    updateHud();
+function removeGrocery(item) {
+  if (!item || groceryCount(item.id) <= 0) {
+    paintPrompt.textContent = "There is nothing of that item in the basket to put back.";
+    updateGroceryStats();
     return;
   }
 
-  advanceToNextDay(`You bring home ${groceriesHome}. Clock in again when the title card fades away.`);
+  gameState.groceryCart[item.id] -= 1;
+  gameState.groceryFundsTenths += item.priceTenths;
+  paintPrompt.textContent = `You put ${item.label.toLowerCase()} back and count the money in your hand again.`;
+  updateGroceryStats();
+}
+
+function showHomeSceneAfterShopping() {
+  resetDialogButtons();
+  dialogTitle.textContent = "At Home";
+  dialogBody.textContent = groceryHomeSceneText();
+  dialogButton.textContent = "Continue";
+  dialogOverlay.classList.remove("hidden");
+  gameState.dialogMode = "post-shopping-home";
+}
+
+function finishGroceriesTrip() {
+  closeMinigame();
+  showHomeSceneAfterShopping();
+  updateHud();
 }
 
 function continueAfterDialog() {
@@ -1734,6 +1817,18 @@ function continueAfterDialog() {
 
   if (gameState.dialogMode === "post-shift-report") {
     openGroceriesTrip();
+  } else if (gameState.dialogMode === "post-shopping-home") {
+    if (gameState.currentDay < 6 && gameState.hiddenStats.health < 60 && !gameState.warnedLowHealth) {
+      gameState.warnedLowHealth = true;
+      showLowHealthWarning();
+      setMessage(
+        "The walk home leaves you hollowed out.",
+        `Inside, the family gathers around ${groceryCartSummary()}.`,
+      );
+      updateHud();
+      return;
+    }
+    advanceToNextDay(`You bring home ${groceryCartSummary()}. Clock in again when the title card fades away.`);
   } else if (gameState.dialogMode === "low-health-warning") {
     gameState.fracturePending = true;
     advanceToNextDay("Something is wrong now, even away from the bench.");
@@ -2341,10 +2436,10 @@ function updatePaintStats() {
   const correctionNeeded = correctionCount();
   const mixPercent = Math.round(paintState.mixQuality * 100);
   const brushState =
-    paintState.brushSize <= 0.7 ? "fine tip" :
-    paintState.brushSize <= 1.2 ? "slightly soft" :
-    paintState.brushSize <= 1.8 ? "fanning" :
-    "splayed";
+    paintState.brushSize <= BRUSH_ROUGH_THRESHOLD * 0.7 ? "fine tip" :
+    paintState.brushSize < BRUSH_ROUGH_THRESHOLD ? "slightly soft" :
+    paintState.brushSize < BRUSH_FANNED_THRESHOLD ? "roughening" :
+    "fully fanned";
   const currentDial = activeDial();
   const currentDialText = currentDial
     ? ` Numeral ${currentDial.label} coverage ${Math.round(currentDial.coverage * 100)}%.`
@@ -3016,10 +3111,10 @@ function drawMixDish(centerX, centerY, hovered = false) {
 }
 
 function fanBrush(messageBase) {
-  paintState.brushSize = Math.min(6, paintState.brushSize + 0.3);
-  if (paintState.brushSize > 2.2) {
-    paintPrompt.textContent = `${messageBase} The brush has started to splay.`;
-  } else if (paintState.brushSize > 1.1) {
+  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.3);
+  if (paintState.brushSize >= BRUSH_FANNED_THRESHOLD) {
+    paintPrompt.textContent = `${messageBase} The brush has fully fanned out.`;
+  } else if (paintState.brushSize >= BRUSH_ROUGH_THRESHOLD) {
     paintPrompt.textContent = `${messageBase} The brush is beginning to fan.`;
   } else {
     paintPrompt.textContent = messageBase;
@@ -3027,7 +3122,7 @@ function fanBrush(messageBase) {
 }
 
 function dullBrushOnUse() {
-  paintState.brushSize = Math.min(6, paintState.brushSize + 0.018);
+  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.018);
 }
 
 function drawAssetCentered(image, x, y, width, height, alpha = 1) {
@@ -3261,6 +3356,7 @@ function drawGroceriesView() {
   for (let i = 0; i < GROCERY_ITEMS.length; i += 1) {
     const item = GROCERY_ITEMS[i];
     const rect = groceryRowRect(i);
+    const controls = groceryControlsRect(i);
     const affordable = gameState.groceryFundsTenths >= item.priceTenths;
     const count = gameState.groceryCart[item.id] || 0;
 
@@ -3273,9 +3369,23 @@ function drawGroceriesView() {
     paintCtx.fillText(`${item.label} (${item.unit})`, rect.x + 12, rect.y + rect.h / 2);
     paintCtx.textAlign = "right";
     paintCtx.fillStyle = affordable ? "#d9f57a" : "#f0a0a0";
-    paintCtx.fillText(formatTenthsCents(item.priceTenths), rect.x + rect.w - 56, rect.y + rect.h / 2);
-    paintCtx.fillStyle = "rgba(255,255,255,0.84)";
-    paintCtx.fillText(`x${count}`, rect.x + rect.w - 12, rect.y + rect.h / 2);
+    paintCtx.fillText(formatTenthsCents(item.priceTenths), controls.priceX, rect.y + rect.h / 2);
+    paintCtx.textAlign = "center";
+    paintCtx.fillStyle = count > 0 ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.44)";
+    paintCtx.fillText(`${count}`, controls.countX, rect.y + rect.h / 2);
+
+    for (const [symbol, box, enabled] of [
+      ["-", controls.minus, count > 0],
+      ["+", controls.plus, affordable],
+    ]) {
+      paintCtx.fillStyle = enabled ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)";
+      paintCtx.fillRect(box.x, box.y, box.w, box.h);
+      paintCtx.strokeStyle = enabled ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.12)";
+      paintCtx.strokeRect(box.x, box.y, box.w, box.h);
+      paintCtx.fillStyle = enabled ? "#f5f5f5" : "rgba(255,255,255,0.34)";
+      paintCtx.fillText(symbol, box.x + box.w / 2, box.y + box.h / 2 + 1);
+    }
+
     paintCtx.textAlign = "left";
   }
 
@@ -3589,9 +3699,9 @@ function drawImageCursor(mode) {
     image = assetImages.cursorMix;
   } else if (mode === "brush") {
     image =
-      paintState.brushSize > 2.2
+      paintState.brushSize >= BRUSH_FANNED_THRESHOLD
         ? assetImages.fannedBrush
-        : paintState.brushSize > 1.1
+        : paintState.brushSize >= BRUSH_ROUGH_THRESHOLD
           ? assetImages.roughBrush
           : assetImages.cursorBrush;
   } else {
@@ -3616,18 +3726,20 @@ function drawImageCursor(mode) {
   }
 
   if (mode === "brush") {
-    let width = 66 + paintState.brushSize * 18;
+    let width = 66 + paintState.brushSize * 14;
     let height = width * (543 / 544);
     let tipX = 84 * (width / 544);
     let tipY = 503 * (height / 543);
 
     if (image === assetImages.roughBrush) {
-      width = 74 + Math.max(0, paintState.brushSize - 1.1) * 14;
+      const roughProgress = Math.max(0, Math.min(1, (paintState.brushSize - BRUSH_ROUGH_THRESHOLD) / (BRUSH_FANNED_THRESHOLD - BRUSH_ROUGH_THRESHOLD)));
+      width = 68 + roughProgress * 4;
       height = width * (917 / 544);
       tipX = 72 * (width / 544);
       tipY = 865 * (height / 917);
     } else if (image === assetImages.fannedBrush) {
-      width = 80 + Math.max(0, paintState.brushSize - 2.2) * 10;
+      const fannedProgress = Math.max(0, Math.min(1, (paintState.brushSize - BRUSH_FANNED_THRESHOLD) / (MAX_BRUSH_SIZE - BRUSH_FANNED_THRESHOLD || 1)));
+      width = 70 + fannedProgress * 4;
       height = width * (907 / 540);
       tipX = 86 * (width / 540);
       tipY = 874 * (height / 907);
@@ -3882,9 +3994,14 @@ paintCanvas.addEventListener("mousedown", (event) => {
       return;
     }
 
-    const item = groceryItemAt(position.x, position.y);
-    if (item) {
-      buyGrocery(item);
+    const rowHit = groceryItemAt(position.x, position.y);
+    if (rowHit) {
+      const controls = groceryControlsRect(rowHit.index);
+      if (pointInsideRect(position.x, position.y, controls.minus)) {
+        removeGrocery(rowHit.item);
+      } else {
+        buyGrocery(rowHit.item);
+      }
       drawWatchMinigame();
     }
     return;

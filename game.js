@@ -3149,13 +3149,13 @@ function openTutorialMinigame() {
   drawWatchMinigame();
 }
 
-function closeTutorialMinigame() {
+function closeTutorialMinigame(
+  primary = "The woman at the center bench gives a short nod.",
+  secondary = "\"Good. That's a finished face. Clock in at the wall clock when you're ready for the real shift.\"",
+) {
   paintState.tutorial = null;
   closeMinigame();
-  setMessage(
-    "The woman lets you stand back up from the bench.",
-    "Clock in at the wall clock when you are ready to begin the shift.",
-  );
+  setMessage(primary, secondary);
 }
 
 function imageReady(image) {
@@ -4238,8 +4238,19 @@ function updateCoverage() {
 }
 
 function updateAutoSubmit(dt) {
-  if (!paintState.active || paintState.mode !== "watch" || paintState.tutorial) {
+  if (!paintState.active || paintState.mode !== "watch") {
     paintState.autoSubmitTimer = -1;
+    return;
+  }
+
+  if (paintState.tutorial) {
+    paintState.autoSubmitTimer = -1;
+    if (allDialsReady() && correctionCount() === 0) {
+      closeTutorialMinigame(
+        "The woman at the center bench steps back from your shoulder.",
+        "\"Good. You know the process now. Clock in at the wall clock and begin your day.\"",
+      );
+    }
     return;
   }
 

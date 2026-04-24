@@ -78,6 +78,18 @@
         <div class="menu-panel">
           <h2>GAME MENU</h2>
           <p id="menuStatus" class="menu-status">No local save found.</p>
+          <div class="menu-audio" aria-label="audio controls">
+            <label class="menu-slider-row" for="musicVolumeSlider">
+              <span>Music volume</span>
+              <span id="musicVolumeValue">32%</span>
+            </label>
+            <input id="musicVolumeSlider" class="menu-slider" type="range" min="0" max="100" step="1" value="32" />
+            <label class="menu-slider-row" for="sfxVolumeSlider">
+              <span>Sound effects</span>
+              <span id="sfxVolumeValue">70%</span>
+            </label>
+            <input id="sfxVolumeSlider" class="menu-slider" type="range" min="0" max="100" step="1" value="70" />
+          </div>
           <div class="menu-actions">
             <button id="saveButton" type="button">Save locally</button>
             <button id="loadButton" type="button">Load local save</button>

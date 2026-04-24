@@ -143,6 +143,23 @@ canvas {
   pointer-events: none;
 }
 
+.menu-button {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 8;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(10, 10, 10, 0.86);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.menu-button:hover {
+  background: rgba(34, 34, 34, 0.9);
+}
+
 .reticle::before,
 .reticle::after {
   content: "";
@@ -198,7 +215,8 @@ canvas {
 }
 
 .dialog-overlay,
-.minigame-overlay {
+.minigame-overlay,
+.menu-overlay {
   z-index: 6;
   display: grid;
   place-items: center;
@@ -206,7 +224,8 @@ canvas {
 }
 
 .dialog-overlay.hidden,
-.minigame-overlay.hidden {
+.minigame-overlay.hidden,
+.menu-overlay.hidden {
   display: none;
 }
 
@@ -215,6 +234,51 @@ canvas {
   width: min(96%, 1120px);
   background: rgba(10, 10, 10, 0.96);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.menu-overlay {
+  z-index: 9;
+}
+
+.menu-panel {
+  width: min(92%, 420px);
+  background: rgba(10, 10, 10, 0.96);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--line);
+  padding: 18px;
+}
+
+.menu-panel h2 {
+  margin: 0 0 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 1.1rem;
+}
+
+.menu-status {
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.35;
+  min-height: 2.4em;
+}
+
+.menu-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.menu-actions button {
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #1e1e1e;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-actions button:hover {
+  background: #2b2b2b;
 }
 
 .dialog-box {

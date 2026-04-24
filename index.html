@@ -35,6 +35,8 @@
         </div>
       </div>
 
+      <button id="menuButton" class="menu-button" type="button">Menu</button>
+
       <div class="reticle" aria-hidden="true"></div>
 
       <section class="title-card visible" id="titleCard" aria-live="polite">
@@ -68,6 +70,20 @@
 
           <div class="watch-stage">
             <canvas id="paintCanvas" width="640" height="640" aria-label="watch painting table"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="menu-overlay hidden" id="menuOverlay" aria-live="polite">
+        <div class="menu-panel">
+          <h2>GAME MENU</h2>
+          <p id="menuStatus" class="menu-status">No local save found.</p>
+          <div class="menu-actions">
+            <button id="saveButton" type="button">Save locally</button>
+            <button id="loadButton" type="button">Load local save</button>
+            <button id="deleteSaveButton" type="button">Delete local save</button>
+            <button id="newWeekButton" type="button">Start new week</button>
+            <button id="closeMenuButton" type="button">Close menu</button>
           </div>
         </div>
       </section>

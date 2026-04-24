@@ -25,6 +25,14 @@ const paintStats = document.getElementById("paintStats");
 const correctButton = document.getElementById("correctButton");
 const lickButton = document.getElementById("lickButton");
 const mixResetButton = document.getElementById("mixResetButton");
+const menuButton = document.getElementById("menuButton");
+const menuOverlay = document.getElementById("menuOverlay");
+const menuStatus = document.getElementById("menuStatus");
+const saveButton = document.getElementById("saveButton");
+const loadButton = document.getElementById("loadButton");
+const deleteSaveButton = document.getElementById("deleteSaveButton");
+const newWeekButton = document.getElementById("newWeekButton");
+const closeMenuButton = document.getElementById("closeMenuButton");
 
 const WIDTH = canvas.width;
 const HEIGHT = canvas.height;
@@ -45,6 +53,9 @@ const PAY_PER_DIAL_CENTS = 8;
 const IGNORE_CORRECTION_FINE_CENTS = 10;
 const DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const HEALTH_DRIFT_THRESHOLD = 80;
+const MINIGAME_SPEED_HEALTH_THRESHOLD = 80;
+const MAX_MINIGAME_SPEED_MULTIPLIER = 1.65;
+const LOCAL_SAVE_KEY = "ghost_girl_local_save_v1";
 const GUARANTEED_THRESHOLD_THOUGHT = "Why does my hand feel unsteady already? It shouldn't be this hard to hold a straight line.";
 const DEFAULT_BRUSH_SIZE = 0.22;
 const BRUSH_ROUGH_THRESHOLD = 0.95;
@@ -1146,6 +1157,7 @@ function update(dt) {
     }
   }
 
+  updateFractureDrift(dt);
   updateThoughtPopups(dt);
   updateAutoSubmit(dt);
 
@@ -1173,6 +1185,271 @@ function nextThoughtDelay() {
   if (gameState.currentDay <= 2) return 60;
   const healthFactor = 1 - Math.max(0, Math.min(100, gameState.hiddenStats.health)) / 100;
   return Math.max(9, 42 - healthFactor * 24);
+}
+
+function minigameSpeedMultiplier() {
+  const health = Math.max(0, Math.min(100, gameState.hiddenStats.health));
+  if (health >= MINIGAME_SPEED_HEALTH_THRESHOLD) return 1;
+  const severity = (MINIGAME_SPEED_HEALTH_THRESHOLD - health) / MINIGAME_SPEED_HEALTH_THRESHOLD;
+  return 1 + severity * (MAX_MINIGAME_SPEED_MULTIPLIER - 1);
+}
+
+function clonePlain(value) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value));
+}
+
+function isMenuOpen() {
+  return Boolean(menuOverlay && !menuOverlay.classList.contains("hidden"));
+}
+
+function readLocalSave() {
+  try {
+    const raw = localStorage.getItem(LOCAL_SAVE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (error) {
+    return null;
+  }
+}
+
+function formatSaveTimestamp(value) {
+  if (!value) return "unknown time";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "unknown time";
+  return date.toLocaleString();
+}
+
+function updateMenuStatus(message = "") {
+  if (!menuStatus) return;
+  const save = readLocalSave();
+  if (message) {
+    menuStatus.textContent = message;
+    return;
+  }
+  if (!save) {
+    menuStatus.textContent = "No local save found.";
+    return;
+  }
+  const day = Number.isFinite(save?.gameState?.currentDay) ? save.gameState.currentDay + 1 : "?";
+  menuStatus.textContent = `Local save found: Day ${day}. Saved ${formatSaveTimestamp(save.savedAt)}.`;
+}
+
+function openMenu() {
+  if (!menuOverlay) return;
+  menuOverlay.classList.remove("hidden");
+  updateMenuStatus();
+}
+
+function closeMenu() {
+  if (!menuOverlay) return;
+  menuOverlay.classList.add("hidden");
+}
+
+function toggleMenu() {
+  if (!menuOverlay) return;
+  if (isMenuOpen()) {
+    closeMenu();
+  } else {
+    openMenu();
+  }
+}
+
+function buildLocalSavePayload() {
+  if (paintState.active && paintState.mode === "watch" && !paintState.tutorial) {
+    saveCurrentBenchWork();
+  }
+
+  return {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    gameState: {
+      currentDay: gameState.currentDay,
+      shiftActive: gameState.shiftActive,
+      shiftEnded: gameState.shiftEnded,
+      dayTransition: gameState.dayTransition,
+      shiftElapsed: gameState.shiftElapsed,
+      dialsPaintedToday: gameState.dialsPaintedToday,
+      watchesSubmittedToday: gameState.watchesSubmittedToday,
+      dayEarningsCents: gameState.dayEarningsCents,
+      totalEarningsCents: gameState.totalEarningsCents,
+      totalDialsPainted: gameState.totalDialsPainted,
+      lastShiftProgress: gameState.lastShiftProgress,
+      lowPayDaysInRow: gameState.lowPayDaysInRow,
+      dayOneIntroSeen: gameState.dayOneIntroSeen,
+      dayFiveCutsceneSeen: gameState.dayFiveCutsceneSeen,
+      joinedWorkers: gameState.joinedWorkers,
+      warnedLowHealth: gameState.warnedLowHealth,
+      fracturePending: gameState.fracturePending,
+      fractureResolved: gameState.fractureResolved,
+      hiddenStats: clonePlain(gameState.hiddenStats),
+      thresholdThoughtQueued: gameState.thresholdThoughtQueued,
+      thresholdThoughtShown: gameState.thresholdThoughtShown,
+      savedBenchWork: clonePlain(gameState.savedBenchWork),
+      shiftThoughtLog: clonePlain(gameState.shiftThoughtLog),
+      lastShiftThoughtLog: clonePlain(gameState.lastShiftThoughtLog),
+      savedFundsTenths: gameState.savedFundsTenths,
+      groceryBudgetTenths: gameState.groceryBudgetTenths,
+      groceryFundsTenths: gameState.groceryFundsTenths,
+      groceryCart: clonePlain(gameState.groceryCart),
+      postShiftActivity: gameState.postShiftActivity,
+      postHomeSummary: gameState.postHomeSummary,
+      hemmingTasks: clonePlain(gameState.hemmingTasks),
+      workerProgress: clonePlain(gameState.workerProgress),
+      tutorialSeen: gameState.tutorialSeen,
+    },
+    paintState: {
+      tableLabel: paintState.tableLabel,
+      watchIndex: paintState.watchIndex,
+      brushSize: paintState.brushSize,
+      mix: clonePlain(paintState.mix),
+      mixQuality: paintState.mixQuality,
+      paintLoaded: paintState.paintLoaded,
+      watchNumeralStyle: paintState.watchNumeralStyle,
+      activeDialIndex: paintState.activeDialIndex,
+      zoomedDialIndex: paintState.zoomedDialIndex,
+      readyToSubmit: paintState.readyToSubmit,
+      tool: paintState.tool,
+      correcting: paintState.correcting,
+    },
+    roomState: {
+      cursorX: roomState.cursorX,
+      cursorY: roomState.cursorY,
+    },
+  };
+}
+
+function saveGameToLocal() {
+  try {
+    localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify(buildLocalSavePayload()));
+    updateMenuStatus("Saved locally.");
+    return true;
+  } catch (error) {
+    updateMenuStatus("Saving failed in this browser context.");
+    return false;
+  }
+}
+
+function loadGameFromLocal() {
+  const payload = readLocalSave();
+  if (!payload || !payload.gameState) {
+    updateMenuStatus("No local save found to load.");
+    return false;
+  }
+
+  const loadedGame = payload.gameState || {};
+  const loadedPaint = payload.paintState || {};
+  const loadedRoom = payload.roomState || {};
+
+  if (!dialogOverlay.classList.contains("hidden")) {
+    dialogOverlay.classList.add("hidden");
+    resetDialogButtons();
+  }
+  if (paintState.active) {
+    closeMinigame();
+  }
+
+  gameState.currentDay = Math.max(0, Math.min(6, Number(loadedGame.currentDay ?? 0)));
+  gameState.shiftActive = Boolean(loadedGame.shiftActive);
+  gameState.shiftEnded = Boolean(loadedGame.shiftEnded);
+  gameState.dayTransition = Boolean(loadedGame.dayTransition);
+  gameState.shiftElapsed = Math.max(0, Math.min(SHIFT_DURATION_SECONDS, Number(loadedGame.shiftElapsed ?? 0)));
+  gameState.dialsPaintedToday = Math.max(0, Number(loadedGame.dialsPaintedToday ?? 0));
+  gameState.watchesSubmittedToday = Math.max(0, Number(loadedGame.watchesSubmittedToday ?? 0));
+  gameState.dayEarningsCents = Number(loadedGame.dayEarningsCents ?? 0);
+  gameState.totalEarningsCents = Number(loadedGame.totalEarningsCents ?? 0);
+  gameState.totalDialsPainted = Math.max(0, Number(loadedGame.totalDialsPainted ?? 0));
+  gameState.lastShiftProgress = Math.max(0, Math.min(1, Number(loadedGame.lastShiftProgress ?? 0)));
+  gameState.lowPayDaysInRow = Math.max(0, Number(loadedGame.lowPayDaysInRow ?? 0));
+  gameState.dayOneIntroSeen = Boolean(loadedGame.dayOneIntroSeen);
+  gameState.dayFiveCutsceneSeen = Boolean(loadedGame.dayFiveCutsceneSeen);
+  gameState.joinedWorkers = Boolean(loadedGame.joinedWorkers);
+  gameState.warnedLowHealth = Boolean(loadedGame.warnedLowHealth);
+  gameState.fracturePending = Boolean(loadedGame.fracturePending);
+  gameState.fractureResolved = Boolean(loadedGame.fractureResolved);
+  gameState.hiddenStats = clonePlain(loadedGame.hiddenStats || { health: 100, brushLicks: 0, fingernailUses: 0 });
+  gameState.hiddenStats.health = Math.max(0, Math.min(100, Number(gameState.hiddenStats.health ?? 100)));
+  gameState.hiddenStats.brushLicks = Math.max(0, Number(gameState.hiddenStats.brushLicks ?? 0));
+  gameState.hiddenStats.fingernailUses = Math.max(0, Number(gameState.hiddenStats.fingernailUses ?? 0));
+  gameState.thresholdThoughtQueued = Boolean(loadedGame.thresholdThoughtQueued);
+  gameState.thresholdThoughtShown = Boolean(loadedGame.thresholdThoughtShown);
+  gameState.savedBenchWork = clonePlain(loadedGame.savedBenchWork || {});
+  gameState.shiftThoughtLog = clonePlain(loadedGame.shiftThoughtLog || []);
+  gameState.lastShiftThoughtLog = clonePlain(loadedGame.lastShiftThoughtLog || []);
+  gameState.savedFundsTenths = Math.max(0, Number(loadedGame.savedFundsTenths ?? 0));
+  gameState.groceryBudgetTenths = Math.max(0, Number(loadedGame.groceryBudgetTenths ?? 0));
+  gameState.groceryFundsTenths = Math.max(0, Number(loadedGame.groceryFundsTenths ?? 0));
+  gameState.groceryCart = clonePlain(loadedGame.groceryCart || {});
+  gameState.postShiftActivity = loadedGame.postShiftActivity === "hemming" ? "hemming" : "groceries";
+  gameState.postHomeSummary = String(loadedGame.postHomeSummary || "");
+  gameState.hemmingTasks = clonePlain(loadedGame.hemmingTasks || []);
+  gameState.workerProgress = clonePlain(loadedGame.workerProgress || buildDefaultWorkerProgress());
+  gameState.tutorialSeen = Boolean(loadedGame.tutorialSeen);
+  gameState.dialogMode = "";
+
+  paintState.active = false;
+  paintState.isPainting = false;
+  paintState.correcting = Boolean(loadedPaint.correcting);
+  paintState.tool = loadedPaint.tool === "nail" ? "nail" : loadedPaint.tool === "mix" ? "mix" : "brush";
+  paintState.dials = [];
+  paintState.tableLabel = String(loadedPaint.tableLabel || "central");
+  paintState.watchIndex = Math.max(0, Number(loadedPaint.watchIndex ?? 0));
+  paintState.brushSize = Math.max(DEFAULT_BRUSH_SIZE, Math.min(MAX_BRUSH_SIZE, Number(loadedPaint.brushSize ?? DEFAULT_BRUSH_SIZE)));
+  paintState.mix = Array.isArray(loadedPaint.mix) && loadedPaint.mix.length === 3
+    ? loadedPaint.mix.map((value) => Math.max(0, Number(value || 0)))
+    : [0, 0, 0];
+  paintState.mixQuality = Math.max(0, Math.min(1, Number(loadedPaint.mixQuality ?? 0)));
+  paintState.activeDialIndex = Math.max(0, Number(loadedPaint.activeDialIndex ?? 0));
+  paintState.zoomedDialIndex = -1;
+  paintState.paintLoaded = Math.max(0, Math.min(1, Number(loadedPaint.paintLoaded ?? 0)));
+  paintState.readyToSubmit = Boolean(loadedPaint.readyToSubmit);
+  paintState.mode = "watch";
+  paintState.fracturePieces = [];
+  paintState.draggedPieceIndex = -1;
+  paintState.tutorial = null;
+  paintState.autoSubmitTimer = -1;
+  paintState.thoughtPopup = null;
+  paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS.includes(loadedPaint.watchNumeralStyle)
+    ? loadedPaint.watchNumeralStyle
+    : NUMERAL_STYLE_KEYS[0];
+  paintState.groceryTiming.active = false;
+  paintState.hemmingTiming.active = false;
+
+  roomState.cursorX = Math.max(0, Math.min(WIDTH, Number(loadedRoom.cursorX ?? WIDTH / 2)));
+  roomState.cursorY = Math.max(0, Math.min(HEIGHT, Number(loadedRoom.cursorY ?? HEIGHT / 2)));
+
+  if (gameState.dayTransition) {
+    showTitleCard();
+  } else {
+    titleCard.classList.remove("visible", "fade-out");
+  }
+
+  minigameOverlay.classList.add("hidden");
+  setStationControlsHidden(false);
+  updateCoverage();
+  updateHud();
+  setMessage(
+    `${DAY_NAMES[gameState.currentDay]} restored from local save.`,
+    gameState.shiftActive
+      ? "Shift is still live. Clock out at the wall clock when you're done, or return to the bench."
+      : "Click the wall clock to begin when you're ready.",
+  );
+  closeMenu();
+  updateMenuStatus("Local save loaded.");
+  return true;
+}
+
+function deleteLocalSave() {
+  try {
+    localStorage.removeItem(LOCAL_SAVE_KEY);
+    updateMenuStatus("Local save deleted.");
+    return true;
+  } catch (error) {
+    updateMenuStatus("Could not delete local save in this browser context.");
+    return false;
+  }
 }
 
 function wrapThoughtText(text, maxWidth) {
@@ -2019,7 +2296,7 @@ function openGroceriesTrip() {
   gameState.groceryCart = Object.fromEntries(GROCERY_ITEMS.map((item) => [item.id, 0]));
   paintState.groceryTiming.active = false;
   paintState.groceryTiming.startedAt = 0;
-  paintState.groceryTiming.periodMs = 920 + Math.random() * 880;
+  paintState.groceryTiming.periodMs = Math.max(480, Math.round((920 + Math.random() * 880) / minigameSpeedMultiplier()));
   paintState.groceryTiming.targetAngle = Math.random() * Math.PI * 2;
   paintState.groceryTiming.attemptsUsed = 0;
   paintState.groceryTiming.attemptsMax = GROCERY_BARGAIN_ATTEMPTS_BASE + Math.min(2, Math.floor(gameState.currentDay / 3));
@@ -2100,7 +2377,7 @@ function beginGroceryBargain() {
   }
   paintState.groceryTiming.active = true;
   paintState.groceryTiming.startedAt = performance.now();
-  paintState.groceryTiming.periodMs = 860 + Math.random() * 980;
+  paintState.groceryTiming.periodMs = Math.max(460, Math.round((860 + Math.random() * 980) / minigameSpeedMultiplier()));
   paintState.groceryTiming.targetAngle = Math.random() * Math.PI * 2;
   paintPrompt.textContent = "The market seller watches your hand. Click again when the moving light crosses the bright arc.";
 }
@@ -2245,7 +2522,7 @@ function startHemmingTiming(taskIndex) {
     taskIndex,
     stitchIndex: task.stitchesDone,
     startedAt: performance.now(),
-    periodMs: Math.max(620, Math.round(basePeriodMs + randomPeriodOffsetMs)),
+    periodMs: Math.max(440, Math.round((basePeriodMs + randomPeriodOffsetMs) / minigameSpeedMultiplier())),
     target: 0.66 + Math.random() * 0.24,
   };
   paintPrompt.textContent = `Thread ready for ${task.label}. Click again when the timing ring lines up.`;
@@ -3386,6 +3663,36 @@ function visibleSpillCount(dial, minOverspill = 0.85, minRadius = 0) {
   return count;
 }
 
+function correctionHotspotsForDial(dial, limit = 6) {
+  if (!dial) return [];
+  const guidePoints = dialRenderPoints(dial);
+  const strayPoints = strayRenderPoints(dial);
+  if (!guidePoints || guidePoints.length === 0 || strayPoints.length === 0) return [];
+
+  const zoomed = paintState.zoomedDialIndex !== -1;
+  const hotspots = [];
+
+  for (const mark of strayPoints) {
+    const markRadius = Math.max(0.8, mark.r || 0);
+    const distanceToGuide = nearestGuideDistance(guidePoints, mark.x, mark.y);
+    const edgeAllowance = (zoomed ? 6.1 : 4.8) + markRadius * (zoomed ? 0.72 : 0.58);
+    const overspill = Math.max(0, distanceToGuide - edgeAllowance);
+    if (overspill < 0.42) continue;
+    const alphaWeight = Math.max(0.45, mark.a || 0.7);
+    const score = overspill * alphaWeight * (0.74 + Math.min(1.2, markRadius * 0.12));
+    hotspots.push({
+      x: mark.x,
+      y: mark.y,
+      r: markRadius,
+      overspill,
+      score,
+    });
+  }
+
+  hotspots.sort((a, b) => b.score - a.score);
+  return hotspots.slice(0, limit);
+}
+
 function smoothDialShapeOnLock(dial) {
   ensureDialPaintLevel(dial);
   const points = dial.targetPoints;
@@ -3998,8 +4305,8 @@ function paintAt(x, y) {
     offGuidePoints += 1;
   }
   const overflowRatio = brushFootprintOverflow(renderPoints, x, y, hitRadius);
-  if (overflowRatio > 0.25) {
-    offGuidePoints += Math.max(1, Math.round(overflowRatio * 3));
+  if (overflowRatio > 0.2) {
+    offGuidePoints += Math.max(1, Math.round(overflowRatio * 4));
   }
 
   const centerFactor = Math.max(0.78, 1 - hit.distance / (paintState.zoomedDialIndex === -1 ? 52 : 84));
@@ -4010,10 +4317,10 @@ function paintAt(x, y) {
   }
   const spreadPenalty = Math.max(0, (paintState.brushSize - BRUSH_ROUGH_THRESHOLD) / Math.max(0.001, MAX_BRUSH_SIZE - BRUSH_ROUGH_THRESHOLD));
   if (spreadPenalty > 0 && paintedPoints > 0) {
-    hit.dial.mess += (paintState.zoomedDialIndex === -1 ? 0.009 : 0.016) * spreadPenalty;
+    hit.dial.mess += (paintState.zoomedDialIndex === -1 ? 0.011 : 0.019) * spreadPenalty;
   }
   if (offGuidePoints > 0) {
-    const spillMarks = Math.max(1, Math.ceil(overflowRatio * 2.4));
+    const spillMarks = Math.max(1, Math.ceil(overflowRatio * 3.2));
     for (let i = 0; i < spillMarks; i += 1) {
       const angle = (Math.PI * 2 * i) / spillMarks + Math.random() * 0.32;
       const radius = hitRadius * (0.52 + Math.random() * 0.54);
@@ -4023,16 +4330,16 @@ function paintAt(x, y) {
       hit.dial.strayPoints.push({
         x: worldPoint.x,
         y: worldPoint.y,
-        r: (paintState.zoomedDialIndex === -1 ? 2.4 : 2.4) + paintState.brushSize * (paintState.zoomedDialIndex === -1 ? 2.2 : 3.2),
+        r: (paintState.zoomedDialIndex === -1 ? 2.6 : 2.8) + paintState.brushSize * (paintState.zoomedDialIndex === -1 ? 2.4 : 3.4),
         a: 0.9,
       });
     }
     if (hit.dial.strayPoints.length > 64) hit.dial.strayPoints.shift();
     hit.dial.mess +=
-      0.018 +
-      overflowRatio * 0.08 +
-      spreadPenalty * 0.022 +
-      (1 - paintState.mixQuality) * 0.02;
+      0.021 +
+      overflowRatio * 0.096 +
+      spreadPenalty * 0.026 +
+      (1 - paintState.mixQuality) * 0.022;
     paintPrompt.textContent = "The spread brush bleeds past the numeral edges. This watch will need cleanup.";
   }
 
@@ -4389,7 +4696,7 @@ function fanBrush(messageBase) {
 }
 
 function dullBrushOnUse() {
-  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + 0.009);
+  paintState.brushSize = Math.min(MAX_BRUSH_SIZE, paintState.brushSize + (0.0067 * minigameSpeedMultiplier()));
 }
 
 function drawAssetCentered(image, x, y, width, height, alpha = 1) {
@@ -5059,11 +5366,35 @@ function drawZoomedDialView() {
   drawStrayPaint(dial, true);
   drawDialPaint(dial, true);
   if (dialNeedsCorrection(dial)) {
-    paintCtx.strokeStyle = "rgba(255, 120, 120, 0.96)";
-    paintCtx.lineWidth = 4;
-    paintCtx.beginPath();
-    paintCtx.arc(ZOOM_CENTER_X, ZOOM_CENTER_Y, 136, 0, Math.PI * 2);
-    paintCtx.stroke();
+    const correctionHotspots = correctionHotspotsForDial(dial, 7);
+    if (correctionHotspots.length > 0) {
+      paintCtx.save();
+      paintCtx.setLineDash([7, 4]);
+      for (const hotspot of correctionHotspots) {
+        const markerRadius = Math.max(9, hotspot.r + 6 + hotspot.overspill * 2.1);
+        paintCtx.strokeStyle = "rgba(255, 124, 124, 0.96)";
+        paintCtx.lineWidth = 3;
+        paintCtx.beginPath();
+        paintCtx.arc(hotspot.x, hotspot.y, markerRadius, 0, Math.PI * 2);
+        paintCtx.stroke();
+        paintCtx.setLineDash([]);
+        paintCtx.strokeStyle = "rgba(255, 204, 204, 0.92)";
+        paintCtx.lineWidth = 1.6;
+        paintCtx.beginPath();
+        paintCtx.arc(hotspot.x, hotspot.y, markerRadius - 4, 0, Math.PI * 2);
+        paintCtx.stroke();
+        paintCtx.setLineDash([7, 4]);
+      }
+      paintCtx.restore();
+    } else {
+      paintCtx.strokeStyle = "rgba(255, 120, 120, 0.84)";
+      paintCtx.lineWidth = 3;
+      paintCtx.setLineDash([8, 6]);
+      paintCtx.beginPath();
+      paintCtx.arc(ZOOM_CENTER_X, ZOOM_CENTER_Y, 136, 0, Math.PI * 2);
+      paintCtx.stroke();
+      paintCtx.setLineDash([]);
+    }
   }
 
   const paintMeterWidth = 180;
@@ -5368,6 +5699,27 @@ function endFractureDrag() {
     completeFracturePuzzle();
   }
 }
+
+function updateFractureDrift(dt) {
+  if (!paintState.active || paintState.mode !== "fracture") return;
+  if (paintState.draggedPieceIndex !== -1) return;
+
+  const speedScale = minigameSpeedMultiplier();
+  if (speedScale <= 1) return;
+
+  const now = performance.now() * 0.001;
+  const driftStrength = (speedScale - 1) * 26;
+
+  for (let i = 0; i < paintState.fracturePieces.length; i += 1) {
+    const piece = paintState.fracturePieces[i];
+    if (piece.placed) continue;
+    const waveX = Math.sin(now * (1.9 + i * 0.12) + i * 0.7);
+    const waveY = Math.cos(now * (2.15 + i * 0.09) + i * 0.41);
+    piece.x = Math.max(0, Math.min(paintCanvas.width - piece.w, piece.x + waveX * driftStrength * dt));
+    piece.y = Math.max(0, Math.min(paintCanvas.height - piece.h, piece.y + waveY * driftStrength * dt));
+  }
+}
+
 function frame(now) {
   const dt = Math.min(0.033, (now - lastTime) / 1000);
   lastTime = now;
@@ -5431,23 +5783,25 @@ function applyPaintingDrift(position) {
   if (severity <= 0) return position;
 
   const now = performance.now();
+  const speedScale = 1 + severity * (minigameSpeedMultiplier() - 1) + severity * 0.55;
+  const t = now * speedScale;
   const idleElapsed = Math.max(0, now - paintState.lastPointerMoveAt);
   const idleFactor = Math.min(1, Math.max(0, idleElapsed - 110) / 650);
   const strokeBoost = paintState.isPainting && paintState.tool === "brush" ? 1.15 : 1;
   const shakeRadius = (1.8 + severity * 7.2) * strokeBoost;
   const idleRadius = (12 + severity * 44) * idleFactor;
   const driftX =
-    Math.sin(now * 0.08 + paintState.watchIndex * 0.71) * shakeRadius * 0.62 +
-    Math.sin(now * 0.16 + paintState.activeDialIndex * 1.11) * shakeRadius * 0.32 +
-    Math.cos(now * 0.23 + paintState.watchIndex * 0.43) * shakeRadius * 0.18 +
-    Math.sin(now * 0.012 + paintState.watchIndex * 0.34) * idleRadius * 0.92 +
-    Math.cos(now * 0.019 + paintState.activeDialIndex * 0.58) * idleRadius * 0.46;
+    Math.sin(t * 0.08 + paintState.watchIndex * 0.71) * shakeRadius * 0.62 +
+    Math.sin(t * 0.16 + paintState.activeDialIndex * 1.11) * shakeRadius * 0.32 +
+    Math.cos(t * 0.23 + paintState.watchIndex * 0.43) * shakeRadius * 0.18 +
+    Math.sin(t * 0.012 + paintState.watchIndex * 0.34) * idleRadius * 0.92 +
+    Math.cos(t * 0.019 + paintState.activeDialIndex * 0.58) * idleRadius * 0.46;
   const driftY =
-    Math.cos(now * 0.09 + paintState.watchIndex * 0.39) * shakeRadius * 0.58 +
-    Math.sin(now * 0.175 + paintState.activeDialIndex * 0.93) * shakeRadius * 0.28 +
-    Math.cos(now * 0.21 + paintState.watchIndex * 0.27) * shakeRadius * 0.17 +
-    Math.cos(now * 0.011 + paintState.watchIndex * 0.29) * idleRadius * 0.88 +
-    Math.sin(now * 0.017 + paintState.activeDialIndex * 0.47) * idleRadius * 0.44;
+    Math.cos(t * 0.09 + paintState.watchIndex * 0.39) * shakeRadius * 0.58 +
+    Math.sin(t * 0.175 + paintState.activeDialIndex * 0.93) * shakeRadius * 0.28 +
+    Math.cos(t * 0.21 + paintState.watchIndex * 0.27) * shakeRadius * 0.17 +
+    Math.cos(t * 0.011 + paintState.watchIndex * 0.29) * idleRadius * 0.88 +
+    Math.sin(t * 0.017 + paintState.activeDialIndex * 0.47) * idleRadius * 0.44;
 
   return {
     x: Math.max(0, Math.min(paintCanvas.width, position.x + driftX)),
@@ -5456,6 +5810,7 @@ function applyPaintingDrift(position) {
 }
 
 function bindPress(element, handler) {
+  if (!element) return;
   let lastPressAt = -Infinity;
   const run = () => {
     const now = performance.now();
@@ -5534,6 +5889,35 @@ bindPress(mixResetButton, () => {
   drawWatchMinigame();
 });
 
+bindPress(menuButton, () => {
+  toggleMenu();
+});
+
+bindPress(closeMenuButton, () => {
+  closeMenu();
+});
+
+bindPress(saveButton, () => {
+  saveGameToLocal();
+});
+
+bindPress(loadButton, () => {
+  loadGameFromLocal();
+});
+
+bindPress(deleteSaveButton, () => {
+  deleteLocalSave();
+});
+
+bindPress(newWeekButton, () => {
+  resetWeek();
+  closeMenu();
+  setMessage(
+    "A fresh week begins.",
+    "Clock in at the wall clock when you are ready to start again.",
+  );
+});
+
 paintCanvas.addEventListener("mousemove", (event) => {
   const position = pointerInsidePaintCanvas(event);
   if (paintState.mode === "groceries" || paintState.mode === "hemming") {
@@ -5580,6 +5964,7 @@ paintCanvas.addEventListener("mousemove", (event) => {
 
 let lastPaintCanvasPressAt = -Infinity;
 function handlePaintCanvasPress(event) {
+  if (isMenuOpen()) return;
   const now = performance.now();
   if (now - lastPaintCanvasPressAt < 90) return;
   lastPaintCanvasPressAt = now;
@@ -5747,6 +6132,17 @@ paintCanvas.addEventListener("touchcancel", releasePaintOrDrag);
 document.addEventListener("keydown", (event) => {
   keys.add(event.code);
 
+  if (event.code === "KeyM") {
+    event.preventDefault();
+    toggleMenu();
+    return;
+  }
+
+  if (event.code === "Escape" && isMenuOpen()) {
+    closeMenu();
+    return;
+  }
+
   if (event.shiftKey && event.code === "KeyF") {
     event.preventDefault();
     gameState.currentDay = Math.max(gameState.currentDay, 3);
@@ -5785,6 +6181,7 @@ document.addEventListener("keyup", (event) => {
 
 let lastRoomCanvasPressAt = -Infinity;
 function handleRoomCanvasPress(event) {
+  if (isMenuOpen()) return;
   const now = performance.now();
   if (now - lastRoomCanvasPressAt < 90) return;
   lastRoomCanvasPressAt = now;
@@ -5842,4 +6239,5 @@ canvas.addEventListener("mousemove", (event) => {
 showTitleCard();
 updateHud();
 drawWatchMinigame();
+updateMenuStatus();
 requestAnimationFrame(frame);

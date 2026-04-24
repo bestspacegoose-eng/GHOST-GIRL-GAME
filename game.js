@@ -3590,6 +3590,7 @@ function findNearestDial(x, y) {
 
 function findNearestTracePoint(x, y) {
   let best = null;
+  const hitLimit = currentBrushPaintRadius() + (paintState.zoomedDialIndex === -1 ? 10 : 16);
 
   const dialSet = paintState.zoomedDialIndex === -1
     ? paintState.dials.filter((dial) => !dial.locked)
@@ -3600,8 +3601,7 @@ function findNearestTracePoint(x, y) {
     for (let i = 0; i < renderPoints.length; i += 1) {
       const point = renderPoints[i];
       const distance = Math.hypot(point.x - x, point.y - y);
-      const limit = paintState.zoomedDialIndex === -1 ? 58 : 92;
-      if (distance > limit) continue;
+      if (distance > hitLimit) continue;
       if (!best || distance < best.distance) {
         best = { dial, index: i, point, distance };
       }
@@ -3728,6 +3728,13 @@ function paintTone() {
     fill: `rgba(240, 222, 132, ${fillAlpha})`,
     stray: `rgba(228, 204, 104, ${strayAlpha})`,
   };
+}
+
+function currentBrushPaintRadius() {
+  if (paintState.zoomedDialIndex === -1) {
+    return Math.max(5, paintState.brushSize * 8);
+  }
+  return Math.max(5, paintState.brushSize * 28);
 }
 
 function drawDialPaint(dial, zoomed = false) {
@@ -3912,9 +3919,7 @@ function paintAt(x, y) {
     return;
   }
 
-  const hitRadius = paintState.zoomedDialIndex === -1
-    ? Math.max(12, paintState.brushSize * 10)
-    : Math.max(32, paintState.brushSize * 58);
+  const hitRadius = currentBrushPaintRadius();
   let paintedPoints = 0;
   let partialPoints = 0;
   let overlapPoints = 0;
@@ -3946,9 +3951,7 @@ function paintAt(x, y) {
     }
   }
 
-  const strictRadius = paintState.zoomedDialIndex === -1
-    ? Math.max(8, paintState.brushSize * 5.6)
-    : Math.max(14, paintState.brushSize * 21);
+  const strictRadius = Math.max(4, hitRadius * 0.65);
   if (hit.distance > strictRadius) {
     offGuidePoints += 1;
   }
@@ -4918,7 +4921,7 @@ function drawWatchMinigame() {
     paintCtx.fill();
   }
 
-  const previewRadius = paintState.tool === "nail" ? 14 : Math.max(5, paintState.brushSize * 8);
+  const previewRadius = paintState.tool === "nail" ? 14 : currentBrushPaintRadius();
   paintCtx.save();
   paintCtx.strokeStyle = paintState.tool === "nail" ? "rgba(255, 132, 132, 0.92)" : "rgba(245, 245, 190, 0.92)";
   paintCtx.fillStyle = paintState.tool === "nail" ? "rgba(170, 0, 0, 0.12)" : "rgba(245, 245, 190, 0.12)";
@@ -5019,7 +5022,7 @@ function drawZoomedDialView() {
   paintCtx.font = "14px Georgia";
   paintCtx.fillText("paint on brush", w - 122, 58);
 
-  const previewRadius = paintState.tool === "nail" ? 8 : Math.max(5, paintState.brushSize * 28);
+  const previewRadius = paintState.tool === "nail" ? 8 : currentBrushPaintRadius();
   paintCtx.save();
   paintCtx.strokeStyle = paintState.tool === "nail" ? "rgba(255, 122, 122, 0.96)" : "rgba(245, 245, 190, 0.96)";
   paintCtx.fillStyle = paintState.tool === "nail" ? "rgba(170, 0, 0, 0.12)" : "rgba(245, 245, 190, 0.08)";

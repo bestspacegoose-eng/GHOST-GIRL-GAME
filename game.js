@@ -69,13 +69,13 @@ const PAINT_POINT_COMPLETE = 1;
 const PAINT_POINT_COVERAGE_THRESHOLD = 0.92;
 const PAINT_POINT_SOFT_COVERAGE_THRESHOLD = 0.62;
 const STATION_LAYOUT = {
-  powder: { x: 98, y: 210, w: 118, h: 156, rx: 44, ry: 48 },
-  gum: { x: 170, y: 356, w: 114, h: 90, rx: 42, ry: 30 },
-  water: { x: 58, y: 356, w: 114, h: 90, rx: 42, ry: 30 },
+  powder: { x: 82, y: 160, w: 118, h: 156, rx: 44, ry: 48 },
+  gum: { x: 178, y: 382, w: 114, h: 90, rx: 42, ry: 30 },
+  water: { x: 66, y: 382, w: 114, h: 90, rx: 42, ry: 30 },
   dish: { x: 112, y: 504, w: 156, h: 116, rx: 52, ry: 34 },
   zoomPaint: { x: 96, y: 108, w: 122, h: 90, rx: 44, ry: 30 },
   zoomWipe: { x: 96, y: 252, w: 126, h: 144 },
-  brushProp: { x: 186, y: 250, w: 54, h: 196 },
+  brushProp: { x: 176, y: 178, w: 54, h: 196 },
   nailProp: { x: 252, y: 338, r: 30 },
 };
 const GROCERY_ITEMS = [
@@ -1960,12 +1960,14 @@ function timingGradeFromDiff(diff) {
 function startHemmingTiming(taskIndex) {
   const task = gameState.hemmingTasks[taskIndex];
   if (!task || task.stitchesDone >= task.stitchesNeeded) return false;
+  const basePeriodMs = 1200 - Math.min(280, gameState.currentDay * 38);
+  const randomPeriodOffsetMs = (Math.random() * 260) - 130;
   paintState.hemmingTiming = {
     active: true,
     taskIndex,
     stitchIndex: task.stitchesDone,
     startedAt: performance.now(),
-    periodMs: 1200 - Math.min(280, gameState.currentDay * 38),
+    periodMs: Math.max(620, Math.round(basePeriodMs + randomPeriodOffsetMs)),
     target: 0.66 + Math.random() * 0.24,
   };
   paintPrompt.textContent = `Thread ready for ${task.label}. Click again when the timing ring lines up.`;
@@ -3000,8 +3002,184 @@ function allDialsReady() {
   return paintState.dials.length > 0 && paintState.dials.every(dialCountsAsPainted);
 }
 
+function ensureDialPaintLevel(dial) {
+  if (!dial.paintLevel || dial.paintLevel.length !== dial.paintedMask.length) {
+    dial.paintLevel = dial.paintedMask.map((painted) => (painted ? PAINT_POINT_COMPLETE : 0));
+  }
+}
+
+function recalculateDialCoverage(dial) {
+  ensureDialPaintLevel(dial);
+  let effectivePaint = 0;
+  for (let i = 0; i < dial.targetPoints.length; i += 1) {
+    const level = Math.max(0, Math.min(PAINT_POINT_COMPLETE, dial.paintLevel[i] || 0));
+    if (level >= PAINT_POINT_COVERAGE_THRESHOLD) {
+      dial.paintedMask[i] = true;
+      effectivePaint += 1;
+      continue;
+    }
+    if (dial.paintedMask[i]) {
+      effectivePaint += 1;
+      continue;
+    }
+    if (level >= PAINT_POINT_SOFT_COVERAGE_THRESHOLD) {
+      effectivePaint += Math.min(1, level / PAINT_POINT_COVERAGE_THRESHOLD);
+    }
+  }
+  dial.coverage = dial.targetPoints.length === 0 ? 0 : effectivePaint / dial.targetPoints.length;
+}
+
+function trimDialEdgeNoise(dial, sealed = false) {
+  if (!dial || !dial.strayPoints || dial.strayPoints.length === 0) return;
+  const baseTolerance = sealed ? 7.2 : 6;
+  const radiusScale = sealed ? 0.92 : 0.78;
+  dial.strayPoints = dial.strayPoints.filter((mark) => {
+    const markRadius = Math.max(0.8, mark.r || 0);
+    const distanceToGuide = nearestGuideDistance(dial.targetPoints, mark.x, mark.y);
+    return distanceToGuide > baseTolerance + markRadius * radiusScale;
+  });
+}
+
+function computeDialStraySeverity(dial) {
+  const marks = Array.isArray(dial?.strayPoints) ? dial.strayPoints : [];
+  if (marks.length === 0) return 0;
+  let severity = 0;
+  for (const mark of marks) {
+    const markRadius = Math.max(0.8, mark.r || 0);
+    const distanceToGuide = nearestGuideDistance(dial.targetPoints, mark.x, mark.y);
+    const edgeAllowance = 4.5 + markRadius * 0.58;
+    const overspill = Math.max(0, distanceToGuide - edgeAllowance);
+    if (overspill <= 0.35) continue;
+    const alphaWeight = Math.max(0.45, mark.a || 0.7);
+    const radiusWeight = 0.5 + Math.min(0.8, markRadius * 0.08);
+    severity += overspill * alphaWeight * radiusWeight;
+  }
+  return severity;
+}
+
+function smoothDialShapeOnLock(dial) {
+  ensureDialPaintLevel(dial);
+  const points = dial.targetPoints;
+  if (!points || points.length === 0) return;
+
+  const count = points.length;
+  const bounds = pointBounds(points);
+  const span = Math.max(1, Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY));
+  const spacing = Math.max(3.2, Math.sqrt((span * span) / Math.max(1, count)));
+  const neighborRadius = Math.max(7, spacing * 2.05);
+  const neighborRadiusSq = neighborRadius * neighborRadius;
+  const neighbors = Array.from({ length: count }, () => []);
+
+  for (let i = 0; i < count; i += 1) {
+    const pi = points[i];
+    for (let j = i + 1; j < count; j += 1) {
+      const pj = points[j];
+      const dx = pi.x - pj.x;
+      const dy = pi.y - pj.y;
+      if ((dx * dx) + (dy * dy) <= neighborRadiusSq) {
+        neighbors[i].push(j);
+        neighbors[j].push(i);
+      }
+    }
+  }
+
+  let levels = dial.paintLevel.slice();
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = levels.slice();
+    for (let i = 0; i < count; i += 1) {
+      const near = neighbors[i];
+      if (near.length === 0) continue;
+      let sum = levels[i];
+      let nearCovered = 0;
+      for (const index of near) {
+        const value = levels[index];
+        sum += value;
+        if (value >= PAINT_POINT_SOFT_COVERAGE_THRESHOLD) nearCovered += 1;
+      }
+      const average = sum / (near.length + 1);
+      const coverRatio = nearCovered / near.length;
+      let blended = levels[i] * 0.68 + average * 0.32;
+      if (coverRatio > 0.78 && blended < PAINT_POINT_COVERAGE_THRESHOLD) {
+        blended = Math.max(blended, PAINT_POINT_COVERAGE_THRESHOLD * 0.97);
+      } else if (coverRatio < 0.24 && blended > PAINT_POINT_COVERAGE_THRESHOLD) {
+        blended = Math.min(blended, PAINT_POINT_COVERAGE_THRESHOLD * 0.88);
+      }
+      next[i] = Math.max(0, Math.min(PAINT_POINT_COMPLETE, blended));
+    }
+    levels = next;
+  }
+
+  dial.paintLevel = levels;
+  for (let i = 0; i < count; i += 1) {
+    const near = neighbors[i];
+    const level = dial.paintLevel[i];
+    if (level >= PAINT_POINT_COVERAGE_THRESHOLD) {
+      dial.paintedMask[i] = true;
+      continue;
+    }
+    let paintedNeighbors = 0;
+    for (const index of near) {
+      if (dial.paintLevel[index] >= PAINT_POINT_COVERAGE_THRESHOLD * 0.92) paintedNeighbors += 1;
+    }
+    const nearRatio = near.length > 0 ? paintedNeighbors / near.length : 0;
+    if (level >= PAINT_POINT_SOFT_COVERAGE_THRESHOLD && nearRatio >= 0.64) {
+      dial.paintedMask[i] = true;
+      dial.paintLevel[i] = Math.max(level, PAINT_POINT_COVERAGE_THRESHOLD * 0.95);
+    } else {
+      dial.paintedMask[i] = false;
+    }
+  }
+
+  for (let i = 0; i < count; i += 1) {
+    if (dial.paintedMask[i]) continue;
+    const near = neighbors[i];
+    if (near.length < 3) continue;
+    let paintedNeighbors = 0;
+    for (const index of near) {
+      if (dial.paintedMask[index]) paintedNeighbors += 1;
+    }
+    if (paintedNeighbors / near.length >= 0.86) {
+      dial.paintedMask[i] = true;
+      dial.paintLevel[i] = Math.max(dial.paintLevel[i], PAINT_POINT_COVERAGE_THRESHOLD * 0.95);
+    }
+  }
+
+  const visited = new Uint8Array(count);
+  const stack = [];
+  for (let i = 0; i < count; i += 1) {
+    if (visited[i] || !dial.paintedMask[i]) continue;
+    const component = [];
+    stack.push(i);
+    visited[i] = 1;
+    while (stack.length > 0) {
+      const current = stack.pop();
+      component.push(current);
+      for (const index of neighbors[current]) {
+        if (visited[index] || !dial.paintedMask[index]) continue;
+        visited[index] = 1;
+        stack.push(index);
+      }
+    }
+    if (component.length <= 2) {
+      for (const index of component) {
+        dial.paintedMask[index] = false;
+        dial.paintLevel[index] = Math.min(dial.paintLevel[index], PAINT_POINT_SOFT_COVERAGE_THRESHOLD * 0.8);
+      }
+    }
+  }
+
+  trimDialEdgeNoise(dial, true);
+  dial.mess = Math.max(0, dial.mess * 0.72);
+}
+
 function dialNeedsCorrection(dial) {
-  return dial.coverage >= 0.9 && (dial.mess > 0.24 || dial.strayPoints.length > 0);
+  if (dial.coverage < 0.9) return false;
+  const marks = Array.isArray(dial.strayPoints) ? dial.strayPoints : [];
+  const straySeverity = Number.isFinite(dial.straySeverity)
+    ? dial.straySeverity
+    : computeDialStraySeverity(dial);
+  const largeSpills = marks.filter((mark) => Math.max(0.8, mark.r || 0) >= 5.2).length;
+  return dial.mess > 0.29 || straySeverity > 11.5 || (largeSpills >= 3 && straySeverity > 7.4);
 }
 
 function correctionCount() {
@@ -3114,7 +3292,7 @@ function findNearestTracePoint(x, y) {
     for (let i = 0; i < renderPoints.length; i += 1) {
       const point = renderPoints[i];
       const distance = Math.hypot(point.x - x, point.y - y);
-      const limit = paintState.zoomedDialIndex === -1 ? 52 : 84;
+      const limit = paintState.zoomedDialIndex === -1 ? 58 : 92;
       if (distance > limit) continue;
       if (!best || distance < best.distance) {
         best = { dial, index: i, point, distance };
@@ -3248,7 +3426,7 @@ function drawDialPaint(dial, zoomed = false) {
   const points = dialRenderPoints(dial);
   const tone = paintTone();
   const lineWidth = zoomed ? 18 : 6.4;
-  const dotRadius = zoomed ? 8.2 : 3.2;
+  const dotRadius = zoomed ? 7.4 : 2.9;
   const cloudGuide = dial.guideMode === "cloud";
   const levelSet = dial.paintLevel && dial.paintLevel.length === points.length
     ? dial.paintLevel
@@ -3289,17 +3467,37 @@ function drawDialPaint(dial, zoomed = false) {
   }
 
   paintCtx.fillStyle = tone.fill;
-  const mixOpacity = 0.28 + Math.max(0, Math.min(1, paintState.mixQuality)) * 0.72;
+  const mixQuality = Math.max(0, Math.min(1, paintState.mixQuality));
+  const usesOpacityFalloff = mixQuality < 0.9995;
+  const mixOpacity = usesOpacityFalloff ? (0.28 + mixQuality * 0.72) : 1;
   for (let i = 0; i < points.length; i += 1) {
     const pointLevel = Math.max(0, Math.min(PAINT_POINT_COMPLETE, levelSet[i] || 0));
     if (pointLevel <= 0) continue;
     const point = points[i];
-    const opacity = Math.max(0.08, Math.min(1, (pointLevel / PAINT_POINT_COMPLETE) * mixOpacity));
+    const opacity = usesOpacityFalloff
+      ? Math.max(0.08, Math.min(1, (pointLevel / PAINT_POINT_COMPLETE) * mixOpacity))
+      : 1;
     paintCtx.save();
     paintCtx.globalAlpha = opacity;
     paintCtx.beginPath();
     paintCtx.arc(point.x, point.y, dotRadius, 0, Math.PI * 2);
     paintCtx.fill();
+    paintCtx.restore();
+  }
+
+  if (cloudGuide && dial.locked) {
+    paintCtx.save();
+    paintCtx.globalAlpha = zoomed ? 0.28 : 0.22;
+    paintCtx.filter = zoomed ? "blur(0.9px)" : "blur(0.35px)";
+    paintCtx.fillStyle = tone.fill;
+    const sealRadius = dotRadius * (zoomed ? 0.96 : 0.82);
+    for (let i = 0; i < points.length; i += 1) {
+      if (!dial.paintedMask[i]) continue;
+      const point = points[i];
+      paintCtx.beginPath();
+      paintCtx.arc(point.x, point.y, sealRadius, 0, Math.PI * 2);
+      paintCtx.fill();
+    }
     paintCtx.restore();
   }
 }
@@ -3336,13 +3534,13 @@ function brushFootprintOverflow(renderPoints, x, y, hitRadius) {
   const zoomed = paintState.zoomedDialIndex !== -1;
   const ringSampleCount = zoomed ? 18 : 14;
   const rings = [0.58, 0.8, 1];
-  const baseTolerance = zoomed ? 14 : 5.5;
+  const baseTolerance = zoomed ? 16.5 : 6.6;
   let outsideCount = 0;
   let sampleCount = 0;
 
   for (const ringFactor of rings) {
     const ringRadius = hitRadius * ringFactor;
-    const tolerance = baseTolerance + (1 - ringFactor) * (zoomed ? 7 : 2.6);
+    const tolerance = baseTolerance + (1 - ringFactor) * (zoomed ? 8.4 : 3.2);
     for (let i = 0; i < ringSampleCount; i += 1) {
       const angle = (Math.PI * 2 * i) / ringSampleCount;
       const sampleX = x + Math.cos(angle) * ringRadius;
@@ -3441,14 +3639,14 @@ function paintAt(x, y) {
   }
 
   const strictRadius = paintState.zoomedDialIndex === -1
-    ? Math.max(6, paintState.brushSize * 4.5)
-    : Math.max(10, paintState.brushSize * 18);
+    ? Math.max(8, paintState.brushSize * 5.6)
+    : Math.max(14, paintState.brushSize * 21);
   if (hit.distance > strictRadius) {
     offGuidePoints += 1;
   }
   const overflowRatio = brushFootprintOverflow(renderPoints, x, y, hitRadius);
-  if (overflowRatio > 0.18) {
-    offGuidePoints += Math.max(1, Math.round(overflowRatio * 4));
+  if (overflowRatio > 0.25) {
+    offGuidePoints += Math.max(1, Math.round(overflowRatio * 3));
   }
 
   const centerFactor = Math.max(0.78, 1 - hit.distance / (paintState.zoomedDialIndex === -1 ? 52 : 84));
@@ -3462,7 +3660,7 @@ function paintAt(x, y) {
     hit.dial.mess += (paintState.zoomedDialIndex === -1 ? 0.009 : 0.016) * spreadPenalty;
   }
   if (offGuidePoints > 0) {
-    const spillMarks = Math.max(1, Math.ceil(1 + overflowRatio * 3));
+    const spillMarks = Math.max(1, Math.ceil(overflowRatio * 2.4));
     for (let i = 0; i < spillMarks; i += 1) {
       const angle = (Math.PI * 2 * i) / spillMarks + Math.random() * 0.32;
       const radius = hitRadius * (0.52 + Math.random() * 0.54);
@@ -3478,10 +3676,10 @@ function paintAt(x, y) {
     }
     if (hit.dial.strayPoints.length > 64) hit.dial.strayPoints.shift();
     hit.dial.mess +=
-      0.03 +
-      overflowRatio * 0.12 +
-      spreadPenalty * 0.035 +
-      (1 - paintState.mixQuality) * 0.03;
+      0.018 +
+      overflowRatio * 0.08 +
+      spreadPenalty * 0.022 +
+      (1 - paintState.mixQuality) * 0.02;
     paintPrompt.textContent = "The spread brush bleeds past the numeral edges. This watch will need cleanup.";
   }
 
@@ -3666,30 +3864,19 @@ function wipeNearestDial() {
 
 function updateCoverage() {
   for (const [dialIndex, dial] of paintState.dials.entries()) {
-    if (!dial.paintLevel || dial.paintLevel.length !== dial.paintedMask.length) {
-      dial.paintLevel = dial.paintedMask.map((painted) => (painted ? PAINT_POINT_COMPLETE : 0));
-    }
-    let effectivePaint = 0;
-    for (let i = 0; i < dial.targetPoints.length; i += 1) {
-      const level = Math.max(0, Math.min(PAINT_POINT_COMPLETE, dial.paintLevel[i] || 0));
-      if (level >= PAINT_POINT_COVERAGE_THRESHOLD) {
-        dial.paintedMask[i] = true;
-        effectivePaint += 1;
-        continue;
-      }
-      if (dial.paintedMask[i]) {
-        effectivePaint += 1;
-        continue;
-      }
-      if (level >= PAINT_POINT_SOFT_COVERAGE_THRESHOLD) {
-        effectivePaint += Math.min(1, level / PAINT_POINT_COVERAGE_THRESHOLD);
-      }
-    }
-    dial.coverage = dial.targetPoints.length === 0 ? 0 : effectivePaint / dial.targetPoints.length;
+    ensureDialPaintLevel(dial);
+    trimDialEdgeNoise(dial);
+    recalculateDialCoverage(dial);
+    dial.straySeverity = computeDialStraySeverity(dial);
     if (!dial.locked && dialCountsAsPainted(dial)) {
-      dial.locked = true;
-      if (paintState.zoomedDialIndex === dialIndex) {
-        paintPrompt.textContent = `Numeral ${dial.label} is complete and sealed.`;
+      smoothDialShapeOnLock(dial);
+      recalculateDialCoverage(dial);
+      dial.straySeverity = computeDialStraySeverity(dial);
+      if (dialCountsAsPainted(dial)) {
+        dial.locked = true;
+        if (paintState.zoomedDialIndex === dialIndex) {
+          paintPrompt.textContent = `Numeral ${dial.label} is complete and sealed.`;
+        }
       }
     }
   }
@@ -4508,14 +4695,9 @@ function drawThoughtPopup() {
     paintCtx.strokeRect(close.x, close.y, close.w, close.h);
     paintCtx.fillStyle = popup.dark ? "#ffe7e7" : "#111";
     paintCtx.font = "bold 10px Georgia";
+    paintCtx.textAlign = "center";
+    paintCtx.textBaseline = "alphabetic";
     paintCtx.fillText("CLOSE", close.x + close.w / 2, close.y + close.h - 10);
-    paintCtx.strokeStyle = popup.dark ? "rgba(255, 220, 220, 0.96)" : "rgba(0,0,0,0.88)";
-    paintCtx.beginPath();
-    paintCtx.moveTo(close.x + 9, close.y + 9);
-    paintCtx.lineTo(close.x + close.w - 9, close.y + close.h - 22);
-    paintCtx.moveTo(close.x + close.w - 9, close.y + 9);
-    paintCtx.lineTo(close.x + 9, close.y + close.h - 22);
-    paintCtx.stroke();
   }
 
   const fitted = fitThoughtText(popup.text, textFrame);
@@ -4768,10 +4950,23 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+function eventClientPoint(event) {
+  if (event.touches && event.touches.length > 0) {
+    return { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }
+  if (event.changedTouches && event.changedTouches.length > 0) {
+    return { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY };
+  }
+  return { x: event.clientX, y: event.clientY };
+}
+
 function pointerInsidePaintCanvas(event) {
   const rect = paintCanvas.getBoundingClientRect();
-  const x = ((event.clientX - rect.left) / rect.width) * paintCanvas.width;
-  const y = ((event.clientY - rect.top) / rect.height) * paintCanvas.height;
+  const client = eventClientPoint(event);
+  const rectWidth = rect.width || paintCanvas.width || 1;
+  const rectHeight = rect.height || paintCanvas.height || 1;
+  const x = ((client.x - rect.left) / rectWidth) * paintCanvas.width;
+  const y = ((client.y - rect.top) / rectHeight) * paintCanvas.height;
   return {
     x: Math.max(0, Math.min(paintCanvas.width, x)),
     y: Math.max(0, Math.min(paintCanvas.height, y)),
@@ -4836,11 +5031,12 @@ function bindPress(element, handler) {
     handler();
   };
   element.addEventListener("click", run);
+  element.addEventListener("mouseup", run);
   element.addEventListener("pointerup", (event) => {
-    if (typeof event.button === "number" && event.button !== 0) return;
-    event.preventDefault();
+    if (typeof event.button === "number" && event.button > 0) return;
     run();
   });
+  element.addEventListener("touchend", run);
 }
 
 bindPress(dialogButton, () => {
@@ -4919,6 +5115,10 @@ paintCanvas.addEventListener("mousemove", (event) => {
   paintState.pointerX = position.x;
   paintState.pointerY = position.y;
   paintState.lastPointerMoveAt = performance.now();
+
+  if (paintState.isPainting && typeof event.buttons === "number" && event.buttons === 0) {
+    paintState.isPainting = false;
+  }
 
   if (paintState.thoughtPopup && paintState.thoughtPopup.requiresDismiss) {
     refreshPaintCursor();
@@ -5072,17 +5272,28 @@ function handlePaintCanvasPress(event) {
 
 paintCanvas.addEventListener("mousedown", handlePaintCanvasPress);
 paintCanvas.addEventListener("pointerdown", (event) => {
-  if (typeof event.button === "number" && event.button !== 0) return;
-  event.preventDefault();
+  if (typeof event.button === "number" && event.button > 0) return;
+  if (typeof event.buttons === "number" && event.buttons === 0) return;
   handlePaintCanvasPress(event);
 });
+paintCanvas.addEventListener("touchstart", (event) => {
+  event.preventDefault();
+  handlePaintCanvasPress(event);
+}, { passive: false });
 
-window.addEventListener("mouseup", () => {
+function releasePaintOrDrag() {
   if (paintState.mode === "fracture") {
     endFractureDrag();
   }
   paintState.isPainting = false;
-});
+}
+
+window.addEventListener("mouseup", releasePaintOrDrag);
+window.addEventListener("pointerup", releasePaintOrDrag);
+window.addEventListener("pointercancel", releasePaintOrDrag);
+window.addEventListener("blur", releasePaintOrDrag);
+paintCanvas.addEventListener("touchend", releasePaintOrDrag);
+paintCanvas.addEventListener("touchcancel", releasePaintOrDrag);
 
 document.addEventListener("keydown", (event) => {
   keys.add(event.code);
@@ -5130,10 +5341,11 @@ function handleRoomCanvasPress(event) {
   lastRoomCanvasPressAt = now;
   if (paintState.active || !dialogOverlay.classList.contains("hidden")) return;
   const rect = canvas.getBoundingClientRect();
+  const client = eventClientPoint(event);
   const rectWidth = rect.width || canvas.width || 1;
   const rectHeight = rect.height || canvas.height || 1;
-  roomState.cursorX = ((event.clientX - rect.left) / rectWidth) * WIDTH;
-  roomState.cursorY = ((event.clientY - rect.top) / rectHeight) * HEIGHT;
+  roomState.cursorX = ((client.x - rect.left) / rectWidth) * WIDTH;
+  roomState.cursorY = ((client.y - rect.top) / rectHeight) * HEIGHT;
 
   if (gameState.dayTransition && !titleCard.classList.contains("visible")) {
     gameState.dayTransition = false;
@@ -5161,15 +5373,21 @@ function handleRoomCanvasPress(event) {
 
 canvas.addEventListener("click", handleRoomCanvasPress);
 canvas.addEventListener("pointerup", (event) => {
-  if (typeof event.button === "number" && event.button !== 0) return;
-  event.preventDefault();
+  if (typeof event.button === "number" && event.button > 0) return;
   handleRoomCanvasPress(event);
 });
+canvas.addEventListener("touchstart", (event) => {
+  event.preventDefault();
+  handleRoomCanvasPress(event);
+}, { passive: false });
 
 canvas.addEventListener("mousemove", (event) => {
   const rect = canvas.getBoundingClientRect();
-  roomState.cursorX = ((event.clientX - rect.left) / rect.width) * WIDTH;
-  roomState.cursorY = ((event.clientY - rect.top) / rect.height) * HEIGHT;
+  const client = eventClientPoint(event);
+  const rectWidth = rect.width || canvas.width || 1;
+  const rectHeight = rect.height || canvas.height || 1;
+  roomState.cursorX = ((client.x - rect.left) / rectWidth) * WIDTH;
+  roomState.cursorY = ((client.y - rect.top) / rectHeight) * HEIGHT;
 });
 
 showTitleCard();

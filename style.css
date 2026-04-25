@@ -370,6 +370,8 @@ canvas {
 }
 
 .minigame-copy {
+  display: flex;
+  flex-direction: column;
   padding: 12px;
   background: rgba(255, 255, 255, 0.03);
 }
@@ -398,8 +400,10 @@ canvas {
 }
 
 .info-canvas {
+  flex: 0 0 auto;
   display: block;
   width: min(100%, 208px);
+  height: auto;
   aspect-ratio: 1 / 1;
   margin: 18px auto 0;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -408,6 +412,28 @@ canvas {
 }
 
 .info-canvas.hidden {
+  display: none;
+}
+
+.minigame-overlay.hemming-mode .minigame-copy {
+  gap: 8px;
+}
+
+.minigame-overlay.hemming-mode #infoCanvas {
+  order: 2;
+  width: min(100%, 176px);
+  margin: 8px auto 2px;
+}
+
+.minigame-overlay.hemming-mode #mixPrompt {
+  order: 3;
+}
+
+.minigame-overlay.hemming-mode #paintStats {
+  order: 4;
+}
+
+.minigame-overlay.hemming-mode .tool-actions {
   display: none;
 }
 

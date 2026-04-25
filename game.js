@@ -75,6 +75,7 @@ const COMPLETION_BELL_EMBED_URL =
   + "&buying=false&liking=false&single_active=false";
 const COMPLETION_BELL_RETRIGGER_MS = 180;
 const COMPLETION_BELL_MAX_PLAY_MS = 2000;
+const BACKGROUND_MUSIC_VIDEO_ID = "x2aUyoujeUM";
 const GUARANTEED_THRESHOLD_THOUGHT = "Why does my hand feel unsteady already? It shouldn't be this hard to hold a straight line.";
 const DEFAULT_BRUSH_SIZE = 0.22;
 const BRUSH_ROUGH_THRESHOLD = 0.95;
@@ -150,6 +151,59 @@ const HEMMING_FAMILY_ITEMS = [
   "Denny's shirt hem",
   "Maggie's apron",
 ];
+const HEMMING_HOME_DESCRIPTION_TABLE = {
+  dress: {
+    unfinished: "Your blue dress still has pins holding part of the hem where stitches should be.",
+    bad: "Your blue dress is mended, but the hem puckers and shows where exhaustion hurried the thread.",
+    okay: "Your blue dress will do for now, though the hemline sways a little where the stitches drift.",
+    good: "Your blue dress hangs straight now, the new seam firm enough to trust.",
+    perfect: "Your blue dress lies folded with a neat, patient hem that almost makes it look store-bought.",
+  },
+  elly: {
+    unfinished: "Elly's school skirt still waits half-turned on the chair, its loose edge promising trouble by morning.",
+    bad: "Elly's school skirt is closed up, but the hem buckles in places where the thread pulled too hard.",
+    okay: "Elly's school skirt is wearable again, though the seam meanders if you look too closely.",
+    good: "Elly's school skirt sits neatly mended, the new stitches keeping the edge clean and serviceable.",
+    perfect: "Elly's school skirt has a crisp, even hem that should survive the week without complaint.",
+  },
+  denny: {
+    unfinished: "Denny's shirt hem is still folded back on itself, waiting for more passes of the needle.",
+    bad: "Denny's shirt hem is caught together, but the seam looks strained and easy to pick at.",
+    okay: "Denny's shirt hem is secured well enough, though the line skips its rhythm here and there.",
+    good: "Denny's shirt hem holds cleanly now, plain but sturdy under your fingers.",
+    perfect: "Denny's shirt hem is set with small, even stitches that should keep it from fraying again soon.",
+  },
+  maggie: {
+    unfinished: "Maggie's apron still has a loose edge curling away from the cloth.",
+    bad: "Maggie's apron is stitched shut, but the edge sits lumpy where the work went rough.",
+    okay: "Maggie's apron is usable again, though the hem wavers in a few stubborn spots.",
+    good: "Maggie's apron is properly mended now, with a steady seam that should keep through chores.",
+    perfect: "Maggie's apron has been turned and finished so neatly it almost brightens the whole garment.",
+  },
+};
+const HEMMING_SIBLING_REACTION_TABLE = {
+  Elly: {
+    unfinished: "Elly tries not to stare at the still-open skirt hem, but school tomorrow is all she can think about.",
+    bad: "Elly thanks you because she means it, but her fingers worry the rougher spots on the skirt as soon as she thinks you are not looking.",
+    okay: "Elly thanks you quickly and says it will do, though she keeps peeking at the places where the seam wanders.",
+    good: "Elly smiles with obvious relief, smoothing the skirt flat over her knees as if testing how safely she can trust it.",
+    perfect: "Elly runs both palms over the skirt and beams, already talking about wearing it to school without having to mind the tear.",
+  },
+  Denny: {
+    unfinished: "Denny lifts the shirt hem, then lets it drop again and shrugs like he is not disappointed.",
+    bad: "Denny says it is fine, though he rubs the rough hem between thumb and knuckle like he expects it to give.",
+    okay: "Denny accepts the shirt with a small grin, but he keeps checking whether the seam will hold if he moves too hard.",
+    good: "Denny nods at the firmer hem with quiet satisfaction, already less guarded about wearing it tomorrow.",
+    perfect: "Denny grins at the shirt and gives the repaired hem an approving tug, pleased it feels strong instead of fussy.",
+  },
+  Maggie: {
+    unfinished: "Maggie watches you fold the still-unfinished apron and goes quiet in that careful way children do when they do not want to ask for more.",
+    bad: "Maggie says it looks nice because she wants to be kind, but even she keeps patting the uneven hem with uncertain little hands.",
+    okay: "Maggie is glad to have the apron back, even if she tilts her head at the wandering stitches like they puzzle her.",
+    good: "Maggie smiles at the apron and hugs it to her middle, happy just to see it looking whole again.",
+    perfect: "Maggie delights in the tidier apron at once, holding it up by the straps as though it has turned back into her favorite thing.",
+  },
+};
 const HEMMING_GRADE_ORDER = ["bad", "okay", "good", "perfect"];
 const HEMMING_TIMING_WINDOWS = {
   perfect: 0.045,
@@ -309,6 +363,8 @@ const backgroundMusicState = {
   unlocked: false,
   ready: false,
   pendingStart: false,
+  player: null,
+  apiReady: false,
 };
 
 const audioSettings = {
@@ -821,6 +877,24 @@ const WORKER_CONVERSATION_OPTIONS = {
   ],
 };
 const FAMILIAR_WORKERS_REQUIRED = 3;
+const SHIFT_CONVERSATION_DAY_FRAMES = [
+  "On this first day,",
+  "With Tuesday already settling into the room,",
+  "By midweek,",
+  "Under Thursday's lamps,",
+  "Late in the week,",
+  "With Saturday fatigue on everyone,",
+  "At the week's thin edge,",
+];
+const AFTER_SHIFT_CONVERSATION_DAY_FRAMES = [
+  "After Monday's bell,",
+  "After Tuesday's tally,",
+  "Once Wednesday finally lets go,",
+  "With Thursday behind her,",
+  "Once Friday's ache catches up,",
+  "At the end of Saturday's long shift,",
+  "After the last bell of the week,",
+];
 
 const spritePalettes = {
   clock: {
@@ -973,6 +1047,8 @@ function buildDefaultWorkerProgress() {
       familiarity: "stranger",
       nameKnown: false,
       lastDaySpoken: -1,
+      lastDayShiftTalk: -1,
+      lastDayAfterShiftTalk: -1,
     };
   }
   return progress;
@@ -986,6 +1062,12 @@ function ensureWorkerProgressState() {
   for (const [id, defaultState] of Object.entries(buildDefaultWorkerProgress())) {
     if (!gameState.workerProgress[id]) {
       gameState.workerProgress[id] = { ...defaultState };
+      continue;
+    }
+    for (const [key, value] of Object.entries(defaultState)) {
+      if (gameState.workerProgress[id][key] === undefined) {
+        gameState.workerProgress[id][key] = value;
+      }
     }
   }
   return gameState.workerProgress;
@@ -999,6 +1081,8 @@ function workerProgressFor(id) {
       familiarity: "stranger",
       nameKnown: false,
       lastDaySpoken: -1,
+      lastDayShiftTalk: -1,
+      lastDayAfterShiftTalk: -1,
     };
   }
   return state[id];
@@ -1023,7 +1107,71 @@ function workerDisplayName(id) {
   return progress.nameKnown ? workerName(id) : "???";
 }
 
-function advanceWorkerProgress(id) {
+function lowercaseLeading(text) {
+  if (!text) return "";
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+function escapeRegExp(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function workerNameVisibleInConversation(id) {
+  if (
+    workerConversationState
+    && workerConversationState.workerId === id
+    && workerConversationState.relationship
+  ) {
+    return workerConversationState.relationship.hadKnownName || Boolean(workerConversationState.relationship.revealText);
+  }
+  return workerProgressFor(id).nameKnown;
+}
+
+function concealUnknownWorkerName(text, id) {
+  if (!text || workerNameVisibleInConversation(id)) return text;
+  const name = workerName(id);
+  const escaped = escapeRegExp(name);
+  return text
+    .replace(new RegExp(`\\b${escaped}'s\\b`, "g"), "her")
+    .replace(new RegExp(`(^|[.!?]\\s+|[\"“]\\s*)${escaped}\\b`, "g"), (match, prefix) => `${prefix}She`)
+    .replace(new RegExp(`\\b${escaped}\\b`, "g"), "she");
+}
+
+function workerAlreadyTalkedThisDay(id, context = "shift") {
+  const progress = workerProgressFor(id);
+  if (context === "afterShift") {
+    return progress.lastDayAfterShiftTalk === gameState.currentDay;
+  }
+  return progress.lastDayShiftTalk === gameState.currentDay;
+}
+
+function workerRepeatPromptText(id) {
+  const progress = workerProgressFor(id);
+  return progress.familiarity === "familiar"
+    ? "She has already given you today's little pocket of conversation."
+    : "She has already spent today's spare words.";
+}
+
+function workerRepeatMessage(id) {
+  const progress = workerProgressFor(id);
+  const label = progress.nameKnown ? workerDisplayName(id) : "She";
+  return {
+    primary: progress.nameKnown ? `${label} has nothing else to spare just now.` : "She has nothing else to spare just now.",
+    secondary: progress.familiarity === "familiar"
+      ? "You've already had today's one bench-side conversation."
+      : "You only get one real exchange with each worker during the day.",
+  };
+}
+
+function workerConversationCoda(id, context) {
+  const appearance = workerAppearanceText(id);
+  if (!appearance) return "";
+  const frames = context === "afterShift" ? AFTER_SHIFT_CONVERSATION_DAY_FRAMES : SHIFT_CONVERSATION_DAY_FRAMES;
+  const frame = frames[Math.min(frames.length - 1, gameState.currentDay)] || frames[frames.length - 1];
+  return `${frame} ${lowercaseLeading(appearance)}`;
+}
+
+function advanceWorkerProgress(id, context = "shift") {
   const progress = workerProgressFor(id);
   const hadKnownName = progress.nameKnown;
   const firstTalk = progress.talks === 0;
@@ -1041,6 +1189,11 @@ function advanceWorkerProgress(id) {
   const previousFamiliarity = progress.familiarity;
   progress.talks += 1;
   progress.lastDaySpoken = gameState.currentDay;
+  if (context === "afterShift") {
+    progress.lastDayAfterShiftTalk = gameState.currentDay;
+  } else {
+    progress.lastDayShiftTalk = gameState.currentDay;
+  }
   progress.familiarity = workerFamiliarityFromTalks(progress.talks);
 
   let familiarityText = "";
@@ -1084,6 +1237,9 @@ function workerPromptText(id) {
   const lead = progress.nameKnown
     ? `${workerDisplayName(id)} at the bench.`
     : `A ${descriptor} woman at the bench.`;
+  if (workerAlreadyTalkedThisDay(id, "shift")) {
+    return `${lead} ${workerRepeatPromptText(id)}`;
+  }
   if (progress.familiarity === "familiar") {
     return `${lead} She looks up when you approach. ${workerAppearanceText(id)}`;
   }
@@ -1111,7 +1267,9 @@ function workerConversationChoices(context) {
 }
 
 function workerConversationTitle(id, context, relationship = null) {
-  const canUseName = relationship ? relationship.hadKnownName : workerProgressFor(id).nameKnown;
+  const canUseName = relationship
+    ? (relationship.hadKnownName || Boolean(relationship.revealText))
+    : workerNameVisibleInConversation(id);
   const label = canUseName ? workerName(id) : "???";
   if (context === "afterShift") {
     return canUseName ? `${label} - After The Bell` : "After The Bell";
@@ -1121,7 +1279,7 @@ function workerConversationTitle(id, context, relationship = null) {
 
 function workerConversationPrompt(id, context, relationship) {
   const progress = workerProgressFor(id);
-  const label = relationship.hadKnownName ? workerName(id) : "One of the women";
+  const label = relationship.hadKnownName || relationship.revealText ? workerName(id) : "One of the women";
   const notes = workerConversationNotes(relationship);
   const openness = relationship.familiarityText.includes("familiar standing")
     ? "She makes a little more room for the conversation than she used to."
@@ -1144,39 +1302,49 @@ function workerConversationPrompt(id, context, relationship) {
 
 function workerConversationResponse(id, context, choiceId) {
   const progress = workerProgressFor(id);
+  const coda = workerConversationCoda(id, context);
+  let responseText = "";
   if (context === "afterShift") {
     const profile = WORKER_AFTER_SHIFT_DIALOGUE[id] || {};
-    if (profile[choiceId]) return profile[choiceId];
-    if (choiceId === "home") {
-      return "She looks away for a moment, then admits home is mostly another list of things that still need doing before she can rest.";
+    if (profile[choiceId]) {
+      responseText = `${profile[choiceId]} ${coda}`.trim();
+    } else if (choiceId === "home") {
+      responseText = `She looks away for a moment, then admits home is mostly another list of things that still need doing before she can rest. ${coda}`.trim();
+    } else if (choiceId === "wry") {
+      responseText = `She answers the joke with a tired smile, grateful for a moment that asks something from her besides endurance. ${coda}`.trim();
+    } else {
+      responseText = `She says the work gets easier to repeat long before it gets easier to live with. ${coda}`.trim();
     }
-    if (choiceId === "wry") {
-      return "She answers the joke with a tired smile, grateful for a moment that asks something from her besides endurance.";
-    }
-    return "She says the work gets easier to repeat long before it gets easier to live with.";
+    return concealUnknownWorkerName(responseText, id);
   }
 
   if (id === "worker-2" && choiceId === "work" && gameState.currentDay >= 1 && !gameState.handRestUnlocked) {
     gameState.handRestUnlocked = true;
-    return "Ruth watches the stiffness in your wrist before speaking. \"If your hand starts going uncertain, brace the heel of it on the side of the face,\" she says, showing you with two fingers against the rim. \"It eats the clock, but it keeps the numeral true.\" You could try that at the bench now.";
+    responseText = `Ruth watches the stiffness in your wrist before speaking. "If your hand starts going uncertain, brace the heel of it on the side of the face," she says, showing you with two fingers against the rim. "It eats the clock, but it keeps the numeral true." You could try that at the bench now. ${coda}`.trim();
+    return concealUnknownWorkerName(responseText, id);
   }
 
   if (choiceId === "work") {
     const [primary, secondary] = workerDialogueLines(id);
-    return [primary, secondary].filter(Boolean).join(" ");
+    responseText = `${[primary, secondary].filter(Boolean).join(" ")} ${coda}`.trim();
+    return concealUnknownWorkerName(responseText, id);
   }
 
   const profile = WORKER_SHIFT_CHOICE_DIALOGUE[id] || {};
   if (profile[choiceId]) {
-    return profile[choiceId];
+    responseText = `${profile[choiceId]} ${coda}`.trim();
+    return concealUnknownWorkerName(responseText, id);
   }
 
   if (choiceId === "personal") {
-    return progress.familiarity === "familiar"
+    responseText = (progress.familiarity === "familiar"
       ? "She answers more honestly than she means to, then returns to the tray before the feeling can settle."
-      : "She hesitates, gives you the smallest honest answer she can afford, and bends back over the dial.";
+      : "She hesitates, gives you the smallest honest answer she can afford, and bends back over the dial.")
+      + ` ${coda}`;
+    return concealUnknownWorkerName(responseText.trim(), id);
   }
-  return "That finally earns a brief smile before the room pulls her attention back to the tray.";
+  responseText = `That finally earns a brief smile before the room pulls her attention back to the tray. ${coda}`.trim();
+  return concealUnknownWorkerName(responseText, id);
 }
 
 function configureDialogChoiceButton(button, text, choiceId = "") {
@@ -1186,7 +1354,15 @@ function configureDialogChoiceButton(button, text, choiceId = "") {
 }
 
 function openWorkerConversation(id, context = "shift") {
-  const relationship = advanceWorkerProgress(id);
+  if (workerAlreadyTalkedThisDay(id, context)) {
+    if (context === "shift") {
+      const repeat = workerRepeatMessage(id);
+      setMessage(repeat.primary, repeat.secondary);
+    }
+    return;
+  }
+
+  const relationship = advanceWorkerProgress(id, context);
   workerConversationState = {
     workerId: id,
     context,
@@ -1218,6 +1394,7 @@ function resolveWorkerConversationChoice(choiceId) {
 function afterShiftConversationCandidates() {
   return Object.keys(WORKER_PROFILES)
     .filter((id) => !isWorkerRemoved(id))
+    .filter((id) => !workerAlreadyTalkedThisDay(id, "afterShift"))
     .sort((a, b) => {
       const progressA = workerProgressFor(a);
       const progressB = workerProgressFor(b);
@@ -1577,7 +1754,17 @@ function updateAudioControls() {
 
 function applyMusicVolume() {
   if (!bgMusic) return;
-  postBackgroundMusicCommand(audioSettings.musicVolume <= 0 ? "mute" : "unMute");
+  if (backgroundMusicState.player && typeof backgroundMusicState.player.setVolume === "function") {
+    backgroundMusicState.player.setVolume(audioSettings.musicVolume);
+    if (audioSettings.musicVolume <= 0 || !backgroundMusicState.unlocked) {
+      if (typeof backgroundMusicState.player.mute === "function") backgroundMusicState.player.mute();
+    } else if (typeof backgroundMusicState.player.unMute === "function") {
+      backgroundMusicState.player.unMute();
+    }
+    return;
+  }
+
+  postBackgroundMusicCommand(audioSettings.musicVolume <= 0 || !backgroundMusicState.unlocked ? "mute" : "unMute");
   postBackgroundMusicCommand("setVolume", [audioSettings.musicVolume]);
 }
 
@@ -1663,17 +1850,62 @@ function postBackgroundMusicCommand(func, args = []) {
   }), "*");
 }
 
+function createBackgroundMusicPlayer() {
+  if (!bgMusic || backgroundMusicState.player || !window.YT || typeof window.YT.Player !== "function") return;
+  backgroundMusicState.player = new window.YT.Player("bgMusic", {
+    videoId: BACKGROUND_MUSIC_VIDEO_ID,
+    playerVars: {
+      autoplay: 1,
+      loop: 1,
+      playlist: BACKGROUND_MUSIC_VIDEO_ID,
+      controls: 0,
+      disablekb: 1,
+      modestbranding: 1,
+      playsinline: 1,
+      rel: 0,
+      enablejsapi: 1,
+    },
+    events: {
+      onReady: (event) => {
+        backgroundMusicState.ready = true;
+        event.target.mute();
+        event.target.setVolume(audioSettings.musicVolume);
+        event.target.playVideo();
+        if (backgroundMusicState.pendingStart || backgroundMusicState.unlocked) {
+          startBackgroundMusic(true);
+        }
+      },
+      onStateChange: (event) => {
+        if (!window.YT || typeof window.YT.PlayerState === "undefined") return;
+        if (event.data === window.YT.PlayerState.ENDED) {
+          event.target.seekTo(0);
+          event.target.playVideo();
+        }
+      },
+    },
+  });
+}
+
 function startBackgroundMusic(force = false) {
   if (!bgMusic) return;
   if (!force && backgroundMusicState.unlocked) return;
   backgroundMusicState.unlocked = true;
   backgroundMusicState.pendingStart = false;
+  createBackgroundMusicPlayer();
   applyMusicVolume();
+  if (backgroundMusicState.player && typeof backgroundMusicState.player.playVideo === "function") {
+    backgroundMusicState.player.playVideo();
+    if (audioSettings.musicVolume > 0 && typeof backgroundMusicState.player.unMute === "function") {
+      backgroundMusicState.player.unMute();
+    }
+    return;
+  }
   postBackgroundMusicCommand("playVideo");
 }
 
 function primeBackgroundMusic() {
   if (!bgMusic) return;
+  createBackgroundMusicPlayer();
   if (backgroundMusicState.ready) {
     startBackgroundMusic();
     return;
@@ -3062,75 +3294,23 @@ function hemmingTaskOutcomeKey(task) {
   return taskHemmingQuality(task);
 }
 
+function genericHemmingTaskDescription(task, outcome) {
+  if (outcome === "unfinished") return `${task?.label || "The garment"} is still unfinished at the hem.`;
+  if (outcome === "perfect") return `${task?.label || "The garment"} has tiny, even stitches that look nearly professional.`;
+  if (outcome === "good") return `${task?.label || "The garment"} holds together with solid, clean stitching.`;
+  if (outcome === "okay") return `${task?.label || "The garment"} is wearable, though the seam wanders in places.`;
+  return `${task?.label || "The garment"} is stitched, but the line is rough and visibly rushed.`;
+}
+
 function describeHemmingTaskAtHome(task) {
   const key = hemmingTaskNarrativeKey(task);
   const outcome = hemmingTaskOutcomeKey(task);
-  const variants = {
-    dress: {
-      unfinished: "Your blue dress still has pins holding part of the hem where stitches should be.",
-      perfect: "Your blue dress lies folded with a neat, patient hem that almost makes it look store-bought.",
-      good: "Your blue dress hangs straight now, the new seam firm enough to trust.",
-      okay: "Your blue dress will do for now, though the hemline sways a little where the stitches drift.",
-      bad: "Your blue dress is mended, but the hem puckers and shows where exhaustion hurried the thread.",
-    },
-    elly: {
-      unfinished: "Elly's school skirt still waits half-turned on the chair, its loose edge promising trouble by morning.",
-      perfect: "Elly's school skirt has a crisp, even hem that should survive the week without complaint.",
-      good: "Elly's school skirt sits neatly mended, the new stitches keeping the edge clean and serviceable.",
-      okay: "Elly's school skirt is wearable again, though the seam meanders if you look too closely.",
-      bad: "Elly's school skirt is closed up, but the hem buckles in places where the thread pulled too hard.",
-    },
-    denny: {
-      unfinished: "Denny's shirt hem is still folded back on itself, waiting for more passes of the needle.",
-      perfect: "Denny's shirt hem is set with small, even stitches that should keep it from fraying again soon.",
-      good: "Denny's shirt hem holds cleanly now, plain but sturdy under your fingers.",
-      okay: "Denny's shirt hem is secured well enough, though the line skips its rhythm here and there.",
-      bad: "Denny's shirt hem is caught together, but the seam looks strained and easy to pick at.",
-    },
-    maggie: {
-      unfinished: "Maggie's apron still has a loose edge curling away from the cloth.",
-      perfect: "Maggie's apron has been turned and finished so neatly it almost brightens the whole garment.",
-      good: "Maggie's apron is properly mended now, with a steady seam that should keep through chores.",
-      okay: "Maggie's apron is usable again, though the hem wavers in a few stubborn spots.",
-      bad: "Maggie's apron is stitched shut, but the edge sits lumpy where the work went rough.",
-    },
-    generic: {
-      unfinished: `${task?.label || "The garment"} is still unfinished at the hem.`,
-      perfect: `${task?.label || "The garment"} has tiny, even stitches that look nearly professional.`,
-      good: `${task?.label || "The garment"} holds together with solid, clean stitching.`,
-      okay: `${task?.label || "The garment"} is wearable, though the seam wanders in places.`,
-      bad: `${task?.label || "The garment"} is stitched, but the line is rough and visibly rushed.`,
-    },
-  };
-  return variants[key]?.[outcome] || variants.generic[outcome];
+  return HEMMING_HOME_DESCRIPTION_TABLE[key]?.[outcome] || genericHemmingTaskDescription(task, outcome);
 }
 
 function siblingReactionForTask(task, name, garment) {
   const outcome = hemmingTaskOutcomeKey(task);
-  const variants = {
-    Elly: {
-      unfinished: "Elly tries not to stare at the still-open skirt hem, but school tomorrow is all she can think about.",
-      perfect: "Elly runs both palms over the skirt and beams, already talking about wearing it to school without having to mind the tear.",
-      good: "Elly smiles with obvious relief, smoothing the skirt flat over her knees as if testing how safely she can trust it.",
-      okay: "Elly thanks you quickly and says it will do, though she keeps peeking at the places where the seam wanders.",
-      bad: "Elly thanks you because she means it, but her fingers worry the rougher spots on the skirt as soon as she thinks you are not looking.",
-    },
-    Denny: {
-      unfinished: "Denny lifts the shirt hem, then lets it drop again and shrugs like he is not disappointed.",
-      perfect: "Denny grins at the shirt and gives the repaired hem an approving tug, pleased it feels strong instead of fussy.",
-      good: "Denny nods at the firmer hem with quiet satisfaction, already less guarded about wearing it tomorrow.",
-      okay: "Denny accepts the shirt with a small grin, but he keeps checking whether the seam will hold if he moves too hard.",
-      bad: "Denny says it is fine, though he rubs the rough hem between thumb and knuckle like he expects it to give.",
-    },
-    Maggie: {
-      unfinished: "Maggie watches you fold the still-unfinished apron and goes quiet in that careful way children do when they do not want to ask for more.",
-      perfect: "Maggie delights in the tidier apron at once, holding it up by the straps as though it has turned back into her favorite thing.",
-      good: "Maggie smiles at the apron and hugs it to her middle, happy just to see it looking whole again.",
-      okay: "Maggie is glad to have the apron back, even if she tilts her head at the wandering stitches like they puzzle her.",
-      bad: "Maggie says it looks nice because she wants to be kind, but even she keeps patting the uneven hem with uncertain little hands.",
-    },
-  };
-  if (variants[name]?.[outcome]) return variants[name][outcome];
+  if (HEMMING_SIBLING_REACTION_TABLE[name]?.[outcome]) return HEMMING_SIBLING_REACTION_TABLE[name][outcome];
   if (outcome === "unfinished") {
     return `${name} looks at the unfinished ${garment} and tries to hide the disappointment behind a quick nod.`;
   }
@@ -5906,8 +6086,8 @@ function drawHemmingTimingWidget(timing) {
   const w = infoCanvas.width;
   const h = infoCanvas.height;
   const cx = w / 2;
-  const cy = h / 2 + 8;
-  const radius = 58;
+  const cy = h / 2 + 2;
+  const radius = 48;
 
   infoCtx.clearRect(0, 0, w, h);
   infoCtx.save();
@@ -5932,9 +6112,9 @@ function drawHemmingTimingWidget(timing) {
   if (!timing || !timing.active) {
     infoCtx.fillStyle = "rgba(255,255,255,0.74)";
     infoCtx.font = "12px Georgia";
-    infoCtx.fillText("click a stitch dot", cx, cy - 3);
+    infoCtx.fillText("click a stitch dot", cx, cy - 7);
     infoCtx.fillStyle = "rgba(255,255,255,0.58)";
-    infoCtx.fillText("to begin timing", cx, cy + 16);
+    infoCtx.fillText("to begin timing", cx, cy + 11);
     infoCtx.restore();
     return;
   }
@@ -5962,7 +6142,7 @@ function drawHemmingTimingWidget(timing) {
 
   infoCtx.fillStyle = "rgba(255,255,255,0.74)";
   infoCtx.font = "12px Georgia";
-  infoCtx.fillText("click again", cx, h - 28);
+  infoCtx.fillText("click again", cx, h - 20);
   infoCtx.restore();
 }
 
@@ -6062,6 +6242,7 @@ function drawHemmingView() {
 }
 
 function drawWatchMinigame() {
+  minigameOverlay.classList.toggle("hemming-mode", paintState.mode === "hemming");
   paintCanvas.style.cursor = paintState.mode === "hemming" ? "pointer" : "none";
   if (paintState.mode !== "hemming") {
     hideInfoCanvas();
@@ -6657,6 +6838,10 @@ function applyPaintingDrift(position) {
     return position;
   }
 
+  if (restHandAssistStrength() > 0) {
+    return position;
+  }
+
   const severity = Math.max(0, paintingDriftStrength() * (1 - restHandAssistStrength()));
   if (severity <= 0) return position;
 
@@ -7091,8 +7276,18 @@ function primeCompletionBell() {
   ensureCompletionBellWidget();
 }
 
+const previousYouTubeIframeReady = window.onYouTubeIframeAPIReady;
+window.onYouTubeIframeAPIReady = () => {
+  backgroundMusicState.apiReady = true;
+  if (typeof previousYouTubeIframeReady === "function") {
+    previousYouTubeIframeReady();
+  }
+  createBackgroundMusicPlayer();
+};
+
 if (bgMusic) {
   bgMusic.addEventListener("load", () => {
+    if (backgroundMusicState.player) return;
     backgroundMusicState.ready = true;
     postBackgroundMusicCommand("mute");
     postBackgroundMusicCommand("playVideo");
@@ -7114,6 +7309,11 @@ window.addEventListener("touchstart", primeCompletionBell, { once: true, passive
 window.addEventListener("pointerdown", primeBackgroundMusic, { once: true });
 window.addEventListener("keydown", primeBackgroundMusic, { once: true });
 window.addEventListener("touchstart", primeBackgroundMusic, { once: true, passive: true });
+
+if (window.YT && typeof window.YT.Player === "function") {
+  backgroundMusicState.apiReady = true;
+  createBackgroundMusicPlayer();
+}
 
 document.addEventListener("keydown", (event) => {
   keys.add(event.code);

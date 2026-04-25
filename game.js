@@ -28,6 +28,7 @@ const infoCtx = infoCanvas ? infoCanvas.getContext("2d") : null;
 const correctButton = document.getElementById("correctButton");
 const lickButton = document.getElementById("lickButton");
 const checkNumeralButton = document.getElementById("checkNumeralButton");
+const restHandButton = document.getElementById("restHandButton");
 const mixResetButton = document.getElementById("mixResetButton");
 const menuButton = document.getElementById("menuButton");
 const menuOverlay = document.getElementById("menuOverlay");
@@ -235,6 +236,7 @@ const gameState = {
   hemmingTasks: [],
   workerProgress: {},
   tutorialSeen: false,
+  handRestUnlocked: false,
 };
 
 const paintState = {
@@ -268,6 +270,7 @@ const paintState = {
   autoSubmitTimer: -1,
   watchNumeralStyle: NUMERAL_STYLE_KEYS[0],
   showCoverageAssist: false,
+  restHandOnSide: false,
   groceryTiming: {
     active: false,
     itemId: "",
@@ -1153,6 +1156,11 @@ function workerConversationResponse(id, context, choiceId) {
     return "She says the work gets easier to repeat long before it gets easier to live with.";
   }
 
+  if (id === "worker-2" && choiceId === "work" && gameState.currentDay >= 1 && !gameState.handRestUnlocked) {
+    gameState.handRestUnlocked = true;
+    return "Ruth watches the stiffness in your wrist before speaking. \"If your hand starts going uncertain, brace the heel of it on the side of the face,\" she says, showing you with two fingers against the rim. \"It eats the clock, but it keeps the numeral true.\" You could try that at the bench now.";
+  }
+
   if (choiceId === "work") {
     const [primary, secondary] = workerDialogueLines(id);
     return [primary, secondary].filter(Boolean).join(" ");
@@ -1481,7 +1489,7 @@ function update(dt) {
   }
 
   if (gameState.shiftActive && dialogOverlay.classList.contains("hidden")) {
-    gameState.shiftElapsed = Math.min(SHIFT_DURATION_SECONDS, gameState.shiftElapsed + dt);
+    gameState.shiftElapsed = Math.min(SHIFT_DURATION_SECONDS, gameState.shiftElapsed + dt * watchShiftTimeAdvanceMultiplier());
     gameState.lastShiftProgress = gameState.shiftElapsed / SHIFT_DURATION_SECONDS;
     if (gameState.shiftElapsed >= SHIFT_DURATION_SECONDS) {
       endShift("timeout");
@@ -1792,6 +1800,7 @@ function buildLocalSavePayload() {
       hemmingTasks: clonePlain(gameState.hemmingTasks),
       workerProgress: clonePlain(gameState.workerProgress),
       tutorialSeen: gameState.tutorialSeen,
+      handRestUnlocked: gameState.handRestUnlocked,
     },
     paintState: {
       tableLabel: paintState.tableLabel,
@@ -1806,6 +1815,7 @@ function buildLocalSavePayload() {
       readyToSubmit: paintState.readyToSubmit,
       tool: paintState.tool,
       correcting: paintState.correcting,
+      restHandOnSide: paintState.restHandOnSide,
     },
     roomState: {
       cursorX: roomState.cursorX,
@@ -1887,6 +1897,7 @@ function loadGameFromLocal() {
   gameState.hemmingTasks = clonePlain(loadedGame.hemmingTasks || []);
   gameState.workerProgress = clonePlain(loadedGame.workerProgress || buildDefaultWorkerProgress());
   gameState.tutorialSeen = Boolean(loadedGame.tutorialSeen);
+  gameState.handRestUnlocked = Boolean(loadedGame.handRestUnlocked);
   gameState.dialogMode = "";
 
   paintState.active = false;
@@ -1905,6 +1916,7 @@ function loadGameFromLocal() {
   paintState.zoomedDialIndex = -1;
   paintState.paintLoaded = Math.max(0, Math.min(1, Number(loadedPaint.paintLoaded ?? 0)));
   paintState.readyToSubmit = Boolean(loadedPaint.readyToSubmit);
+  paintState.restHandOnSide = Boolean(loadedPaint.restHandOnSide) && gameState.handRestUnlocked;
   paintState.mode = "watch";
   paintState.fracturePieces = [];
   paintState.draggedPieceIndex = -1;
@@ -2391,6 +2403,7 @@ function setStationControlsHidden(hidden) {
   correctButton.classList.toggle("hidden", hidden);
   lickButton.classList.toggle("hidden", hidden);
   checkNumeralButton.classList.toggle("hidden", hidden);
+  restHandButton.classList.toggle("hidden", hidden || !canUseRestHandSupport());
   mixResetButton.classList.toggle("hidden", hidden);
 }
 
@@ -3035,18 +3048,99 @@ function hemmingTaskByLabel(fragment) {
   return gameState.hemmingTasks.find((task) => task.label.toLowerCase().includes(fragment.toLowerCase())) || null;
 }
 
+function hemmingTaskNarrativeKey(task) {
+  const label = String(task?.label || "").toLowerCase();
+  if (label.includes("blue dress")) return "dress";
+  if (label.includes("elly")) return "elly";
+  if (label.includes("denny")) return "denny";
+  if (label.includes("maggie")) return "maggie";
+  return "generic";
+}
+
+function hemmingTaskOutcomeKey(task) {
+  if (!task || task.stitchesDone < task.stitchesNeeded) return "unfinished";
+  return taskHemmingQuality(task);
+}
+
+function describeHemmingTaskAtHome(task) {
+  const key = hemmingTaskNarrativeKey(task);
+  const outcome = hemmingTaskOutcomeKey(task);
+  const variants = {
+    dress: {
+      unfinished: "Your blue dress still has pins holding part of the hem where stitches should be.",
+      perfect: "Your blue dress lies folded with a neat, patient hem that almost makes it look store-bought.",
+      good: "Your blue dress hangs straight now, the new seam firm enough to trust.",
+      okay: "Your blue dress will do for now, though the hemline sways a little where the stitches drift.",
+      bad: "Your blue dress is mended, but the hem puckers and shows where exhaustion hurried the thread.",
+    },
+    elly: {
+      unfinished: "Elly's school skirt still waits half-turned on the chair, its loose edge promising trouble by morning.",
+      perfect: "Elly's school skirt has a crisp, even hem that should survive the week without complaint.",
+      good: "Elly's school skirt sits neatly mended, the new stitches keeping the edge clean and serviceable.",
+      okay: "Elly's school skirt is wearable again, though the seam meanders if you look too closely.",
+      bad: "Elly's school skirt is closed up, but the hem buckles in places where the thread pulled too hard.",
+    },
+    denny: {
+      unfinished: "Denny's shirt hem is still folded back on itself, waiting for more passes of the needle.",
+      perfect: "Denny's shirt hem is set with small, even stitches that should keep it from fraying again soon.",
+      good: "Denny's shirt hem holds cleanly now, plain but sturdy under your fingers.",
+      okay: "Denny's shirt hem is secured well enough, though the line skips its rhythm here and there.",
+      bad: "Denny's shirt hem is caught together, but the seam looks strained and easy to pick at.",
+    },
+    maggie: {
+      unfinished: "Maggie's apron still has a loose edge curling away from the cloth.",
+      perfect: "Maggie's apron has been turned and finished so neatly it almost brightens the whole garment.",
+      good: "Maggie's apron is properly mended now, with a steady seam that should keep through chores.",
+      okay: "Maggie's apron is usable again, though the hem wavers in a few stubborn spots.",
+      bad: "Maggie's apron is stitched shut, but the edge sits lumpy where the work went rough.",
+    },
+    generic: {
+      unfinished: `${task?.label || "The garment"} is still unfinished at the hem.`,
+      perfect: `${task?.label || "The garment"} has tiny, even stitches that look nearly professional.`,
+      good: `${task?.label || "The garment"} holds together with solid, clean stitching.`,
+      okay: `${task?.label || "The garment"} is wearable, though the seam wanders in places.`,
+      bad: `${task?.label || "The garment"} is stitched, but the line is rough and visibly rushed.`,
+    },
+  };
+  return variants[key]?.[outcome] || variants.generic[outcome];
+}
+
 function siblingReactionForTask(task, name, garment) {
-  if (!task || task.stitchesDone < task.stitchesNeeded) {
+  const outcome = hemmingTaskOutcomeKey(task);
+  const variants = {
+    Elly: {
+      unfinished: "Elly tries not to stare at the still-open skirt hem, but school tomorrow is all she can think about.",
+      perfect: "Elly runs both palms over the skirt and beams, already talking about wearing it to school without having to mind the tear.",
+      good: "Elly smiles with obvious relief, smoothing the skirt flat over her knees as if testing how safely she can trust it.",
+      okay: "Elly thanks you quickly and says it will do, though she keeps peeking at the places where the seam wanders.",
+      bad: "Elly thanks you because she means it, but her fingers worry the rougher spots on the skirt as soon as she thinks you are not looking.",
+    },
+    Denny: {
+      unfinished: "Denny lifts the shirt hem, then lets it drop again and shrugs like he is not disappointed.",
+      perfect: "Denny grins at the shirt and gives the repaired hem an approving tug, pleased it feels strong instead of fussy.",
+      good: "Denny nods at the firmer hem with quiet satisfaction, already less guarded about wearing it tomorrow.",
+      okay: "Denny accepts the shirt with a small grin, but he keeps checking whether the seam will hold if he moves too hard.",
+      bad: "Denny says it is fine, though he rubs the rough hem between thumb and knuckle like he expects it to give.",
+    },
+    Maggie: {
+      unfinished: "Maggie watches you fold the still-unfinished apron and goes quiet in that careful way children do when they do not want to ask for more.",
+      perfect: "Maggie delights in the tidier apron at once, holding it up by the straps as though it has turned back into her favorite thing.",
+      good: "Maggie smiles at the apron and hugs it to her middle, happy just to see it looking whole again.",
+      okay: "Maggie is glad to have the apron back, even if she tilts her head at the wandering stitches like they puzzle her.",
+      bad: "Maggie says it looks nice because she wants to be kind, but even she keeps patting the uneven hem with uncertain little hands.",
+    },
+  };
+  if (variants[name]?.[outcome]) return variants[name][outcome];
+  if (outcome === "unfinished") {
     return `${name} looks at the unfinished ${garment} and tries to hide the disappointment behind a quick nod.`;
   }
-  const quality = taskHemmingQuality(task);
-  if (quality === "perfect") {
+  if (outcome === "perfect") {
     return `${name} lights up the moment they see the ${garment}, turning the hem over in their hands as if it were something new.`;
   }
-  if (quality === "good") {
+  if (outcome === "good") {
     return `${name} smiles at the cleaner seam on the ${garment} and thanks you with the kind of relief that makes them sound younger.`;
   }
-  if (quality === "okay") {
+  if (outcome === "okay") {
     return `${name} accepts the ${garment} carefully, pleased to have it mended even if the stitches still wander a little.`;
   }
   return `${name} says thank you anyway, but keeps tracing the rough seam on the ${garment} with uncertain fingers.`;
@@ -3278,22 +3372,7 @@ function hemmingHomeSceneText() {
   }
 
   const perHem = gameState.hemmingTasks
-    .map((task) => {
-      if (task.stitchesDone < task.stitchesNeeded) {
-        return `${task.label} is still unfinished at the hem.`;
-      }
-      const quality = taskHemmingQuality(task);
-      if (quality === "perfect") {
-        return `${task.label} has tiny, even stitches that look nearly professional.`;
-      }
-      if (quality === "good") {
-        return `${task.label} holds together with solid, clean stitching.`;
-      }
-      if (quality === "okay") {
-        return `${task.label} is wearable, though the seam wanders in places.`;
-      }
-      return `${task.label} is stitched, but the line is rough and visibly rushed.`;
-    })
+    .map((task) => describeHemmingTaskAtHome(task))
     .join(" ");
 
   const counts = hemmingOverallGradeCounts();
@@ -3417,8 +3496,10 @@ function resetWeek() {
   gameState.postHomeSummary = "";
   gameState.hemmingTasks = [];
   gameState.workerProgress = buildDefaultWorkerProgress();
+  gameState.handRestUnlocked = false;
   paintState.active = false;
   paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS[0];
+  paintState.restHandOnSide = false;
   paintState.groceryTiming.active = false;
   paintState.groceryTiming.itemId = "";
   paintState.groceryTiming.rowIndex = -1;
@@ -3670,6 +3751,7 @@ function saveCurrentBenchWork() {
     zoomedDialIndex: paintState.zoomedDialIndex,
     paintLoaded: paintState.paintLoaded,
     readyToSubmit: paintState.readyToSubmit,
+    restHandOnSide: paintState.restHandOnSide,
   };
 }
 
@@ -3686,6 +3768,7 @@ function restoreBenchWork(label) {
   paintState.zoomedDialIndex = saved.zoomedDialIndex;
   paintState.paintLoaded = saved.paintLoaded;
   paintState.readyToSubmit = saved.readyToSubmit;
+  paintState.restHandOnSide = Boolean(saved.restHandOnSide) && gameState.handRestUnlocked;
   if (paintState.zoomedDialIndex !== -1) {
     zoomCursorToDial(paintState.zoomedDialIndex);
   } else {
@@ -4022,6 +4105,7 @@ function openTutorialMinigame() {
   paintState.tool = "mix";
   paintState.correcting = false;
   paintState.paintLoaded = 0;
+  paintState.restHandOnSide = false;
   gameState.tutorialSeen = true;
   setTutorialStep(0);
   drawWatchMinigame();
@@ -4085,6 +4169,7 @@ function openFracturePuzzle(message) {
   paintState.mode = "fracture";
   paintState.isPainting = false;
   paintState.correcting = false;
+  paintState.restHandOnSide = false;
   paintState.draggedPieceIndex = -1;
   paintState.pointerX = paintCanvas.width / 2;
   paintState.pointerY = paintCanvas.height / 2;
@@ -4147,6 +4232,7 @@ function openMinigame(label) {
     paintState.brushSize = DEFAULT_BRUSH_SIZE;
     paintState.watchNumeralStyle = chooseRandomNumeralStyle(paintState.watchNumeralStyle);
     paintState.paintLoaded = 0;
+    paintState.restHandOnSide = false;
     paintState.zoomedDialIndex = -1;
     paintState.readyToSubmit = false;
     resetMix();
@@ -4175,6 +4261,7 @@ function closeMinigame() {
   paintState.mode = "watch";
   paintState.zoomedDialIndex = -1;
   paintState.paintLoaded = 0;
+  paintState.restHandOnSide = false;
   paintState.thoughtPopup = null;
   paintState.tutorial = null;
   paintState.autoSubmitTimer = -1;
@@ -4493,6 +4580,29 @@ function updateCheckNumeralButton() {
   checkNumeralButton.classList.toggle("active", zoomedWatch && paintState.showCoverageAssist);
 }
 
+function canUseRestHandSupport() {
+  return gameState.handRestUnlocked
+    && gameState.currentDay >= 1
+    && paintState.mode === "watch"
+    && !paintState.tutorial;
+}
+
+function restHandAssistStrength() {
+  if (!canUseRestHandSupport() || !paintState.active || paintState.zoomedDialIndex === -1 || !paintState.restHandOnSide) {
+    return 0;
+  }
+
+  const severity = paintingDriftStrength();
+  if (severity <= 0) return 0;
+  return Math.min(0.85, 0.4 + severity * 0.45);
+}
+
+function watchShiftTimeAdvanceMultiplier() {
+  const assist = restHandAssistStrength();
+  if (assist <= 0) return 1;
+  return 1 + assist * (0.35 + paintingDriftStrength() * 0.85);
+}
+
 function updatePaintStats() {
   const finished = paintState.dials.filter((dial) => dial.locked || dialCountsAsPainted(dial)).length;
   const correctionNeeded = correctionCount();
@@ -4506,10 +4616,17 @@ function updatePaintStats() {
   const currentDialText = currentDial
     ? ` Numeral ${currentDial.label} coverage ${Math.round(currentDial.coverage * 100)}%.`
     : "";
+  const handText = canUseRestHandSupport()
+    ? ` Hand ${paintState.restHandOnSide ? "braced" : "free"}.`
+    : "";
   paintStats.textContent =
-    `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}`;
+    `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}${handText}`;
   mixPrompt.textContent = mixTextureFeedback();
   correctButton.classList.toggle("active", paintState.tool === "nail");
+  if (restHandButton) {
+    restHandButton.classList.toggle("hidden", !canUseRestHandSupport());
+    restHandButton.classList.toggle("active", canUseRestHandSupport() && paintState.restHandOnSide);
+  }
   updateCheckNumeralButton();
 }
 
@@ -6540,7 +6657,7 @@ function applyPaintingDrift(position) {
     return position;
   }
 
-  const severity = paintingDriftStrength();
+  const severity = Math.max(0, paintingDriftStrength() * (1 - restHandAssistStrength()));
   if (severity <= 0) return position;
 
   const now = performance.now();
@@ -6682,6 +6799,16 @@ bindPress(lickButton, () => {
 
 bindPress(checkNumeralButton, () => {
   toggleCheckNumeralGuide();
+});
+
+bindPress(restHandButton, () => {
+  if (!canUseRestHandSupport()) return;
+  paintState.restHandOnSide = !paintState.restHandOnSide;
+  paintPrompt.textContent = paintState.restHandOnSide
+    ? "You brace the heel of your hand against the side. The line steadies, but the shift clock starts running faster."
+    : "You lift your hand free again. The work slows back to its usual pace, and the shakiness returns with it.";
+  updatePaintStats();
+  drawWatchMinigame();
 });
 
 bindPress(mixResetButton, () => {

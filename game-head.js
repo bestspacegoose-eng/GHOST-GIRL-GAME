@@ -38,6 +38,7 @@ const correctButton = document.getElementById("correctButton");
 const lickButton = document.getElementById("lickButton");
 const checkNumeralButton = document.getElementById("checkNumeralButton");
 const restHandButton = document.getElementById("restHandButton");
+const paintBackToMixButton = document.getElementById("paintBackToMixButton");
 const mixSettleButton = document.getElementById("mixSettleButton");
 const mixResetButton = document.getElementById("mixResetButton");
 const workspaceBanner = document.getElementById("workspaceBanner");
@@ -64,6 +65,7 @@ const STATION_BUTTONS = {
   lick: lickButton,
   checkNumeral: checkNumeralButton,
   restHand: restHandButton,
+  backToMix: paintBackToMixButton,
   mixSettle: mixSettleButton,
   mixReset: mixResetButton,
 };
@@ -123,6 +125,8 @@ const DEFAULT_BRUSH_SIZE = 0.22;
 const BRUSH_ROUGH_THRESHOLD = 0.95;
 const BRUSH_FANNED_THRESHOLD = 1.45;
 const MAX_BRUSH_SIZE = 1.9;
+const WATCH_SCREEN_MIXING = "mixing";
+const WATCH_SCREEN_PAINTING = "painting";
 const WATCH_FACE_ASPECT = 1536 / 1024;
 const WATCH_CENTER_X = 409;
 const WATCH_CENTER_Y = 282;
@@ -142,15 +146,15 @@ const PAINT_POINT_COMPLETE = 1;
 const PAINT_POINT_COVERAGE_THRESHOLD = 0.92;
 const PAINT_POINT_SOFT_COVERAGE_THRESHOLD = 0.62;
 const STATION_LAYOUT = {
-  powder: { x: 70, y: 176, w: 64, h: 174 },
-  gum: { x: 146, y: 176, w: 64, h: 174 },
-  water: { x: 224, y: 172, w: 42, h: 182 },
-  dish: { x: 108, y: 452, w: 108, h: 138, rx: 36, ry: 52 },
-  mixPanel: { x: 28, y: 88, w: 252, h: 498 },
-  recipePanel: { x: 168, y: 372, w: 98, h: 118 },
+  powder: { x: 130, y: 250, w: 110, h: 194 },
+  gum: { x: 274, y: 250, w: 86, h: 194 },
+  water: { x: 388, y: 250, w: 72, h: 194 },
+  dish: { x: 520, y: 428, w: 146, h: 220, rx: 44, ry: 62 },
+  mixPanel: { x: 34, y: 66, w: 572, h: 526 },
+  recipePanel: { x: 446, y: 112, w: 134, h: 154 },
   zoomPaint: { x: 96, y: 108, w: 122, h: 90, rx: 44, ry: 30 },
   zoomWipe: { x: 96, y: 252, w: 126, h: 144 },
-  brushProp: { x: 248, y: 214, w: 46, h: 182 },
+  brushProp: { x: 124, y: 194, w: 58, h: 204 },
   nailProp: { x: 246, y: 320, r: 24 },
 };
 const GROCERY_ITEMS = [
@@ -164,11 +168,13 @@ const GROCERY_ITEMS = [
   { id: "sugar", label: "Sugar", unit: "lb", priceTenths: 194 },
 ];
 const GROCERY_LAYOUT = {
-  panel: { x: 334, y: 54, w: 270, h: 474 },
-  rowStartY: 102,
-  rowHeight: 42,
+  panel: { x: 318, y: 42, w: 300, h: 574 },
+  rowStartY: 104,
+  rowHeight: 44,
   rowGap: 8,
-  finish: { x: 422, y: 546, w: 152, h: 42 },
+  finish: { x: 470, y: 566, w: 132, h: 38 },
+  basket: { x: 24, y: 190, w: 262, h: 244 },
+  footer: { x: 24, y: 526, w: 276, h: 92 },
 };
 const GROCERY_DOLLAR_THRESHOLD_TENTHS = 1000;
 const GROCERY_TIMING_WINDOWS = {
@@ -311,9 +317,10 @@ const ASSET_PATHS = {
   gumArabic: "./assets/gum-arabic.png",
   waterPlate: "./assets/water-plate.png",
   mixedPaint: "./assets/mixed-paint.png",
-  mixBottle: "https://commons.wikimedia.org/wiki/Special:FilePath/Reagent%20bottle.png",
-  mixWaterDropper: "https://commons.wikimedia.org/wiki/Special:FilePath/Dropper.png",
-  mixBeaker: "https://commons.wikimedia.org/wiki/Special:FilePath/Lab%20beaker.png",
+  mixPowderPhoto: "./assets/mix-powder-photo.jpg",
+  mixBottle: "./assets/mix-tar-bottle.jpg",
+  mixWaterDropper: "./assets/mix-water-dropper.jpg",
+  mixBeaker: "./assets/mix-beaker-photo.jpg",
   hemDressPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Dress%20-%20MET%2026.265.96.jpg",
   hemSkirtPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Skirt%20MET%2026.265.48.jpg",
   hemShirtPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Shirt%20MET%204568.jpg",
@@ -415,6 +422,7 @@ const paintState = {
   paintLoaded: 0,
   readyToSubmit: false,
   mode: "watch",
+  watchScreen: WATCH_SCREEN_MIXING,
   fracturePieces: [],
   draggedPieceIndex: -1,
   dragOffsetX: 0,

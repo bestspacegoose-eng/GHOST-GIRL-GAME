@@ -4,21 +4,40 @@ A narrative browser game about watch-dial painting, survival, labor, and the slo
 
 ## Play Online
 
-Once the GitHub Pages workflow finishes on `main`, the game is playable at:
+Once GitHub Pages is enabled for this repository, the game is playable at:
 
 [https://bestspacegoose-eng.github.io/radium-codex-game/](https://bestspacegoose-eng.github.io/radium-codex-game/)
 
 The game is deployed as a static site, so it no longer depends on opening `index.html` from your local filesystem.
 
-## How Pages Deployment Works
+## GitHub Pages Setup
 
-This repository uses the workflow at `.github/workflows/deploy-pages.yml`.
+This repository is ready for the standard GitHub Pages branch-based setup.
 
-On every push to `main`, GitHub Actions will:
+In the GitHub repository:
 
-1. copy `index.html`, `style.css`, `game.js`, and `assets/` into a clean `_site/` directory
-2. add `.nojekyll` so GitHub Pages serves the files exactly as-is
-3. upload that static bundle to GitHub Pages
+1. Open `Settings`.
+2. Open `Pages`.
+3. Under `Build and deployment`, set `Source` to `Deploy from a branch`.
+4. Set `Branch` to `main`.
+5. Set the folder to `/ (root)`.
+6. Save.
+
+This repo includes a root `.nojekyll` file so GitHub Pages serves the game as a plain static site instead of trying to run it through Jekyll.
+
+## Important URL Note
+
+Because the current repository is named `radium-codex-game`, the published URL is:
+
+[https://bestspacegoose-eng.github.io/radium-codex-game/](https://bestspacegoose-eng.github.io/radium-codex-game/)
+
+If you want the exact user-site format from the GitHub Docs example:
+
+[https://bestspacegoose-eng.github.io/](https://bestspacegoose-eng.github.io/)
+
+then the repository itself must be renamed to:
+
+`bestspacegoose-eng.github.io`
 
 ## Local Development
 

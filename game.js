@@ -1069,6 +1069,9 @@ function ensureWorkerProgressState() {
         gameState.workerProgress[id][key] = value;
       }
     }
+    if (Number(gameState.workerProgress[id].talks || 0) <= 0) {
+      gameState.workerProgress[id].nameKnown = false;
+    }
   }
   return gameState.workerProgress;
 }
@@ -1175,7 +1178,7 @@ function advanceWorkerProgress(id, context = "shift") {
   const progress = workerProgressFor(id);
   const hadKnownName = progress.nameKnown;
   const firstTalk = progress.talks === 0;
-  const revealEligible = !progress.nameKnown && gameState.currentDay >= workerNameRevealDay(id);
+  const revealEligible = !progress.nameKnown && progress.talks > 0 && gameState.currentDay >= workerNameRevealDay(id);
   let revealText = "";
   let withheldText = "";
 

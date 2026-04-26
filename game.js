@@ -145,6 +145,8 @@ const HEMMING_LAYOUT = {
   rowGap: 12,
   finish: { x: 398, y: 510, w: 160, h: 42 },
 };
+const HEMMING_TIMING_WIDGET_SIZE = 176;
+const HEMMING_TIMING_WIDGET_MARGIN = 18;
 const HEMMING_FAMILY_ITEMS = [
   "Your blue dress",
   "Elly's school skirt",
@@ -344,6 +346,9 @@ const paintState = {
     startedAt: 0,
     periodMs: 1200,
     target: 0.75,
+    popupX: 0,
+    popupY: 0,
+    popupSize: HEMMING_TIMING_WIDGET_SIZE,
   },
 };
 
@@ -2168,6 +2173,11 @@ function loadGameFromLocal() {
   paintState.groceryTiming.lastItemLabel = "";
   paintState.groceryTiming.lastSavingsTenths = 0;
   paintState.hemmingTiming.active = false;
+  paintState.hemmingTiming.taskIndex = -1;
+  paintState.hemmingTiming.stitchIndex = -1;
+  paintState.hemmingTiming.popupX = 0;
+  paintState.hemmingTiming.popupY = 0;
+  paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
 
   roomState.cursorX = Math.max(0, Math.min(WIDTH, Number(loadedRoom.cursorX ?? WIDTH / 2)));
   roomState.cursorY = Math.max(0, Math.min(HEIGHT, Number(loadedRoom.cursorY ?? HEIGHT / 2)));
@@ -2580,7 +2590,7 @@ function refreshHint() {
 
   if (paintState.active && paintState.mode === "hemming") {
     hint.textContent = "Repair clothes before bed.";
-    subhint.textContent = "Click a stitch dot to start timing, then use the side-panel ring to land bad/okay/good/perfect quality.";
+    subhint.textContent = "Click a stitch dot to start timing, then click the time-stitch box when the moving marker lines up.";
     return;
   }
 
@@ -3226,6 +3236,59 @@ function hemmingFinishRect() {
   return { ...HEMMING_LAYOUT.finish };
 }
 
+function hemmingTimingPopupRect() {
+  const timing = paintState.hemmingTiming;
+  const size = Math.max(144, Number(timing.popupSize || HEMMING_TIMING_WIDGET_SIZE));
+  return {
+    x: Number(timing.popupX || HEMMING_TIMING_WIDGET_MARGIN),
+    y: Number(timing.popupY || HEMMING_TIMING_WIDGET_MARGIN),
+    w: size,
+    h: size,
+  };
+}
+
+function rectsOverlap(a, b) {
+  return (
+    a.x < b.x + b.w
+    && a.x + a.w > b.x
+    && a.y < b.y + b.h
+    && a.y + a.h > b.y
+  );
+}
+
+function randomHemmingTimingPopupRect() {
+  const size = HEMMING_TIMING_WIDGET_SIZE;
+  const margin = HEMMING_TIMING_WIDGET_MARGIN;
+  const safeBounds = {
+    x: margin,
+    y: margin,
+    w: paintCanvas.width - margin * 2,
+    h: paintCanvas.height - margin * 2,
+  };
+  const finish = hemmingFinishRect();
+  const maxX = safeBounds.x + Math.max(0, safeBounds.w - size);
+  const maxY = safeBounds.y + Math.max(0, safeBounds.h - size);
+  let choice = { x: safeBounds.x, y: safeBounds.y, w: size, h: size };
+
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    const candidate = {
+      x: safeBounds.x + Math.random() * Math.max(0, maxX - safeBounds.x),
+      y: safeBounds.y + Math.random() * Math.max(0, maxY - safeBounds.y),
+      w: size,
+      h: size,
+    };
+    if (!rectsOverlap(candidate, finish)) {
+      choice = candidate;
+      break;
+    }
+    choice = candidate;
+  }
+
+  choice.x = Math.round(choice.x);
+  choice.y = Math.round(choice.y);
+  return choice;
+}
+
 function createHemmingTasks() {
   return HEMMING_FAMILY_ITEMS.map((label, index) => {
     const base = 6 + Math.min(3, gameState.currentDay);
@@ -3383,6 +3446,7 @@ function startHemmingTiming(taskIndex) {
   if (!task || task.stitchesDone >= task.stitchesNeeded) return false;
   const basePeriodMs = 1200 - Math.min(280, gameState.currentDay * 38);
   const randomPeriodOffsetMs = (Math.random() * 260) - 130;
+  const popup = randomHemmingTimingPopupRect();
   paintState.hemmingTiming = {
     active: true,
     taskIndex,
@@ -3390,8 +3454,11 @@ function startHemmingTiming(taskIndex) {
     startedAt: performance.now(),
     periodMs: Math.max(440, Math.round((basePeriodMs + randomPeriodOffsetMs) / minigameSpeedMultiplier())),
     target: 0.66 + Math.random() * 0.24,
+    popupX: popup.x,
+    popupY: popup.y,
+    popupSize: popup.w,
   };
-  paintPrompt.textContent = `Thread ready for ${task.label}. Click again when the timing ring in the side panel lines up.`;
+  paintPrompt.textContent = `Thread ready for ${task.label}. Click the time-stitch box when the moving marker lines up.`;
   return true;
 }
 
@@ -3401,6 +3468,8 @@ function resolveHemmingTiming() {
   const task = gameState.hemmingTasks[timing.taskIndex];
   if (!task || task.stitchesDone >= task.stitchesNeeded) {
     paintState.hemmingTiming.active = false;
+    paintState.hemmingTiming.popupX = 0;
+    paintState.hemmingTiming.popupY = 0;
     return false;
   }
 
@@ -3410,6 +3479,8 @@ function resolveHemmingTiming() {
   task.ratings.push(grade);
   task.stitchesDone = Math.min(task.stitchesNeeded, task.stitchesDone + 1);
   paintState.hemmingTiming.active = false;
+  paintState.hemmingTiming.popupX = 0;
+  paintState.hemmingTiming.popupY = 0;
 
   const gradeWord = grade === "perfect"
     ? "perfect"
@@ -3493,10 +3564,13 @@ function openHemmingTrip() {
   paintState.hemmingTiming.active = false;
   paintState.hemmingTiming.taskIndex = -1;
   paintState.hemmingTiming.stitchIndex = -1;
+  paintState.hemmingTiming.popupX = 0;
+  paintState.hemmingTiming.popupY = 0;
+  paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
   gameState.hemmingTasks = createHemmingTasks();
   minigameHeading.textContent = "Evening Hemming";
   paintPrompt.textContent = hemmingReflectionText();
-  mixPrompt.textContent = "Click a stitch dot to start timing. Watch the ring in the side panel, then click again for bad/okay/good/perfect stitch quality.";
+  mixPrompt.textContent = "Click a stitch dot to start timing. A time-stitch box will pop up somewhere on the cloth; click it when the moving marker lines up for bad/okay/good/perfect quality.";
   updateHemmingStats();
   setStationControlsHidden(true);
   minigameOverlay.classList.remove("hidden");
@@ -3515,7 +3589,11 @@ function stitchPointForTask(taskIndex, stitchIndex) {
 
 function applyHemStitch(x, y) {
   if (paintState.hemmingTiming.active) {
-    paintPrompt.textContent = "Watch the timing ring in the side panel, then click there when the marker lines up.";
+    if (pointInsideRect(x, y, hemmingTimingPopupRect())) {
+      resolveHemmingTiming();
+    } else {
+      paintPrompt.textContent = "Watch the time-stitch box and click inside it when the moving marker lines up.";
+    }
     return;
   }
 
@@ -3692,6 +3770,9 @@ function resetWeek() {
   paintState.hemmingTiming.active = false;
   paintState.hemmingTiming.taskIndex = -1;
   paintState.hemmingTiming.stitchIndex = -1;
+  paintState.hemmingTiming.popupX = 0;
+  paintState.hemmingTiming.popupY = 0;
+  paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
   showTitleCard();
   setMessage(
     "A new week begins at the line.",
@@ -6083,44 +6164,34 @@ function hideInfoCanvas() {
 }
 
 function drawHemmingTimingWidget(timing) {
-  if (!infoCanvas || !infoCtx) return;
-  infoCanvas.classList.remove("hidden");
+  hideInfoCanvas();
+  if (!timing || !timing.active) return;
 
-  const w = infoCanvas.width;
-  const h = infoCanvas.height;
-  const cx = w / 2;
-  const cy = h / 2 + 2;
+  const rect = hemmingTimingPopupRect();
+  const w = rect.w;
+  const h = rect.h;
+  const cx = rect.x + w / 2;
+  const cy = rect.y + h / 2 + 2;
   const radius = 48;
 
-  infoCtx.clearRect(0, 0, w, h);
-  infoCtx.save();
-  infoCtx.fillStyle = "rgba(6, 8, 10, 0.94)";
-  infoCtx.fillRect(0, 0, w, h);
-  infoCtx.strokeStyle = "rgba(255,255,255,0.12)";
-  infoCtx.lineWidth = 2;
-  infoCtx.strokeRect(1, 1, w - 2, h - 2);
+  paintCtx.save();
+  paintCtx.fillStyle = "rgba(6, 8, 10, 0.94)";
+  paintCtx.fillRect(rect.x, rect.y, w, h);
+  paintCtx.strokeStyle = "rgba(255,255,255,0.18)";
+  paintCtx.lineWidth = 2;
+  paintCtx.strokeRect(rect.x + 1, rect.y + 1, w - 2, h - 2);
 
-  infoCtx.textAlign = "center";
-  infoCtx.textBaseline = "middle";
-  infoCtx.fillStyle = "rgba(255,255,255,0.9)";
-  infoCtx.font = "bold 13px Georgia";
-  infoCtx.fillText("TIME STITCH", cx, 22);
+  paintCtx.textAlign = "center";
+  paintCtx.textBaseline = "middle";
+  paintCtx.fillStyle = "rgba(255,255,255,0.92)";
+  paintCtx.font = "bold 13px Georgia";
+  paintCtx.fillText("TIME STITCH", cx, rect.y + 22);
 
-  infoCtx.strokeStyle = "rgba(255,255,255,0.24)";
-  infoCtx.lineWidth = 7;
-  infoCtx.beginPath();
-  infoCtx.arc(cx, cy, radius, 0, Math.PI * 2);
-  infoCtx.stroke();
-
-  if (!timing || !timing.active) {
-    infoCtx.fillStyle = "rgba(255,255,255,0.74)";
-    infoCtx.font = "12px Georgia";
-    infoCtx.fillText("click a stitch dot", cx, cy - 7);
-    infoCtx.fillStyle = "rgba(255,255,255,0.58)";
-    infoCtx.fillText("to begin timing", cx, cy + 11);
-    infoCtx.restore();
-    return;
-  }
+  paintCtx.strokeStyle = "rgba(255,255,255,0.24)";
+  paintCtx.lineWidth = 7;
+  paintCtx.beginPath();
+  paintCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+  paintCtx.stroke();
 
   const targetWindows = [
     { key: "okay", color: "rgba(211, 169, 118, 0.52)", width: HEMMING_TIMING_WINDOWS.okay },
@@ -6129,24 +6200,24 @@ function drawHemmingTimingWidget(timing) {
   ];
   for (const zone of targetWindows) {
     const spread = zone.width * Math.PI * 2;
-    infoCtx.strokeStyle = zone.color;
-    infoCtx.lineWidth = zone.key === "perfect" ? 10 : 7;
-    infoCtx.beginPath();
-    infoCtx.arc(cx, cy, radius, timing.targetAngle - spread, timing.targetAngle + spread);
-    infoCtx.stroke();
+    paintCtx.strokeStyle = zone.color;
+    paintCtx.lineWidth = zone.key === "perfect" ? 10 : 7;
+    paintCtx.beginPath();
+    paintCtx.arc(cx, cy, radius, timing.targetAngle - spread, timing.targetAngle + spread);
+    paintCtx.stroke();
   }
 
   const markerX = cx + Math.cos(timing.angle) * radius;
   const markerY = cy + Math.sin(timing.angle) * radius;
-  infoCtx.fillStyle = "rgba(255, 248, 212, 0.98)";
-  infoCtx.beginPath();
-  infoCtx.arc(markerX, markerY, 6.3, 0, Math.PI * 2);
-  infoCtx.fill();
+  paintCtx.fillStyle = "rgba(255, 248, 212, 0.98)";
+  paintCtx.beginPath();
+  paintCtx.arc(markerX, markerY, 6.3, 0, Math.PI * 2);
+  paintCtx.fill();
 
-  infoCtx.fillStyle = "rgba(255,255,255,0.74)";
-  infoCtx.font = "12px Georgia";
-  infoCtx.fillText("click again", cx, h - 20);
-  infoCtx.restore();
+  paintCtx.fillStyle = "rgba(255,255,255,0.74)";
+  paintCtx.font = "12px Georgia";
+  paintCtx.fillText("click again", cx, rect.y + h - 20);
+  paintCtx.restore();
 }
 
 function drawHemmingView() {

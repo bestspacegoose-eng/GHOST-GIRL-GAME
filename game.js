@@ -1424,8 +1424,29 @@ function workerConversationNotes(relationship) {
     .join(" ");
 }
 
-function workerConversationChoices(context) {
-  return WORKER_CONVERSATION_OPTIONS[context] || WORKER_CONVERSATION_OPTIONS.shift;
+function workerTopicValues(id) {
+  return WORKER_DIALOGUE_TOPICS[id] || {
+    bench: "this tray",
+    detail: "the worst part of the line",
+    joke: "surviving this room",
+    tell: "how worn down you look",
+    home: "what waits for you at home",
+  };
+}
+
+function fillWorkerConversationTemplate(template, values) {
+  return String(template || "").replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
+}
+
+function workerConversationChoices(id, context) {
+  const templateGroup = WORKER_CONVERSATION_TEMPLATES[context] || WORKER_CONVERSATION_TEMPLATES.shift;
+  const categories = Object.keys(templateGroup);
+  const dayIndex = Math.max(0, Math.min(6, gameState.currentDay));
+  const values = workerTopicValues(id);
+  return categories.map((category) => ({
+    id: category,
+    label: fillWorkerConversationTemplate(templateGroup[category][dayIndex], values),
+  }));
 }
 
 function workerConversationTitle(id, context, relationship = null) {
@@ -1462,10 +1483,20 @@ function workerConversationPrompt(id, context, relationship) {
   return `${setup} ${workerAppearanceText(id)} ${openness}${notes ? ` ${notes}` : ""} How do you open the conversation?`;
 }
 
-function workerConversationResponse(id, context, choiceId) {
+function spokenChoiceLead(choice) {
+  if (!choice?.label) return "";
+  if (choice.id === "wry") {
+    return `You say, "${choice.label}" `;
+  }
+  return `You ask, "${choice.label}" `;
+}
+
+function workerConversationResponse(id, context, choice) {
   const progress = workerProgressFor(id);
+  const choiceId = choice?.id || "";
   const coda = workerConversationCoda(id, context);
   let responseText = "";
+  const lead = spokenChoiceLead(choice);
   if (context === "afterShift") {
     const profile = WORKER_AFTER_SHIFT_DIALOGUE[id] || {};
     if (profile[choiceId]) {
@@ -1477,25 +1508,25 @@ function workerConversationResponse(id, context, choiceId) {
     } else {
       responseText = `She says the work gets easier to repeat long before it gets easier to live with. ${coda}`.trim();
     }
-    return concealUnknownWorkerName(responseText, id);
+    return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
   }
 
   if (id === "worker-2" && choiceId === "work" && gameState.currentDay >= 1 && !gameState.handRestUnlocked) {
     gameState.handRestUnlocked = true;
     responseText = `Ruth watches the stiffness in your wrist before speaking. "If your hand starts going uncertain, brace the heel of it on the side of the face," she says, showing you with two fingers against the rim. "It eats the clock, but it keeps the numeral true." You could try that at the bench now. ${coda}`.trim();
-    return concealUnknownWorkerName(responseText, id);
+    return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
   }
 
   if (choiceId === "work") {
     const [primary, secondary] = workerDialogueLines(id);
     responseText = `${[primary, secondary].filter(Boolean).join(" ")} ${coda}`.trim();
-    return concealUnknownWorkerName(responseText, id);
+    return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
   }
 
   const profile = WORKER_SHIFT_CHOICE_DIALOGUE[id] || {};
   if (profile[choiceId]) {
     responseText = `${profile[choiceId]} ${coda}`.trim();
-    return concealUnknownWorkerName(responseText, id);
+    return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
   }
 
   if (choiceId === "personal") {
@@ -1503,10 +1534,10 @@ function workerConversationResponse(id, context, choiceId) {
       ? "She answers more honestly than she means to, then returns to the tray before the feeling can settle."
       : "She hesitates, gives you the smallest honest answer she can afford, and bends back over the dial.")
       + ` ${coda}`;
-    return concealUnknownWorkerName(responseText.trim(), id);
+    return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
   }
   responseText = `That finally earns a brief smile before the room pulls her attention back to the tray. ${coda}`.trim();
-  return concealUnknownWorkerName(responseText, id);
+  return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
 }
 
 function configureDialogChoiceButton(button, text, choiceId = "") {
@@ -1530,9 +1561,10 @@ function openWorkerConversation(id, context = "shift") {
     workerId: id,
     context,
     relationship,
+    options: workerConversationChoices(id, context),
   };
 
-  const choices = workerConversationChoices(context);
+  const choices = workerConversationState.options;
   resetDialogButtons();
   setDialogContent(
     workerConversationTitle(id, context, relationship),
@@ -1547,11 +1579,12 @@ function openWorkerConversation(id, context = "shift") {
 
 function resolveWorkerConversationChoice(choiceId) {
   if (!workerConversationState) return;
-  const { workerId, context } = workerConversationState;
+  const { workerId, context, options = [] } = workerConversationState;
+  const choice = options.find((entry) => entry.id === choiceId) || { id: choiceId, label: "" };
   resetDialogButtons();
   setDialogContent(
     workerConversationTitle(workerId, context),
-    workerConversationResponse(workerId, context, choiceId),
+    workerConversationResponse(workerId, context, choice),
   );
   dialogButton.textContent = context === "afterShift" ? "Continue to chores" : "Back to the room";
   dialogOverlay.classList.remove("hidden");

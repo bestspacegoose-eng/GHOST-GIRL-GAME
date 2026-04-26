@@ -3215,24 +3215,24 @@ function finalEndingForHealth() {
 
   if (health >= 75) {
     return {
-      title: "After The Factory",
+      title: "What Remains",
       body:
-        "You survived the seven days with more of yourself intact than most. Years later, when the truth about the glowing paint began to surface, you were still alive to speak, to remember the benches, and to stand among the women who forced the world to look at what had been done. The work marked you, but it did not silence you.",
+        "The week ends and you are still upright, still speaking, still able to leave the room under your own power. That feels like far too small a victory for what the lamps have taken from all of you, but you cling to it anyway. You step out carrying your pay, your fatigue, and the stubborn knowledge that you are not yet finished.",
     };
   }
 
   if (health >= 35) {
     return {
-      title: "After The Factory",
+      title: "What Remains",
       body:
-        "By the end, the damage had already rooted itself deep inside you. Your jaw ached, your limbs weakened, and the slow, humiliating deterioration became impossible to hide. It did not happen all at once. It came day after day, one defect layered over another, until your body felt like something the factory had kept using long after it should have stopped.",
+        "By the end of the week, the damage has already sunk too deep to ignore. Your jaw aches, your strength comes and goes, and every ordinary motion now carries a little dread inside it. You leave knowing the room is still in you, whether you return to the bench or not.",
     };
   }
 
   return {
-    title: "After The Factory",
+    title: "What Remains",
     body:
-      "There was no long decline left to measure. Your body gave out almost at once, spent by the poison you had carried so close for so long. The room, the benches, the luminous dust, and the tiny painted numerals ended with you before the week could become anything like a life beyond the factory.",
+      "There is almost nothing left to bargain with by the time the week closes around you. The poison, the hunger, the strain, and the light itself have spent you down to the bone. The room takes more than your labor in the end, and there is no strength left to pretend otherwise.",
   };
 }
 
@@ -3287,7 +3287,7 @@ function showDayFiveCutscene() {
   const familiarCount = familiarWorkersCount();
   const unlocksSolidarity = canStandWithWorkers();
   const sharedIntro =
-    "The remaining girls gather before the shift whistle. They speak in hushed bursts about the dial painters who came together in real life to demand compensation: the New Jersey women led by Grace Fryer, and later the Illinois workers who kept pressing their claims even while their health failed.";
+    "The remaining girls gather before the shift whistle. Their voices stay low, urgent, and close to the floor. Some want to keep their heads down and survive the day. Others say the room has already taken too much, and that if anyone is going to speak, it will have to be together.";
   if (unlocksSolidarity) {
     setDialogContent(
       "Day 5 - Before The Bell",
@@ -3314,7 +3314,7 @@ function showSolidarityEnding() {
   resetDialogButtons();
   setDialogContent(
     "Stand Together",
-    "You step away from the bench and join the others. In the years that follow, women like Grace Fryer in New Jersey and Catherine Donohue in Illinois force the poison in the dial rooms into court records, headlines, and public memory. The companies are pushed into settlements, medical payments, and legal accountability; the cases help strengthen occupational disease law and become part of the longer fight that reshapes workplace safety in the United States. You still die years later from the damage already done inside your body, but your refusal to stay quiet helps leave behind stronger labor protections than the factory ever meant to allow.",
+    "You step away from the bench and join the others. One by one the girls stop working until the room is filled with the sound of nobody yielding. The foreman barks, the silence holds, and for one charged moment the benches no longer decide the shape of your bodies or your fear. Whether the room breaks tomorrow or simply hardens again, tonight you are not standing alone inside it.",
   );
   dialogButton.textContent = "Try again?";
   dialogOverlay.classList.remove("hidden");
@@ -3354,9 +3354,7 @@ function endShift(reason) {
   if (gameState.lowPayDaysInRow >= 3) {
     showEnding(
       "Dismissed",
-      "Three bad days in a row are enough. Before another shift can begin, the bench is given to someone else. You came in to work the next morning, only to find a new worker already sitting at your place.",
-      "Ending one: Dismissed",
-      "It feels awful, at first. It feels like an end to your early career, your early journey. It's not until the later years, after the lawsuits and the slow disintegration of your coworkers, that you understand. You were lucky to have been let go when you were, before the radiation had a chance to settle too deeply into your bones. You find other work, and though the pay is never as good, you are able to keep your health and your life for many more years."
+      "Three bad days in a row are enough. Before another shift can begin, the bench is given to someone else. You arrive the next morning to find another girl already sitting in your place. The shame of it burns all the way home, yet underneath it there is a quieter feeling too: relief, thin and guilty, because for the first time in days the room is no longer waiting to swallow you whole.",
     );
     updateHud();
     return;

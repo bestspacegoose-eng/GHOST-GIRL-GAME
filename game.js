@@ -2647,7 +2647,7 @@ function startShift(force = false) {
   startShiftTicking();
   setMessage(
     "The shift whistle kicks the room awake.",
-    "Each hour now lasts 1 real minute. Every finished dial is worth 8 cents.",
+    "Each hour now lasts 1 real minute. Small-font dials pay 8 cents, and the larger font pays double.",
   );
 }
 
@@ -5688,9 +5688,10 @@ function creditCompletedDials() {
   }
 
   if (creditedNow > 0) {
+    const payPerDial = currentDialPayCents();
     gameState.dialsPaintedToday += creditedNow;
-    gameState.dayEarningsCents += creditedNow * PAY_PER_DIAL_CENTS;
-    gameState.totalEarningsCents += creditedNow * PAY_PER_DIAL_CENTS;
+    gameState.dayEarningsCents += creditedNow * payPerDial;
+    gameState.totalEarningsCents += creditedNow * payPerDial;
     gameState.totalDialsPainted += creditedNow;
     playCompletionBell();
     updateHud();

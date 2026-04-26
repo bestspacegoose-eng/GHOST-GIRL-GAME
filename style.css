@@ -157,6 +157,7 @@ canvas {
 }
 
 .title-card,
+.recap-overlay,
 .dialog-overlay,
 .minigame-overlay,
 .menu-overlay {
@@ -190,6 +191,7 @@ canvas {
   opacity: 0;
 }
 
+.recap-overlay,
 .dialog-overlay,
 .minigame-overlay,
 .menu-overlay {
@@ -197,6 +199,73 @@ canvas {
   display: grid;
   place-items: center;
   background: rgba(0, 0, 0, 0.78);
+}
+
+.recap-overlay {
+  z-index: 7;
+}
+
+.recap-overlay.hidden {
+  display: none;
+}
+
+.recap-box {
+  width: min(92%, 640px);
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(11, 14, 18, 0.96);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
+}
+
+.recap-box p {
+  margin: 0;
+}
+
+#recapTitle {
+  font-size: 1.18rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.recap-lines {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.recap-line {
+  padding: 10px 12px;
+  border-left: 2px solid rgba(217, 245, 122, 0.38);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(238, 244, 250, 0.94);
+  line-height: 1.45;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.26s ease, transform 0.26s ease;
+}
+
+.recap-line.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.recap-button {
+  margin-top: 18px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #1e1e1e;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.recap-button:hover {
+  background: #2b2b2b;
+}
+
+.recap-button.hidden {
+  display: none;
 }
 
 .dialog-overlay {
@@ -627,6 +696,55 @@ canvas {
   background: #000;
   cursor: none;
   overflow: hidden;
+}
+
+.workspace-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  width: min(76%, 560px);
+  padding: 10px 14px;
+  border: 1px solid rgba(217, 245, 122, 0.22);
+  background: rgba(7, 10, 14, 0.84);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+  transform: translate(-50%, -10px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity 0.28s ease, transform 0.28s ease, visibility 0s linear 0.28s;
+}
+
+.workspace-banner.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  transition: opacity 0.28s ease, transform 0.28s ease, visibility 0s linear 0s;
+}
+
+.workspace-banner.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.workspace-banner p {
+  margin: 0;
+  text-align: center;
+  line-height: 1.35;
+}
+
+#workspaceBannerTitle {
+  color: var(--accent);
+  font-size: 0.86rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#workspaceBannerBody {
+  margin-top: 4px;
+  color: rgba(240, 244, 248, 0.92);
+  font-size: 0.92rem;
 }
 
 #paintCanvas {

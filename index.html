@@ -41,6 +41,14 @@
         <p id="titleCardText">MONDAY - DAY 1</p>
       </section>
 
+      <section class="recap-overlay hidden" id="recapOverlay" aria-live="polite">
+        <div class="recap-box">
+          <p id="recapTitle">TODAY'S TALLY</p>
+          <div id="recapLines" class="recap-lines"></div>
+          <button id="recapButton" class="recap-button hidden" type="button">Continue</button>
+        </div>
+      </section>
+
       <section class="dialog-overlay hidden" id="dialogOverlay" aria-live="polite">
         <div class="dialog-box">
           <p id="dialogTitle">Shift manager</p>
@@ -76,6 +84,10 @@
           </div>
 
           <div class="watch-stage">
+            <div id="workspaceBanner" class="workspace-banner hidden" aria-live="polite">
+              <p id="workspaceBannerTitle">You remember Clara's advice.</p>
+              <p id="workspaceBannerBody">Set the first digit cleanly and the second will follow it. The painting goes a little smoother.</p>
+            </div>
             <canvas id="paintCanvas" width="640" height="640" aria-label="watch painting table"></canvas>
           </div>
         </div>

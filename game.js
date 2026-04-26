@@ -10,6 +10,10 @@ const healthLabel = document.getElementById("healthLabel");
 const healthFill = document.getElementById("healthFill");
 const titleCard = document.getElementById("titleCard");
 const titleCardText = document.getElementById("titleCardText");
+const recapOverlay = document.getElementById("recapOverlay");
+const recapTitle = document.getElementById("recapTitle");
+const recapLines = document.getElementById("recapLines");
+const recapButton = document.getElementById("recapButton");
 const dialogOverlay = document.getElementById("dialogOverlay");
 const dialogTitle = document.getElementById("dialogTitle");
 const dialogBody = document.getElementById("dialogBody");
@@ -34,6 +38,9 @@ const lickButton = document.getElementById("lickButton");
 const checkNumeralButton = document.getElementById("checkNumeralButton");
 const restHandButton = document.getElementById("restHandButton");
 const mixResetButton = document.getElementById("mixResetButton");
+const workspaceBanner = document.getElementById("workspaceBanner");
+const workspaceBannerTitle = document.getElementById("workspaceBannerTitle");
+const workspaceBannerBody = document.getElementById("workspaceBannerBody");
 const menuButton = document.getElementById("menuButton");
 const menuOverlay = document.getElementById("menuOverlay");
 const menuStatus = document.getElementById("menuStatus");
@@ -314,6 +321,7 @@ const gameState = {
   dialsPaintedToday: 0,
   watchesSubmittedToday: 0,
   dayEarningsCents: 0,
+  dayPayDeductionsCents: 0,
   totalEarningsCents: 0,
   totalDialsPainted: 0,
   dialogMode: "",
@@ -408,6 +416,20 @@ const paintState = {
 };
 
 let workerConversationState = null;
+let activeShiftEndReason = "";
+
+const recapState = {
+  active: false,
+  continuation: null,
+  lineTimers: [],
+  buttonTimer: 0,
+};
+
+const workspaceBannerState = {
+  visible: false,
+  hideTimer: 0,
+  cycleIndex: 0,
+};
 
 const bellState = {
   iframe: null,
@@ -1107,6 +1129,18 @@ const AFTER_SHIFT_CONVERSATION_DAY_FRAMES = [
   "After the last bell of the week,",
 ];
 
+const WORKER_MEMORY_BASE_LINES = {
+  "worker-1": "Count the curve instead of trying to conquer it all at once.",
+  "worker-2": "Mind the inside edges first and let the rest answer to them.",
+  "worker-3": "Set the first digit cleanly and make the second follow it.",
+  "worker-4": "Let the paint drag just enough to tell the truth.",
+  "worker-5": "Save the second pass for the places that nearly worked.",
+  "worker-6": "Let the curve fall through your hand instead of forcing it.",
+  "worker-7": "Recover quickly after the first bad stroke and keep moving.",
+  "worker-8": "Patience at the dish buys a steadier hand at the face.",
+  "worker-9": "Settle the inside edge first and let the rest show you what it needs.",
+};
+
 const spritePalettes = {
   clock: {
     ".": null,
@@ -1250,6 +1284,15 @@ function dayVariantIndex(id, length) {
   return (gameState.currentDay * 3 + numeric * 5) % length;
 }
 
+function buildDefaultWorkerTalkTopics() {
+  return {
+    work: 0,
+    wry: 0,
+    personal: 0,
+    home: 0,
+  };
+}
+
 function buildDefaultWorkerProgress() {
   const progress = {};
   for (const id of Object.keys(WORKER_PROFILES)) {
@@ -1260,6 +1303,10 @@ function buildDefaultWorkerProgress() {
       lastDaySpoken: -1,
       lastDayShiftTalk: -1,
       lastDayAfterShiftTalk: -1,
+      lastShiftTopic: "",
+      lastAfterShiftTopic: "",
+      lastAdviceTopic: "",
+      talkTopics: buildDefaultWorkerTalkTopics(),
     };
   }
   return progress;
@@ -1283,7 +1330,16 @@ function ensureWorkerProgressState() {
     }
     for (const [key, value] of Object.entries(defaultState)) {
       if (gameState.workerProgress[id][key] === undefined) {
-        gameState.workerProgress[id][key] = value;
+        gameState.workerProgress[id][key] = value && typeof value === "object" ? clonePlain(value) : value;
+      }
+    }
+    const talkTopics = gameState.workerProgress[id].talkTopics;
+    if (!talkTopics || typeof talkTopics !== "object") {
+      gameState.workerProgress[id].talkTopics = buildDefaultWorkerTalkTopics();
+    } else {
+      const topicDefaults = buildDefaultWorkerTalkTopics();
+      for (const topicKey of Object.keys(topicDefaults)) {
+        talkTopics[topicKey] = Math.max(0, Number(talkTopics[topicKey] ?? 0));
       }
     }
     if (Number(gameState.workerProgress[id].talks || 0) <= 0) {
@@ -1316,6 +1372,10 @@ function workerProgressFor(id) {
       lastDaySpoken: -1,
       lastDayShiftTalk: -1,
       lastDayAfterShiftTalk: -1,
+      lastShiftTopic: "",
+      lastAfterShiftTopic: "",
+      lastAdviceTopic: "",
+      talkTopics: buildDefaultWorkerTalkTopics(),
     };
   }
   return state[id];
@@ -1606,6 +1666,114 @@ function workerConversationResponse(id, context, choice) {
   return concealUnknownWorkerName(responseText, id);
 }
 
+function rememberWorkerConversationChoice(workerId, context, choiceId) {
+  const progress = workerProgressFor(workerId);
+  const topicKey = ["work", "wry", "personal", "home"].includes(choiceId) ? choiceId : "";
+  if (!topicKey) return;
+  if (!progress.talkTopics || typeof progress.talkTopics !== "object") {
+    progress.talkTopics = buildDefaultWorkerTalkTopics();
+  }
+  progress.talkTopics[topicKey] = Math.max(0, Number(progress.talkTopics[topicKey] || 0)) + 1;
+  progress.lastAdviceTopic = topicKey;
+  if (context === "afterShift") {
+    progress.lastAfterShiftTopic = topicKey;
+  } else {
+    progress.lastShiftTopic = topicKey;
+  }
+}
+
+function workerMemoryDisplayName(id) {
+  const progress = workerProgressFor(id);
+  if (progress.nameKnown) return workerName(id);
+  const description = WORKER_PROFILES[id]?.description?.[0] || "other";
+  return `the ${description} woman`;
+}
+
+function mostDiscussedTopicForWorker(id) {
+  const progress = workerProgressFor(id);
+  if (progress.lastAdviceTopic) return progress.lastAdviceTopic;
+  const talkTopics = progress.talkTopics || buildDefaultWorkerTalkTopics();
+  let bestTopic = "";
+  let bestCount = -1;
+  for (const topicKey of ["work", "wry", "personal", "home"]) {
+    const count = Number(talkTopics[topicKey] || 0);
+    if (count > bestCount) {
+      bestCount = count;
+      bestTopic = topicKey;
+    }
+  }
+  return bestCount > 0 ? bestTopic : "";
+}
+
+function workerMemoryFlavorLine(id, topicKey) {
+  const values = workerTopicValues(id);
+  switch (topicKey) {
+    case "work":
+      return `Her note about ${values.detail} settles your hand before the next stroke.`;
+    case "wry":
+      return `Even remembering her crack about ${values.joke} keeps your grip from tightening.`;
+    case "personal":
+      return `The memory of what she said about ${values.tell} keeps you from overworking the brush.`;
+    case "home":
+      return `Thinking about what she said about ${values.home} makes you pace the face more carefully.`;
+    default:
+      return "A little of her steadiness comes back to you at the bench.";
+  }
+}
+
+function workerMemoryMessage(id) {
+  return {
+    title: `You remember ${workerMemoryDisplayName(id)}'s advice.`,
+    body: `${WORKER_MEMORY_BASE_LINES[id] || "Keep the next stroke cleaner than the last."} ${workerMemoryFlavorLine(id, mostDiscussedTopicForWorker(id))} The painting goes a little smoother, and the work takes a little less out of you.`,
+  };
+}
+
+function familiarityHealthDiscountRate() {
+  let reduction = 0;
+  for (const progress of Object.values(ensureWorkerProgressState())) {
+    if (progress.familiarity === "familiar") {
+      reduction += 0.085;
+    } else if (progress.familiarity === "acquainted") {
+      reduction += 0.04;
+    }
+  }
+  return Math.min(0.42, reduction);
+}
+
+function shiftTalkedWorkerIds() {
+  return Object.keys(WORKER_PROFILES).filter((id) => workerProgressFor(id).lastDayShiftTalk === gameState.currentDay);
+}
+
+function workerShiftSummaryFragment(id) {
+  const progress = workerProgressFor(id);
+  const values = workerTopicValues(id);
+  const topicKey = progress.lastShiftTopic || progress.lastAdviceTopic;
+  let summary = "spared you a few bench-side words";
+  if (topicKey === "work") {
+    summary = `shared a tip about ${values.detail}`;
+  } else if (topicKey === "wry") {
+    summary = `traded a joke about ${values.joke}`;
+  } else if (topicKey === "personal") {
+    summary = `opened up about ${values.tell}`;
+  } else if (topicKey === "home") {
+    summary = `talked about ${values.home}`;
+  }
+  return `${workerMemoryDisplayName(id)} ${summary} (${progress.familiarity})`;
+}
+
+function workersTalkedSummaryText() {
+  const talked = shiftTalkedWorkerIds();
+  if (talked.length === 0) {
+    return "Workers spoken to: no one today.";
+  }
+  const fragments = talked.map(workerShiftSummaryFragment);
+  if (fragments.length <= 3) {
+    return `Workers spoken to: ${fragments.join("; ")}.`;
+  }
+  const shown = fragments.slice(0, 3).join("; ");
+  return `Workers spoken to: ${shown}; and ${fragments.length - 3} other${fragments.length - 3 === 1 ? "" : "s"}.`;
+}
+
 function configureDialogChoiceButton(button, text, choiceId = "") {
   button.textContent = text;
   button.dataset.choiceId = choiceId;
@@ -1647,6 +1815,7 @@ function resolveWorkerConversationChoice(choiceId) {
   if (!workerConversationState) return;
   const { workerId, context, options = [] } = workerConversationState;
   const choice = options.find((entry) => entry.id === choiceId) || { id: choiceId, label: "" };
+  rememberWorkerConversationChoice(workerId, context, choice.id);
   resetDialogButtons();
   setDialogContent(
     workerConversationTitle(workerId, context),
@@ -1942,6 +2111,13 @@ function update(dt) {
   updateFractureDrift(dt);
   updateThoughtPopups(dt);
   updateAutoSubmit(dt);
+
+  if (workspaceBannerState.visible && workspaceBannerState.hideTimer > 0) {
+    workspaceBannerState.hideTimer = Math.max(0, workspaceBannerState.hideTimer - dt);
+    if (workspaceBannerState.hideTimer <= 0) {
+      hideWorkspaceBanner();
+    }
+  }
 
   updateHud();
 }
@@ -2360,6 +2536,129 @@ function closeMenu() {
   menuOverlay.classList.add("hidden");
 }
 
+function clearRecapTimers() {
+  for (const timer of recapState.lineTimers) {
+    window.clearTimeout(timer);
+  }
+  recapState.lineTimers = [];
+  if (recapState.buttonTimer) {
+    window.clearTimeout(recapState.buttonTimer);
+    recapState.buttonTimer = 0;
+  }
+}
+
+function hideShiftRecap() {
+  clearRecapTimers();
+  recapState.active = false;
+  recapState.continuation = null;
+  activeShiftEndReason = "";
+  if (recapLines) recapLines.replaceChildren();
+  if (recapButton) {
+    recapButton.classList.add("hidden");
+    recapButton.disabled = true;
+  }
+  if (recapOverlay) {
+    recapOverlay.classList.add("hidden");
+  }
+}
+
+function shiftRecapLines() {
+  return [
+    `Paint dials completed: ${gameState.dialsPaintedToday}`,
+    `Amount earned: ${formatCurrency(gameState.dayEarningsCents)}`,
+    `Money subtracted from pay: ${formatCurrency(gameState.dayPayDeductionsCents)}`,
+    workersTalkedSummaryText(),
+  ];
+}
+
+function showShiftRecap(onContinue) {
+  if (!recapOverlay || !recapLines || !recapButton || !recapTitle) {
+    if (typeof onContinue === "function") onContinue();
+    return;
+  }
+
+  hideShiftRecap();
+  recapState.active = true;
+  recapState.continuation = onContinue;
+  recapTitle.textContent = `${DAY_NAMES[gameState.currentDay]} TALLY`;
+  recapOverlay.classList.remove("hidden");
+  recapButton.textContent = "Continue";
+  recapButton.disabled = true;
+
+  const lines = shiftRecapLines();
+  appendTextLog(recapTitle.textContent, lines.join("\n"), "Shift recap");
+  lines.forEach((line, index) => {
+    const element = document.createElement("p");
+    element.className = "recap-line";
+    element.textContent = line;
+    recapLines.appendChild(element);
+    const timer = window.setTimeout(() => {
+      element.classList.add("visible");
+    }, 180 + index * 360);
+    recapState.lineTimers.push(timer);
+  });
+
+  recapState.buttonTimer = window.setTimeout(() => {
+    recapButton.classList.remove("hidden");
+    recapButton.disabled = false;
+  }, 180 + lines.length * 360 + 180);
+}
+
+function eligibleWorkspaceMemoryWorkers() {
+  return Object.keys(WORKER_PROFILES)
+    .filter((id) => !isWorkerRemoved(id))
+    .filter((id) => {
+      const progress = workerProgressFor(id);
+      return progress.talks > 0 && progress.familiarity !== "stranger";
+    })
+    .sort((a, b) => {
+      const progressA = workerProgressFor(a);
+      const progressB = workerProgressFor(b);
+      const score = (progress) =>
+        (progress.familiarity === "familiar" ? 4 : progress.familiarity === "acquainted" ? 2 : 0)
+        + (progress.lastDaySpoken === gameState.currentDay ? 3 : 0)
+        + Math.min(3, Number(progress.talks || 0));
+      return score(progressB) - score(progressA) || a.localeCompare(b);
+    });
+}
+
+function hideWorkspaceBanner(immediate = false) {
+  if (!workspaceBanner) return;
+  workspaceBannerState.visible = false;
+  workspaceBannerState.hideTimer = 0;
+  workspaceBanner.classList.remove("visible");
+  workspaceBanner.classList.add("hidden");
+  if (immediate) {
+    workspaceBannerTitle.textContent = "";
+    workspaceBannerBody.textContent = "";
+  }
+}
+
+function showWorkspaceMemoryBanner() {
+  if (!workspaceBanner || !workspaceBannerTitle || !workspaceBannerBody) return;
+  if (!gameState.shiftActive || paintState.mode !== "watch" || paintState.tutorial) {
+    hideWorkspaceBanner(true);
+    return;
+  }
+
+  const candidates = eligibleWorkspaceMemoryWorkers();
+  if (candidates.length === 0) {
+    hideWorkspaceBanner(true);
+    return;
+  }
+
+  const workerId = candidates[workspaceBannerState.cycleIndex % candidates.length];
+  workspaceBannerState.cycleIndex = (workspaceBannerState.cycleIndex + 1) % Math.max(1, candidates.length);
+  const memory = workerMemoryMessage(workerId);
+  workspaceBannerTitle.textContent = memory.title;
+  workspaceBannerBody.textContent = memory.body;
+  appendTextLog(memory.title, memory.body, "Workspace memory");
+  workspaceBanner.classList.remove("hidden");
+  workspaceBanner.classList.add("visible");
+  workspaceBannerState.visible = true;
+  workspaceBannerState.hideTimer = 4.2;
+}
+
 function toggleMenu() {
   if (!menuOverlay) return;
   if (isMenuOpen()) {
@@ -2599,6 +2898,7 @@ function buildLocalSavePayload() {
       dialsPaintedToday: gameState.dialsPaintedToday,
       watchesSubmittedToday: gameState.watchesSubmittedToday,
       dayEarningsCents: gameState.dayEarningsCents,
+      dayPayDeductionsCents: gameState.dayPayDeductionsCents,
       totalEarningsCents: gameState.totalEarningsCents,
       totalDialsPainted: gameState.totalDialsPainted,
       lastShiftProgress: gameState.lastShiftProgress,
@@ -2692,6 +2992,7 @@ function loadGameFromLocal() {
   gameState.dialsPaintedToday = Math.max(0, Number(loadedGame.dialsPaintedToday ?? 0));
   gameState.watchesSubmittedToday = Math.max(0, Number(loadedGame.watchesSubmittedToday ?? 0));
   gameState.dayEarningsCents = Number(loadedGame.dayEarningsCents ?? 0);
+  gameState.dayPayDeductionsCents = Math.max(0, Number(loadedGame.dayPayDeductionsCents ?? 0));
   gameState.totalEarningsCents = Number(loadedGame.totalEarningsCents ?? 0);
   gameState.totalDialsPainted = Math.max(0, Number(loadedGame.totalDialsPainted ?? 0));
   gameState.lastShiftProgress = Math.max(0, Math.min(1, Number(loadedGame.lastShiftProgress ?? 0)));
@@ -3348,6 +3649,9 @@ function startShift(force = false) {
   gameState.dialsPaintedToday = 0;
   gameState.watchesSubmittedToday = 0;
   gameState.dayEarningsCents = 0;
+  gameState.dayPayDeductionsCents = 0;
+  activeShiftEndReason = "";
+  hideShiftRecap();
   startShiftTicking();
   setMessage(
     "The shift whistle kicks the room awake.",
@@ -3363,6 +3667,8 @@ function managerLineForDay() {
 
   if (gameState.dayEarningsCents < 0) {
     line += ' "This will be your last chance. Do better tomorrow."';
+  } else if (gameState.dayPayDeductionsCents > 0) {
+    line += ` ${formatCurrency(gameState.dayPayDeductionsCents)} has been docked for reworked faces.`;
   } else if (gameState.dayEarningsCents < 96) {
     line += " The corrections cost you today.";
   } else {
@@ -3530,15 +3836,9 @@ function advanceToNextDay(message) {
   gameState.lastShiftProgress = 0;
   sendToDayStart(message);
 }
-function endShift(reason) {
-  if (!gameState.shiftActive) return;
 
-  gameState.shiftActive = false;
-  gameState.shiftEnded = true;
-  stopShiftTicking();
-  gameState.lastShiftThoughtLog = [...gameState.shiftThoughtLog];
-  closeMinigame();
-
+function continueAfterShiftRecap(reason) {
+  activeShiftEndReason = "";
   if (gameState.hiddenStats.health <= 0) {
     const ending = finalEndingForHealth();
     showEnding(ending.title, ending.body);
@@ -3581,6 +3881,21 @@ function endShift(reason) {
   dialogAltButton.classList.remove("hidden");
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "post-shift-report";
+  updateHud();
+}
+
+function endShift(reason) {
+  if (!gameState.shiftActive) return;
+
+  gameState.shiftActive = false;
+  gameState.shiftEnded = true;
+  stopShiftTicking();
+  gameState.lastShiftThoughtLog = [...gameState.shiftThoughtLog];
+  closeMinigame();
+  activeShiftEndReason = reason;
+  showShiftRecap(() => {
+    continueAfterShiftRecap(activeShiftEndReason || reason);
+  });
   updateHud();
 }
 
@@ -3747,6 +4062,7 @@ function openGroceriesTrip() {
   paintState.groceryTiming.lastGrade = "";
   paintState.groceryTiming.lastItemLabel = "";
   paintState.groceryTiming.lastSavingsTenths = 0;
+  hideWorkspaceBanner(true);
   minigameHeading.textContent = "Groceries";
   paintPrompt.textContent = groceryReflectionText();
   mixPrompt.textContent =
@@ -4255,6 +4571,7 @@ function openHemmingTrip() {
   paintState.hemmingTiming.popupY = 0;
   paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
   gameState.hemmingTasks = createHemmingTasks();
+  hideWorkspaceBanner(true);
   minigameHeading.textContent = "Evening Hemming";
   paintPrompt.textContent = hemmingReflectionText();
   mixPrompt.textContent = "Click a stitch dot to start timing. A time-stitch box will pop up somewhere on the cloth; click it when the moving marker lines up for bad/okay/good/perfect quality. You can also skip the rest of the hemming if you need to head to bed.";
@@ -4377,6 +4694,8 @@ function continueAfterDialog() {
   dialogOverlay.classList.add("hidden");
   resetDialogButtons();
   workerConversationState = null;
+  hideShiftRecap();
+  hideWorkspaceBanner(true);
 
   if (gameState.dialogMode === "post-shift-report") {
     if (gameState.postShiftActivity === "hemming") {
@@ -4416,6 +4735,7 @@ function resetWeek() {
   gameState.dialsPaintedToday = 0;
   gameState.watchesSubmittedToday = 0;
   gameState.dayEarningsCents = 0;
+  gameState.dayPayDeductionsCents = 0;
   gameState.totalEarningsCents = 0;
   gameState.totalDialsPainted = 0;
   gameState.lowPayDaysInRow = 0;
@@ -4460,6 +4780,8 @@ function resetWeek() {
   paintState.hemmingTiming.popupX = 0;
   paintState.hemmingTiming.popupY = 0;
   paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
+  hideShiftRecap();
+  hideWorkspaceBanner(true);
   showTitleCard();
   setMessage(
     "A new week begins at the line.",
@@ -5095,6 +5417,7 @@ function openTutorialMinigame() {
   paintState.paintLoaded = 0;
   paintState.restHandOnSide = false;
   gameState.tutorialSeen = true;
+  hideWorkspaceBanner(true);
   setTutorialStep(0);
   drawWatchMinigame();
 }
@@ -5165,6 +5488,7 @@ function openFracturePuzzle(message) {
   paintState.cursorX = paintCanvas.width / 2;
   paintState.cursorY = paintCanvas.height / 2;
   initializeFracturePieces();
+  hideWorkspaceBanner(true);
   setStationControlsHidden(true);
   minigameOverlay.classList.remove("hidden");
   paintPrompt.textContent = "The watch face comes apart in your hands, bloodied and wrong. Time itself has fractured in your hands.";
@@ -5237,6 +5561,7 @@ function openMinigame(label) {
   mixPrompt.textContent = mixTextureFeedback();
   updatePaintStats();
   drawWatchMinigame();
+  showWorkspaceMemoryBanner();
 }
 
 function closeMinigame() {
@@ -5260,6 +5585,7 @@ function closeMinigame() {
   setStationControlsHidden(false);
   paintCanvas.style.cursor = "none";
   hideInfoCanvas();
+  hideWorkspaceBanner(true);
   minigameOverlay.classList.add("hidden");
 }
 
@@ -5607,8 +5933,10 @@ function updatePaintStats() {
   const handText = canUseRestHandSupport()
     ? ` Hand ${paintState.restHandOnSide ? "braced" : "free"}.`
     : "";
+  const reliefRate = !paintState.tutorial && gameState.shiftActive ? familiarityHealthDiscountRate() : 0;
+  const reliefText = reliefRate > 0 ? ` Bench relief ${Math.round(reliefRate * 100)}%.` : "";
   paintStats.textContent =
-    `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}${handText}`;
+    `Mix quality ${mixPercent}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}${handText}${reliefText}`;
   mixPrompt.textContent = mixTextureFeedback();
   correctButton.classList.toggle("active", paintState.tool === "nail");
   if (restHandButton) {
@@ -5621,8 +5949,10 @@ function updatePaintStats() {
 
 function spendHealth(amount) {
   if (paintState.tutorial) return;
+  const reduction = familiarityHealthDiscountRate();
+  const adjustedAmount = Math.max(0.05, amount * (1 - reduction));
   const previousHealth = gameState.hiddenStats.health;
-  gameState.hiddenStats.health = Math.max(0, gameState.hiddenStats.health - amount);
+  gameState.hiddenStats.health = Math.max(0, gameState.hiddenStats.health - adjustedAmount);
   if (
     previousHealth > HEALTH_DRIFT_THRESHOLD &&
     gameState.hiddenStats.health <= HEALTH_DRIFT_THRESHOLD &&
@@ -5704,6 +6034,7 @@ function prepareNextWatch(message) {
   paintPrompt.textContent = message;
   updatePaintStats();
   drawWatchMinigame();
+  showWorkspaceMemoryBanner();
 }
 
 function findNearestDial(x, y) {
@@ -6449,13 +6780,19 @@ function sendCurrentWatch() {
   }
 
   const paidNow = paintState.dials.filter((dial) => dial.credited).length;
-  const missed = 12 - paidNow;
+  const usedCorrections = paintState.dials.some((dial) => dial.corrected);
+  const correctionFine = usedCorrections ? IGNORE_CORRECTION_FINE_CENTS : 0;
   gameState.watchesSubmittedToday += 1;
+  if (correctionFine > 0) {
+    gameState.dayPayDeductionsCents += correctionFine;
+    gameState.dayEarningsCents -= correctionFine;
+    gameState.totalEarningsCents -= correctionFine;
+  }
   clearBenchWork();
 
-  if (missed > 0) {
+  if (correctionFine > 0) {
     paintPrompt.textContent =
-      `The watch is sent in. ${paidNow} dial${paidNow === 1 ? "" : "s"} on this face counted toward pay; ${missed} still needed cleaner work.`;
+      `The watch is sent in. ${paidNow} dial${paidNow === 1 ? "" : "s"} counted, but the reworked edges cost you ${formatCurrency(correctionFine)} from the envelope.`;
   } else {
     paintPrompt.textContent = "The watch is sent in with every dial counted toward pay.";
   }
@@ -7701,6 +8038,14 @@ function bindPress(element, handler) {
   });
   element.addEventListener("touchend", run);
 }
+
+bindPress(recapButton, () => {
+  const continuation = recapState.continuation;
+  hideShiftRecap();
+  if (typeof continuation === "function") {
+    continuation();
+  }
+});
 
 bindPress(dialogPrevButton, () => {
   shiftDialogPage(-1);

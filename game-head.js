@@ -38,6 +38,7 @@ const correctButton = document.getElementById("correctButton");
 const lickButton = document.getElementById("lickButton");
 const checkNumeralButton = document.getElementById("checkNumeralButton");
 const restHandButton = document.getElementById("restHandButton");
+const mixSettleButton = document.getElementById("mixSettleButton");
 const mixResetButton = document.getElementById("mixResetButton");
 const workspaceBanner = document.getElementById("workspaceBanner");
 const workspaceBannerTitle = document.getElementById("workspaceBannerTitle");
@@ -63,6 +64,7 @@ const STATION_BUTTONS = {
   lick: lickButton,
   checkNumeral: checkNumeralButton,
   restHand: restHandButton,
+  mixSettle: mixSettleButton,
   mixReset: mixResetButton,
 };
 
@@ -140,14 +142,16 @@ const PAINT_POINT_COMPLETE = 1;
 const PAINT_POINT_COVERAGE_THRESHOLD = 0.92;
 const PAINT_POINT_SOFT_COVERAGE_THRESHOLD = 0.62;
 const STATION_LAYOUT = {
-  powder: { x: 82, y: 160, w: 118, h: 156, rx: 44, ry: 48 },
-  gum: { x: 178, y: 392, w: 114, h: 90, rx: 42, ry: 30 },
-  water: { x: 66, y: 398, w: 114, h: 90, rx: 42, ry: 30 },
-  dish: { x: 112, y: 504, w: 156, h: 116, rx: 52, ry: 34 },
+  powder: { x: 70, y: 176, w: 64, h: 174 },
+  gum: { x: 146, y: 176, w: 64, h: 174 },
+  water: { x: 224, y: 172, w: 42, h: 182 },
+  dish: { x: 108, y: 452, w: 108, h: 138, rx: 36, ry: 52 },
+  mixPanel: { x: 28, y: 88, w: 252, h: 498 },
+  recipePanel: { x: 168, y: 372, w: 98, h: 118 },
   zoomPaint: { x: 96, y: 108, w: 122, h: 90, rx: 44, ry: 30 },
   zoomWipe: { x: 96, y: 252, w: 126, h: 144 },
-  brushProp: { x: 176, y: 178, w: 54, h: 196 },
-  nailProp: { x: 252, y: 338, r: 30 },
+  brushProp: { x: 248, y: 214, w: 46, h: 182 },
+  nailProp: { x: 246, y: 320, r: 24 },
 };
 const GROCERY_ITEMS = [
   { id: "steak", label: "Round Steak", unit: "lb", priceTenths: 395 },
@@ -297,6 +301,9 @@ const ASSET_PATHS = {
   gumArabic: "./assets/gum-arabic.png",
   waterPlate: "./assets/water-plate.png",
   mixedPaint: "./assets/mixed-paint.png",
+  mixBottle: "https://commons.wikimedia.org/wiki/Special:FilePath/Reagent%20bottle.png",
+  mixWaterDropper: "https://commons.wikimedia.org/wiki/Special:FilePath/Dropper.png",
+  mixBeaker: "https://commons.wikimedia.org/wiki/Special:FilePath/Lab%20beaker.png",
   directWipeHand: "./assets/direct-wipe-hand.png",
   cursorHemming: "./assets/cursor-hemming.png",
   thoughtPopup: "./assets/thought-popup.png",
@@ -498,12 +505,12 @@ const TUTORIAL_STEPS = [
   {
     title: "Center Bench Tutorial",
     body:
-      "The woman at the center bench waves you in before the bell. \"We will do this properly. First, click the brush lying beside the dishes. You do not paint bare-handed.\"",
+      "The woman at the center bench waves you in before the bell. \"We will do this properly. First, click the brush lying beside the mixing board. You do not paint bare-handed.\"",
   },
   {
     title: "Center Bench Tutorial",
     body:
-      "She watches your grip, then nods once. Before she can say more, another girl further down the row mutters without looking up: \"Three powder, two tar, one water.\" Build a usable paint in the dish from the platters on the bench.",
+      "She watches your grip, then nods once. Before she can say more, another girl further down the row mutters without looking up: \"Three powder, two tar, one water.\" Queue those measures into the glass, then settle the batch.",
   },
   {
     title: "Center Bench Tutorial",
@@ -625,6 +632,7 @@ const roomState = {
 const assetImages = Object.fromEntries(
   Object.entries(ASSET_PATHS).map(([key, src]) => {
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.src = src;
     return [key, image];
   }),
@@ -632,9 +640,9 @@ const assetImages = Object.fromEntries(
 const numeralTemplateCache = {};
 
 const componentRegions = [
-  { index: 0, label: "Powder", x: STATION_LAYOUT.powder.x, y: STATION_LAYOUT.powder.y, rx: STATION_LAYOUT.powder.rx, ry: STATION_LAYOUT.powder.ry },
-  { index: 1, label: "Tar", x: STATION_LAYOUT.gum.x, y: STATION_LAYOUT.gum.y, rx: STATION_LAYOUT.gum.rx, ry: STATION_LAYOUT.gum.ry },
-  { index: 2, label: "Water", x: STATION_LAYOUT.water.x, y: STATION_LAYOUT.water.y, rx: STATION_LAYOUT.water.rx, ry: STATION_LAYOUT.water.ry },
+  { index: 0, label: "Powder", x: STATION_LAYOUT.powder.x, y: STATION_LAYOUT.powder.y, w: STATION_LAYOUT.powder.w, h: STATION_LAYOUT.powder.h },
+  { index: 1, label: "Tar", x: STATION_LAYOUT.gum.x, y: STATION_LAYOUT.gum.y, w: STATION_LAYOUT.gum.w, h: STATION_LAYOUT.gum.h },
+  { index: 2, label: "Water", x: STATION_LAYOUT.water.x, y: STATION_LAYOUT.water.y, w: STATION_LAYOUT.water.w, h: STATION_LAYOUT.water.h },
 ];
 const ROOM_HOTSPOTS = [
   { id: "clock", x: 4, y: 18, w: 54, h: 146 },

@@ -815,51 +815,51 @@ const WORKER_NAME_REVEAL_DAY = {
 const WORKER_AFTER_SHIFT_DIALOGUE = {
   "worker-1": {
     work:
-      "When you ask how she keeps her numerals so even, Agnes admits she counts the curve out under her breath before every turn. \"If I let the room decide the pace, the room wins,\" she says. Another woman nearby murmurs that the room always thinks it can win.",
+      "Agnes admits she counts the curve out under her breath before every turn. \"If I let the room decide the pace, the room wins,\" she says. Another woman nearby murmurs that the room always thinks it can win.",
     wry:
-      "When you try a dry joke about all of you going home brighter than the lamps, Agnes huffs a tired laugh. She says humor is cheaper than medicine, so the room might as well make use of it.",
+      "Agnes huffs a tired laugh and says a joke is at least something the manager cannot dock from the envelope.",
     home:
-      "Asked about home, Agnes says her pay goes straight into her mother's hands before she ever thinks of keeping any for herself. She says it without complaint, only fatigue, and smooths a thumb over the heel of her palm as if she is already counting what tonight's coins need to cover.",
+      "Agnes says her pay goes straight into her mother's hands before she ever thinks of keeping any for herself. She smooths a thumb over the heel of her palm as if she is already counting what tonight's coins need to cover.",
   },
   "worker-2": {
     work:
       "Ruth tells you the manager notices overflow before he notices effort. \"That is why I mind the inside edge first,\" she says. \"He cannot tell a steady hand from a frightened one, but he can count a ruined dial.\"",
     wry:
-      "Ruth takes your wry remark about the manager's tally book as an invitation. She says if he could tax exhaustion by the ounce, he would, and for a moment the bitterness almost sounds companionable.",
+      "Ruth takes the remark about the manager's tally book as an invitation. She says if he could tax silence by the ounce, he would, and for a moment the bitterness almost sounds companionable.",
     home:
-      "When you ask about home, Ruth huffs out something almost like a laugh. She says her younger brother keeps asking whether the shine comes off in the wash. \"I tell him it had better,\" she says, though the answer clearly does not comfort her.",
+      "Ruth huffs out something almost like a laugh. She says her younger brother keeps asking whether the shine comes off in the wash. \"I tell him it had better,\" she says, as though stubbornness might make it true.",
   },
   "worker-3": {
     work:
-      "Clara tips her head when you ask about the work. \"Half of it is nerve,\" she says. \"The other half is pretending the manager isn't standing over your shoulder measuring the time in your spine.\" When another girl snorts, Clara only smiles wider.",
+      "Clara tips her head. \"Half of it is nerve,\" she says. \"The other half is pretending the manager isn't standing over your shoulder measuring the time in your spine.\" When another girl snorts, Clara only smiles wider.",
     wry:
-      "Clara answers your joke with one of her own and, for the first time all day, lets it stay in the air. She says laughter is only useful if it arrives before the silence does.",
+      "Clara answers with one of her own and, for the first time all day, lets it stay in the air. She says laughter is only useful if it arrives before the silence does.",
     home:
-      "On home, Clara's voice softens. She says she keeps up the teasing because if she stops, she will have to admit how scared everyone looks once the lamps are out. \"I can manage scared,\" she says. \"Quiet is what gets me.\"",
+      "Clara's voice softens. She says she keeps up the teasing because if she stops, the whole day starts sounding heavier than it ought to. \"I can manage tired,\" she says. \"Quiet is what gets me.\"",
   },
   "worker-4": {
     work:
-      "Evelyn answers your question about the paint as if she has been waiting for someone to ask it properly. She says the mixture should drag just enough to obey. \"If it glides, it lies,\" she tells you. \"And if it lies, the numeral will show it by morning.\"",
+      "Evelyn answers as if she has been waiting for someone to ask it properly. She says the mixture should drag just enough to obey. \"If it glides, it lies,\" she tells you. \"And if it lies, the numeral will show it by morning.\"",
     wry:
-      "When you angle the conversation sideways, Evelyn's mouth finally softens. She says the only thing sharper than the powder is the way these rooms teach a girl to laugh without opening her lips.",
+      "Evelyn's mouth finally softens. She says the only thing sharper than the powder is the way these rooms teach a girl to laugh without opening her lips.",
     home:
-      "When you ask about home, Evelyn says her father watches the pay envelope before he ever asks how her shift went. She does not sound bitter, only resigned, and adds that good money makes it easier for people to call dangerous work a blessing.",
+      "Evelyn says her father watches the pay envelope before he ever asks how her shift went. She does not sound bitter, only resigned, and adds that good money makes it easier for people to call bad work a blessing.",
   },
   "worker-5": {
     work:
-      "Mae keeps her eyes lowered when you ask about the bench, but this time she answers at length. She says most ruined faces come from panic after the first bad stroke, not the stroke itself. \"Girls drown the second pass trying to fix the first,\" she says quietly.",
+      "Mae keeps her eyes lowered, but this time she answers at length. She says most ruined faces come from panic after the first bad stroke, not the stroke itself. \"Girls drown the second pass trying to fix the first,\" she says quietly.",
     wry:
-      "Your attempt to lighten the mood earns Mae a small, surprised smile. She admits she forgets conversation can be gentle when it is not coming from across a dinner table full of chores.",
+      "Mae gives a small, surprised smile and admits she forgets conversation can be gentle when it is not coming from across a dinner table full of chores.",
     home:
-      "On the subject of home, Mae admits she still does mending after her shift because there is always somebody's sleeve or hem waiting on the chair. She says it so softly that it feels less like conversation and more like a confession.",
+      "Mae admits she still does mending after her shift because there is always somebody's sleeve or hem waiting on the chair. She says it so softly that it feels less like conversation and more like a confession.",
   },
   "worker-6": {
     work:
-      "Lillian says the lamp changes everything. Under a bright one, she can pretend her hand is steadier than it feels. Under a bad one, every numeral turns mean. \"You learn which bench forgives you,\" she says, \"and which one never will.\"",
+      "Lillian says the lamp changes everything. Under a bright one, a girl can almost believe the work wants to cooperate. Under a bad one, every numeral turns mean. \"You learn which bench forgives you,\" she says, \"and which one never will.\"",
     wry:
       "Lillian answers the joke with a weary kind of wit. She says if the lamps had any decency, they'd follow everyone home and finish the housework too.",
     home:
-      "Asked about going home, Lillian says the quiet there can be worse than the factory noise because it leaves too much room to notice the ache in her jaw and the looseness in her teeth. She says it plainly, as though naming it is the only kindness left.",
+      "Lillian says the quiet at home can be worse than the factory noise because it leaves too much room to replay the day. She says it plainly, as though naming it is the only kindness left.",
   },
   "worker-7": {
     work:
@@ -867,79 +867,97 @@ const WORKER_AFTER_SHIFT_DIALOGUE = {
     wry:
       "Nora meets your dry tone easily. She says black humor is the only sort the factory hasn't figured out how to dock from the pay envelope.",
     home:
-      "When you ask about home, Nora says she mostly wants a washbasin and ten minutes where nobody asks anything of her. Then she glances aside and admits that once she gets there, she still ends up helping with supper, because that is how these nights go.",
+      "Nora says she mostly wants a washbasin and ten minutes where nobody asks anything of her. Then she glances aside and admits that once she gets there, she still ends up helping with supper, because that is how these nights go.",
   },
   "worker-8": {
     work:
       "Pearl says the paint always tells on the person mixing it. Thin paint betrays impatience, heavy paint betrays fear. \"A good face looks calm even when the girl painting it wasn't,\" she says. There is pride in that, and a little grief too.",
     wry:
-      "Pearl lets the joke sit a moment before laughing under her breath. She says she prefers that kind of talk because it lets a girl tell the truth without sounding like she's begging to be pitied.",
+      "Pearl lets the joke sit a moment before laughing under her breath. She says she prefers that kind of talk because it lets a girl tell the truth about the room without sounding ungrateful for the pay.",
     home:
-      "Asked about home, Pearl says the younger children still think the glow is pretty when they catch it on her cuffs. She says they do not know enough yet to be afraid of beautiful things that stay too long on the skin.",
+      "Pearl says the younger children still think the shine on her cuffs is pretty. She lets that thought hang there for a moment, then says children will admire anything if it catches the light.",
   },
   "worker-9": {
     work:
-      "Vi hesitates before answering, then admits the first sign for her was the shaking. She says it started small enough to excuse, then grew into something she had to plan around. \"You can work around a tremor,\" she says, \"until the day you suddenly can't.\"",
+      "Vi hesitates before answering, then says the line gets easier once you stop trying to rescue every wobble at once. \"Settle the inside edge first,\" she says. \"The rest will either follow it or tell you where it wants correcting.\"",
     wry:
-      "Vi startles at the joke, then answers with one of her own so quiet you nearly miss it. By the time she's done smiling, the sadness has crept back in, but at least it had to wait its turn.",
+      "Vi startles at the joke, then answers with one of her own so quiet you nearly miss it. By the time she's done smiling, the room has already asked for her seriousness back.",
     home:
-      "On home, Vi says she keeps an extra rag in her pocket because she hates letting anyone see the glow before she reaches the washbasin. \"As if hiding it for five more minutes changes anything,\" she adds, almost embarrassed by the hope in that habit.",
+      "Vi says she keeps an extra rag in her pocket because she hates walking through the front door still carrying the day's dust on her cuffs. \"As if five minutes changes anything,\" she adds, almost embarrassed by the habit.",
   },
 };
 const WORKER_SHIFT_CHOICE_DIALOGUE = {
   "worker-1": {
+    work:
+      "Agnes says a tray stays even if you break the face into turns instead of trying to own it all at once. She still counts the curve under her breath while she talks.",
     wry:
-      "At your remark that the room must dream in numerals by now, Agnes almost smiles. \"Mine do,\" she says. \"That's when I know I stayed too late.\"",
+      "Agnes almost smiles. \"Mine do,\" she says. \"That's when I know I stayed too late.\"",
     personal:
-      "Asked how she's holding up, Agnes says she survives by cutting the shift into little promises: one curve, one stroke, one face at a time.",
+      "Agnes says she survives by cutting the shift into little promises: one curve, one stroke, one face at a time.",
   },
   "worker-2": {
+    work:
+      "Ruth says the inside edges come first. \"If those hold, the rest can still be corrected before the tray leaves the bench,\" she tells you.",
     wry:
-      "Your aside about the manager counting ruined dials instead of girls draws a dry snort from Ruth. \"He'd miscount both,\" she says.",
+      "Ruth lets out a dry snort. \"He'd miscount both,\" she says.",
     personal:
-      "When you ask how she's doing, Ruth answers \"Fine\" too fast, then amends it: \"Quick. I know how to be quick. That's different.\"",
+      "Ruth answers \"Fine\" too fast, then amends it: \"Quick. I know how to be quick. That's different.\"",
   },
   "worker-3": {
+    work:
+      "Clara flicks her brush through the air as though sketching an eleven. \"Set the one first,\" she says. \"Then make the second digit answer it instead of racing it.\"",
     wry:
-      "When you match her sharpness with a joke, Clara grins. \"Good,\" she says. \"I was starting to think they'd hired me a saint.\"",
+      "Clara grins. \"Good,\" she says. \"I was starting to think they'd hired me a saint.\"",
     personal:
-      "Ask how she's holding up and Clara shrugs, then admits the joking keeps her from hearing how frightened the room sounds when nobody talks.",
+      "Clara shrugs, then admits the joking keeps her from hearing how heavy the room sounds when nobody talks.",
   },
   "worker-4": {
+    work:
+      "Evelyn says a dial gets its weight from the mix before it gets it from the stroke. \"If the paint drags properly, the numeral almost teaches your hand what to do.\"",
     wry:
-      "At your crack that the paint behaves better than management, Evelyn actually laughs once. \"That depends which bowl you've got,\" she says.",
+      "Evelyn actually laughs once. \"That depends which bowl you've got,\" she says.",
     personal:
-      "Asked how she's faring, Evelyn says routine is doing most of the work now. \"If I stop to notice too much, the whole thing turns strange.\"",
+      "Evelyn says routine is doing most of the work now. \"If I stop to notice too much, the whole thing turns strange.\"",
   },
   "worker-5": {
+    work:
+      "Mae murmurs that the second pass belongs only to the places you nearly got right. \"If you attack the whole face again, you only make it fight you.\"",
     wry:
-      "Mae looks startled by the joke, then lets out the smallest breath of laughter. \"Careful,\" she says. \"If I smile, my line goes crooked.\"",
+      "Mae looks startled, then lets out the smallest breath of laughter. \"Careful,\" she says. \"If I smile, my line goes crooked.\"",
     personal:
-      "When you ask how she's managing, Mae admits she saves her patience for the tray because there's none left by the time she gets home.",
+      "Mae admits she saves her patience for the tray because there's none left by the time she gets home.",
   },
   "worker-6": {
+    work:
+      "Lillian says the turn on a six goes cleaner if you let the brush fall through it instead of forcing the curve. \"Push it, and the face starts pushing back.\"",
     wry:
-      "Your dry comment about the lamp making saints of shaky hands gets a tired smile from Lillian. \"Only until the light changes,\" she says.",
+      "Lillian gives you a tired smile. \"Only until the light changes,\" she says.",
     personal:
-      "Asked how she's holding up, Lillian says the worst part is pretending the ache is ordinary long enough that everyone else believes it too.",
+      "Lillian says the worst part is pretending the day's strain is ordinary long enough that everyone else believes it too.",
   },
   "worker-7": {
+    work:
+      "Nora says the first bad stroke matters less than the moment after it. \"Recover quickly and the manager thinks you meant it,\" she says.",
     wry:
       "Nora catches the joke and answers in kind. \"If I start laughing at this room, I may never stop,\" she says, which sounds truer than funny.",
     personal:
-      "When you ask how she's doing, Nora says she prefers tasks to feelings. After a beat she adds, \"The trouble is tasks follow you home.\"",
+      "Nora says she prefers tasks to feelings. After a beat she adds, \"The trouble is tasks follow you home.\"",
   },
   "worker-8": {
+    work:
+      "Pearl says bright paint comes from patience at the dish and a light hand at the face. \"Pressing harder only makes a lie look thicker.\"",
     wry:
-      "Your remark about the paint outlasting all of you earns Pearl a sideways look and a quiet, dark laugh. \"There's the spirit,\" she says.",
+      "Pearl gives you a sideways look and a quiet, dark laugh. \"There's the spirit,\" she says.",
     personal:
-      "Asked how she's managing, Pearl says she keeps trying to leave the day at the washbasin and keeps failing by the front door.",
+      "Pearl says she keeps trying to leave the day at the washbasin and keeps failing by the front door.",
   },
   "worker-9": {
+    work:
+      "Vi says a wavering line settles if you use less paint on the inside edge and let the stroke land before you judge it. She demonstrates the motion with two careful fingers in the air.",
     wry:
-      "At your joke about everyone here learning to glow in the dark, Vi winces and smiles anyway. \"I would settle for sleeping through the dark,\" she says.",
+      "Vi smiles anyway. \"Don't give management ideas,\" she says.",
     personal:
-      "When you ask how she's holding up, Vi admits she plans around her shaking now, as if naming it a habit might keep it from becoming something worse.",
+      "Vi admits she has started planning around the room's bad habits so carefully that she notices herself doing it even at home.",
   },
 };
 const WORKER_DIALOGUE_TOPICS = {
@@ -982,7 +1000,7 @@ const WORKER_DIALOGUE_TOPICS = {
     bench: "a face under the kinder lamp",
     detail: "letting the sixes turn without forcing them",
     joke: "the lamps following us home to finish the chores",
-    tell: "how much of the ache you're still pretending is ordinary",
+    tell: "how much of the day's strain you're still pretending is ordinary",
     home: "whether home feels any quieter than this room",
   },
   "worker-7": {
@@ -995,16 +1013,16 @@ const WORKER_DIALOGUE_TOPICS = {
   "worker-8": {
     bench: "a bowl that wants to turn thin",
     detail: "keeping the paint bright without pressing too hard",
-    joke: "the glow outlasting all of us",
+    joke: "the paint outlasting the tally sheets",
     tell: "what you try to leave at the washbasin each night",
     home: "what the younger children make of the shine on your cuffs",
   },
   "worker-9": {
-    bench: "a face when your hand starts to shake",
+    bench: "a face when the line starts to wobble",
     detail: "using less paint on the inside edge",
-    joke: "sleeping through the dark for once",
-    tell: "how long you've been planning around the tremor",
-    home: "why you still hide the glow before you reach the washbasin",
+    joke: "working by moonlight next",
+    tell: "how much of your day goes into compensating for this room",
+    home: "why you still scrub your cuffs before reaching the house",
   },
 };
 const WORKER_CONVERSATION_TEMPLATES = {
@@ -1029,11 +1047,11 @@ const WORKER_CONVERSATION_TEMPLATES = {
     ],
     personal: [
       "Are you always this good at hiding {tell}?",
-      "How are you managing {tell} today?",
+      "How are you carrying {tell} today?",
       "Do you want to tell the truth about {tell}, or should I leave it alone?",
       "Has {tell} been worse since the week began?",
-      "When did {tell} stop feeling temporary?",
-      "Do you still know what rest feels like beneath {tell}?",
+      "When did {tell} become part of the shift?",
+      "Do you ever get to set {tell} down once the bell goes?",
       "What have you been telling yourself about {tell} just to get through?",
     ],
   },
@@ -1559,13 +1577,17 @@ function workerConversationResponse(id, context, choice) {
     return concealUnknownWorkerName(responseText, id);
   }
 
+  const profile = WORKER_SHIFT_CHOICE_DIALOGUE[id] || {};
   if (choiceId === "work") {
-    const [primary, secondary] = workerDialogueLines(id);
-    responseText = `${[primary, secondary].filter(Boolean).join(" ")} ${coda}`.trim();
+    if (profile.work) {
+      responseText = `${profile.work} ${coda}`.trim();
+    } else {
+      const [primary, secondary] = workerDialogueLines(id);
+      responseText = `${[primary, secondary].filter(Boolean).join(" ")} ${coda}`.trim();
+    }
     return concealUnknownWorkerName(responseText, id);
   }
 
-  const profile = WORKER_SHIFT_CHOICE_DIALOGUE[id] || {};
   if (profile[choiceId]) {
     responseText = `${profile[choiceId]} ${coda}`.trim();
     return concealUnknownWorkerName(responseText, id);

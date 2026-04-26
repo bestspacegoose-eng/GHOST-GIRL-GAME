@@ -474,7 +474,7 @@ const TUTORIAL_STEPS = [
   {
     title: "Center Bench Tutorial",
     body:
-      "\"That is the heart of it. If the paint strays, use Switch to fingernails for a small correction. If you lose the weak spots, Check numeral will show them back to you. Use Sharpen brush when the tip starts to spread. Press Escape to pull back from the numeral.\"",
+      "\"That is the heart of it. If the paint strays, use Clean edges with nails for a small correction. If you lose the weak spots, Check numeral will show them back to you. Use Sharpen brush when the tip starts to spread. Press Escape to pull back from the numeral.\"",
   },
   {
     title: "Center Bench Tutorial",
@@ -2769,6 +2769,11 @@ function loadGameFromLocal() {
       ? "Shift is still live. Clock out at the wall clock when you're done, or return to the bench."
       : "Click the wall clock to begin when you're ready.",
   );
+  if (gameState.shiftActive) {
+    startShiftTicking();
+  } else {
+    stopShiftTicking();
+  }
   closeMenu();
   updateMenuStatus("Local save loaded.");
   return true;
@@ -3186,13 +3191,13 @@ function refreshHint() {
       return;
     }
     hint.textContent = "Clock in when you're ready.";
-    subhint.textContent = "Click the wall clock or the back bench in the workshop image.";
+    subhint.textContent = "Click the wall clock or the workbench in the workshop image.";
     return;
   }
 
   if (gameState.shiftActive) {
     hint.textContent = "The shift is running.";
-    subhint.textContent = "Click into the back bench to work, or the wall clock to end the day.";
+    subhint.textContent = "Click the workbench to work, or the wall clock to end the day.";
     return;
   }
 
@@ -3294,6 +3299,7 @@ function startShift(force = false) {
   gameState.dialsPaintedToday = 0;
   gameState.watchesSubmittedToday = 0;
   gameState.dayEarningsCents = 0;
+  startShiftTicking();
   setMessage(
     "The shift whistle kicks the room awake.",
     "Each hour now lasts 1 real minute. Every finished dial is worth 8 cents.",
@@ -3480,6 +3486,7 @@ function endShift(reason) {
 
   gameState.shiftActive = false;
   gameState.shiftEnded = true;
+  stopShiftTicking();
   gameState.lastShiftThoughtLog = [...gameState.shiftThoughtLog];
   closeMinigame();
 
@@ -4351,6 +4358,7 @@ function continueAfterDialog() {
 function resetWeek() {
   dialogOverlay.classList.add("hidden");
   workerConversationState = null;
+  stopShiftTicking();
   gameState.currentDay = 0;
   gameState.shiftActive = false;
   gameState.shiftEnded = false;
@@ -8127,7 +8135,7 @@ function handleRoomCanvasPress(event) {
     fadeTitleCard();
     setMessage(
       "The workshop settles around you.",
-      "Click the wall clock, the workers, or the back bench in the workshop photo.",
+      "Click the wall clock, the workers, or the workbench in the workshop photo.",
     );
     return;
   }
@@ -8138,7 +8146,7 @@ function handleRoomCanvasPress(event) {
   } else {
     setMessage(
       "Nothing useful there.",
-      "Click the wall clock, a worker, or the back bench in the workshop photo.",
+      "Click the wall clock, a worker, or the workbench in the workshop photo.",
     );
   }
 }

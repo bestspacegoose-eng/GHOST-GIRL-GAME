@@ -261,6 +261,41 @@ function familiarWorkersCount() {
   return Object.values(progress).filter((entry) => entry.familiarity === "familiar").length;
 }
 
+function acquaintedWorkersCount() {
+  const progress = ensureWorkerProgressState();
+  return Object.values(progress).filter((entry) => entry.familiarity !== "stranger").length;
+}
+
+function totalWorkerTalkCount() {
+  const progress = ensureWorkerProgressState();
+  return Object.values(progress).reduce((sum, entry) => sum + Math.max(0, Number(entry.talks || 0)), 0);
+}
+
+function connectedWorkerIds() {
+  return Object.keys(WORKER_PROFILES)
+    .filter((id) => {
+      const progress = workerProgressFor(id);
+      return progress.talks > 0;
+    })
+    .sort((a, b) => {
+      const progressA = workerProgressFor(a);
+      const progressB = workerProgressFor(b);
+      const score = (progress) =>
+        (progress.familiarity === "familiar" ? 6 : progress.familiarity === "acquainted" ? 3 : 0)
+        + Math.min(4, Number(progress.talks || 0))
+        + (progress.nameKnown ? 1 : 0);
+      return score(progressB) - score(progressA) || a.localeCompare(b);
+    });
+}
+
+function formatNaturalList(items) {
+  const values = items.filter(Boolean);
+  if (values.length === 0) return "";
+  if (values.length === 1) return values[0];
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
+}
+
 function canStandWithWorkers() {
   return familiarWorkersCount() >= FAMILIAR_WORKERS_REQUIRED;
 }
@@ -478,6 +513,21 @@ function workerMemoryMessage(id) {
   };
 }
 
+function currentNumeralStyleRules() {
+  return NUMERAL_STYLE_RULES[paintState.watchNumeralStyle] || NUMERAL_STYLE_RULES[NUMERAL_STYLE_KEYS[0]] || {
+    payMultiplier: 1,
+    spillLeniency: 1,
+  };
+}
+
+function currentNumeralSpillLeniency() {
+  return Math.max(1, Number(currentNumeralStyleRules().spillLeniency || 1));
+}
+
+function currentDialPayCents() {
+  return Math.round(PAY_PER_DIAL_CENTS * Math.max(1, Number(currentNumeralStyleRules().payMultiplier || 1)));
+}
+
 function familiarityHealthDiscountRate() {
   let reduction = 0;
   for (const progress of Object.values(ensureWorkerProgressState())) {
@@ -487,7 +537,7 @@ function familiarityHealthDiscountRate() {
       reduction += 0.04;
     }
   }
-  return Math.min(0.42, reduction);
+  return Math.min(0.75, reduction);
 }
 
 function shiftTalkedWorkerIds() {
@@ -1810,9 +1860,19 @@ function buildLocalSavePayload() {
       groceryFundsTenths: gameState.groceryFundsTenths,
       groceryCart: clonePlain(gameState.groceryCart),
       groceryPurchasePrices: clonePlain(gameState.groceryPurchasePrices),
+      weekHappyGroceries: gameState.weekHappyGroceries,
+      weekSteadyGroceries: gameState.weekSteadyGroceries,
+      weekLeanGroceries: gameState.weekLeanGroceries,
+      weekEmptyGroceries: gameState.weekEmptyGroceries,
+      weekGroceryComfortScore: gameState.weekGroceryComfortScore,
       postShiftActivity: gameState.postShiftActivity,
       postHomeSummary: gameState.postHomeSummary,
       hemmingTasks: clonePlain(gameState.hemmingTasks),
+      weekPerfectHems: gameState.weekPerfectHems,
+      weekGoodHems: gameState.weekGoodHems,
+      weekOkayHems: gameState.weekOkayHems,
+      weekBadHems: gameState.weekBadHems,
+      weekCompletedGarments: gameState.weekCompletedGarments,
       workerProgress: clonePlain(gameState.workerProgress),
       tutorialSeen: gameState.tutorialSeen,
       handRestUnlocked: gameState.handRestUnlocked,
@@ -1915,6 +1975,11 @@ function loadGameFromLocal(slotIndex = selectedSaveSlotIndex) {
   gameState.groceryFundsTenths = Math.max(0, Number(loadedGame.groceryFundsTenths ?? 0));
   gameState.groceryCart = clonePlain(loadedGame.groceryCart || {});
   gameState.groceryPurchasePrices = clonePlain(loadedGame.groceryPurchasePrices || {});
+  gameState.weekHappyGroceries = Math.max(0, Number(loadedGame.weekHappyGroceries ?? 0));
+  gameState.weekSteadyGroceries = Math.max(0, Number(loadedGame.weekSteadyGroceries ?? 0));
+  gameState.weekLeanGroceries = Math.max(0, Number(loadedGame.weekLeanGroceries ?? 0));
+  gameState.weekEmptyGroceries = Math.max(0, Number(loadedGame.weekEmptyGroceries ?? 0));
+  gameState.weekGroceryComfortScore = Math.max(0, Number(loadedGame.weekGroceryComfortScore ?? 0));
   for (const item of GROCERY_ITEMS) {
     if (!Array.isArray(gameState.groceryPurchasePrices[item.id])) {
       gameState.groceryPurchasePrices[item.id] = [];
@@ -1923,6 +1988,11 @@ function loadGameFromLocal(slotIndex = selectedSaveSlotIndex) {
   gameState.postShiftActivity = loadedGame.postShiftActivity === "hemming" ? "hemming" : "groceries";
   gameState.postHomeSummary = String(loadedGame.postHomeSummary || "");
   gameState.hemmingTasks = clonePlain(loadedGame.hemmingTasks || []);
+  gameState.weekPerfectHems = Math.max(0, Number(loadedGame.weekPerfectHems ?? 0));
+  gameState.weekGoodHems = Math.max(0, Number(loadedGame.weekGoodHems ?? 0));
+  gameState.weekOkayHems = Math.max(0, Number(loadedGame.weekOkayHems ?? 0));
+  gameState.weekBadHems = Math.max(0, Number(loadedGame.weekBadHems ?? 0));
+  gameState.weekCompletedGarments = Math.max(0, Number(loadedGame.weekCompletedGarments ?? 0));
   gameState.workerProgress = clonePlain(loadedGame.workerProgress || buildDefaultWorkerProgress());
   gameState.tutorialSeen = Boolean(loadedGame.tutorialSeen);
   gameState.handRestUnlocked = Boolean(loadedGame.handRestUnlocked);
@@ -1946,6 +2016,7 @@ function loadGameFromLocal(slotIndex = selectedSaveSlotIndex) {
   paintState.isPainting = false;
   paintState.correcting = Boolean(loadedPaint.correcting);
   paintState.tool = loadedPaint.tool === "nail" ? "nail" : loadedPaint.tool === "mix" ? "mix" : "brush";
+  paintState.hemmingTaskIndex = 0;
   paintState.dials = [];
   paintState.tableLabel = String(loadedPaint.tableLabel || "central");
   paintState.watchIndex = Math.max(0, Number(loadedPaint.watchIndex ?? 0));
@@ -1978,6 +2049,7 @@ function loadGameFromLocal(slotIndex = selectedSaveSlotIndex) {
   paintState.groceryTiming.lastGrade = "";
   paintState.groceryTiming.lastItemLabel = "";
   paintState.groceryTiming.lastSavingsTenths = 0;
+  paintState.hemmingTaskIndex = 0;
   paintState.hemmingTiming.active = false;
   paintState.hemmingTiming.taskIndex = -1;
   paintState.hemmingTiming.stitchIndex = -1;
@@ -2638,6 +2710,177 @@ function darkRoomGathering() {
   return scenes[Math.min(6, day)];
 }
 
+function workerBondEndingLine(stats) {
+  if (stats.connectedNames.length === 0) {
+    return "The week gives you too little room to turn any of the others into more than moving silhouettes under the lamps.";
+  }
+
+  const names = formatNaturalList(stats.connectedNames);
+  if (stats.familiarCount >= 3) {
+    return `${names} stop being only part of the line and become part of your week. By the end, they save you space without asking and look for you in the dark as if you belong there with them.`;
+  }
+
+  if (stats.acquaintedCount >= 3 || stats.totalTalks >= 6) {
+    return `${names} make the room less solitary than it was on Monday. The words traded between trays stay small, but they become real enough to carry with you.`;
+  }
+
+  return `${names} give you a handful of real conversation across the week, brief enough to miss if you blinked, but enough to prove the room has not swallowed everything human in it yet.`;
+}
+
+function groceryEndingLine(stats) {
+  if (stats.weekHappyGroceries >= 3) {
+    return "Night after night, you manage to carry home the kind of sack that changes the whole house: meat for the parents to plan around, sugar enough to make the younger ones brighten before supper is even served.";
+  }
+
+  if (stats.weekHappyGroceries >= 2) {
+    return "More than once, the groceries in your arms are enough to lift the whole room at home. Relief reaches your parents first, then delight catches in the younger ones a second later.";
+  }
+
+  if (stats.weekHappyGroceries >= 1 || stats.weekSteadyGroceries >= 2) {
+    return "The groceries stay mostly plain, but often enough they keep the table from turning bare, and that matters more than anyone says out loud.";
+  }
+
+  if (stats.weekLeanGroceries >= 2 || stats.weekEmptyGroceries >= 1) {
+    return "Too many nights end with a thin sack and too many careful faces around the table, everyone pretending not to count what still is not there.";
+  }
+
+  return "What food you do bring home buys the family another narrow day, but never the easy kind of happiness you keep trying to reach.";
+}
+
+function hemmingEndingLine(stats) {
+  if (stats.weekPerfectHems >= 6) {
+    return "By week's end, several garments leave your hands with hems so neat they almost look bought instead of rescued. Even in exhaustion, your needlework becomes something quietly beautiful.";
+  }
+
+  if (stats.weekPerfectHems >= 3 || (stats.weekPerfectHems + stats.weekGoodHems) >= 7) {
+    return "Again and again, the clothes on the table return to use because your hands keep finding the clean line through the cloth. Not every seam is perfect, but enough of them are strong enough to trust.";
+  }
+
+  if (stats.weekCompletedGarments >= 6) {
+    return "You do not always sew neatly by lamplight, but you keep enough hems closed and enough sleeves wearable that home feels a little less one accident away from unraveling.";
+  }
+
+  return "The mending pile keeps answering fatigue with more work, and too many seams still hold the shape of a rushed, painful night.";
+}
+
+function weekEndingStats() {
+  const connectedIds = connectedWorkerIds();
+  const connectedNames = connectedIds
+    .slice(0, 3)
+    .map((id) => workerMemoryDisplayName(id));
+  const totalGoodGarments = gameState.weekPerfectHems + gameState.weekGoodHems;
+  return {
+    health: gameState.hiddenStats.health,
+    weekHappyGroceries: gameState.weekHappyGroceries,
+    weekSteadyGroceries: gameState.weekSteadyGroceries,
+    weekLeanGroceries: gameState.weekLeanGroceries,
+    weekEmptyGroceries: gameState.weekEmptyGroceries,
+    weekGroceryComfortScore: gameState.weekGroceryComfortScore,
+    weekPerfectHems: gameState.weekPerfectHems,
+    weekGoodHems: gameState.weekGoodHems,
+    weekOkayHems: gameState.weekOkayHems,
+    weekBadHems: gameState.weekBadHems,
+    weekCompletedGarments: gameState.weekCompletedGarments,
+    totalGoodGarments,
+    familiarCount: familiarWorkersCount(),
+    acquaintedCount: acquaintedWorkersCount(),
+    totalTalks: totalWorkerTalkCount(),
+    connectedIds,
+    connectedNames,
+  };
+}
+
+function finalEndingForWeek() {
+  const stats = weekEndingStats();
+  const groceries = groceryEndingLine(stats);
+  const hems = hemmingEndingLine(stats);
+  const bonds = workerBondEndingLine(stats);
+
+  const idealWeek =
+    stats.health >= 55
+    && stats.weekHappyGroceries >= 2
+    && stats.weekPerfectHems >= 5
+    && stats.familiarCount >= 3
+    && stats.totalTalks >= 7;
+
+  if (idealWeek) {
+    return {
+      title: "For A Little While, Enough",
+      body:
+        `${groceries} ${hems} ${bonds} ` +
+        "When the week finally loosens its grip, you are exhausted but not emptied. The house at home is fed often enough to smile, the mending basket is lighter than it was, and the room at the factory no longer feels like something you crossed alone. It is not safety and it is not justice, but it is the closest this week comes to grace.",
+    };
+  }
+
+  if (stats.health <= 0) {
+    if (stats.familiarCount >= 3) {
+      return {
+        title: "Carried By The Week",
+        body:
+          `${bonds} ${groceries} ${hems} ` +
+          "By Sunday night your body gives out before your will does. What saves the ending from becoming only terror is that you are no longer left to bear it alone: the girls who came to know you help get you through the door, and the thought of home still reaches you through the pain.",
+      };
+    }
+    if (stats.weekHappyGroceries >= 1 || stats.weekSteadyGroceries >= 2) {
+      return {
+        title: "Spent For The Table",
+        body:
+          `${groceries} ${hems} ${bonds} ` +
+          "The week closes with your strength broken open at last. Still, the cupboards are not as bare as they were, and a few repaired clothes wait at home with your work in them. It is a cruel trade, but it is the one the week finally writes across your body.",
+      };
+    }
+    return {
+      title: "What Remains",
+      body:
+        `${groceries} ${hems} ${bonds} ` +
+        "There is almost nothing left to bargain with by the time the week closes around you. The poison, the hunger, the strain, and the light itself have spent you down to the bone. The room takes more than your labor in the end, and there is no strength left to pretend otherwise.",
+    };
+  }
+
+  if (stats.weekHappyGroceries >= 2 && stats.totalGoodGarments >= 7) {
+    return {
+      title: "The Table Holds",
+      body:
+        `${groceries} ${hems} ${bonds} ` +
+        "What you make of the week is not comfort exactly, but it is shelter. The people at home feel it in the food on the table and in the clothes that keep holding together a little longer because your hands refused to quit on them.",
+    };
+  }
+
+  if (stats.familiarCount >= 3 || (stats.acquaintedCount >= 4 && stats.totalTalks >= 6)) {
+    return {
+      title: "Benchside Company",
+      body:
+        `${bonds} ${groceries} ${hems} ` +
+        "The work still asks too much, and the pay still comes dear, but by the end of the week the room no longer belongs only to the lamps and the manager. Some part of it now belongs to the girls who learned your face and kept a place for you among them.",
+    };
+  }
+
+  if (stats.weekPerfectHems >= 4 || stats.totalGoodGarments >= 8) {
+    return {
+      title: "Clean Work, Thin Comfort",
+      body:
+        `${hems} ${groceries} ${bonds} ` +
+        "Your hands learn fast, maybe too fast. By the time the week ends you know you can make delicate things hold, even when the rest of life around you keeps coming apart more quickly than skill can mend it.",
+    };
+  }
+
+  if (stats.weekGroceryComfortScore >= 3 || stats.weekCompletedGarments >= 5 || stats.totalTalks >= 3) {
+    return {
+      title: "Making Do",
+      body:
+        `${groceries} ${hems} ${bonds} ` +
+        "Nothing about the week feels triumphant when it is over. Still, enough of it holds together that you can count the food, the mending, and the spoken kindnesses as proof that the days were not spent for nothing.",
+    };
+  }
+
+  return {
+    title: "Spent Thin",
+    body:
+      `${groceries} ${hems} ${bonds} ` +
+      "When Sunday lets you go, survival is the only claim you can make on the week, and even that feels borrowed. You leave with little to show beyond fatigue, a few coins, and the knowledge of how quickly a room can teach you to go on anyway.",
+  };
+}
+
 function finalEndingForHealth() {
   const health = gameState.hiddenStats.health;
 
@@ -2760,7 +3003,7 @@ function advanceToNextDay(message) {
 function continueAfterShiftRecap(reason) {
   activeShiftEndReason = "";
   if (gameState.hiddenStats.health <= 0) {
-    const ending = finalEndingForHealth();
+    const ending = gameState.currentDay === 6 ? finalEndingForWeek() : finalEndingForHealth();
     showEnding(ending.title, ending.body);
     updateHud();
     return;
@@ -2774,7 +3017,7 @@ function continueAfterShiftRecap(reason) {
 
   gameState.savedFundsTenths += Math.max(0, Math.round(gameState.dayEarningsCents * 10));
 
-  if (gameState.lowPayDaysInRow >= 3) {
+  if (gameState.lowPayDaysInRow >= 3 && gameState.currentDay < 6) {
     showEnding(
       "Dismissed",
       "Three bad days in a row are enough. Before another shift can begin, the bench is given to someone else. You arrive the next morning to find another girl already sitting in your place. The shame of it burns all the way home, yet underneath it there is a quieter feeling too: relief, thin and guilty, because for the first time in days the room is no longer waiting to swallow you whole.",
@@ -2784,7 +3027,7 @@ function continueAfterShiftRecap(reason) {
   }
 
   if (gameState.currentDay === 6) {
-    const ending = finalEndingForHealth();
+    const ending = finalEndingForWeek();
     showEnding(ending.title, ending.body);
     updateHud();
     return;
@@ -2983,6 +3226,68 @@ function groceryHomeSceneText() {
   }
 
   return `${opening} ${arrival} ${parents} ${siblings}`;
+}
+
+function groceryNightOutcome() {
+  const purchases = groceryItemsPurchasedCount();
+  const hasMeat = groceryPurchasedAny(["steak", "bacon"]);
+  const hasSugar = groceryCount("sugar") > 0;
+  const stapleCount =
+    groceryCount("milk") +
+    groceryCount("butter") +
+    groceryCount("eggs") +
+    groceryCount("flour") +
+    groceryCount("potatoes");
+  const comfortScore =
+    (hasMeat ? 3 : 0)
+    + (hasSugar ? 2 : 0)
+    + Math.min(4, stapleCount)
+    + (groceryCount("eggs") > 0 ? 1 : 0);
+
+  if (purchases <= 0) {
+    return {
+      key: "empty",
+      score: 0,
+      summary: "The sack comes home almost empty, and the room at home learns to go quiet around it.",
+    };
+  }
+
+  if (hasMeat && hasSugar && stapleCount >= 2) {
+    return {
+      key: "happy",
+      score: 3,
+      summary: "The groceries brighten the whole household at once: meat for your parents to measure hope by, sugar enough to make the younger ones glow.",
+    };
+  }
+
+  if ((hasMeat && stapleCount >= 1) || stapleCount >= 3 || comfortScore >= 5) {
+    return {
+      key: "steady",
+      score: 2,
+      summary: "The sack is plain, but it holds enough real food to settle the room instead of disappointing it.",
+    };
+  }
+
+  return {
+    key: "lean",
+    score: 1,
+    summary: "The groceries stretch the table a little, but not enough to let anyone stop calculating what is still missing.",
+  };
+}
+
+function recordWeeklyGroceryOutcome() {
+  const outcome = groceryNightOutcome();
+  if (outcome.key === "happy") {
+    gameState.weekHappyGroceries += 1;
+  } else if (outcome.key === "steady") {
+    gameState.weekSteadyGroceries += 1;
+  } else if (outcome.key === "lean") {
+    gameState.weekLeanGroceries += 1;
+  } else {
+    gameState.weekEmptyGroceries += 1;
+  }
+  gameState.weekGroceryComfortScore += outcome.score;
+  return outcome;
 }
 
 function openGroceriesTrip() {
@@ -3241,7 +3546,7 @@ function beginGroceryBargain() {
   updateGroceryStats();
 }
 
-function resolveGroceryPurchase(reason = "click") {
+function resolveGroceryPurchase(reason = "click", clickX = null, clickY = null) {
   const timing = currentGroceryTimingState();
   if (!timing || !timing.active) return false;
   paintState.groceryTiming.active = false;
@@ -3255,7 +3560,9 @@ function resolveGroceryPurchase(reason = "click") {
     paintState.groceryTiming.bestGrade = grade;
   }
   paintState.groceryTiming.lastSavingsTenths = groceryCurrentSavingsTenths();
-  showTimingFeedback(grade, timing.x, timing.y - Math.max(30, timing.outerRadius + 18));
+  const feedbackX = typeof clickX === "number" ? clickX : timing.x;
+  const feedbackY = typeof clickY === "number" ? clickY : (timing.y - Math.max(30, timing.outerRadius + 18));
+  showTimingFeedback(grade, feedbackX, feedbackY);
   paintPrompt.textContent =
     `${timingFeedbackLabel(grade)} ${groceryCheckoutStatusText()} ` +
     `${paintState.groceryTiming.attemptsUsed >= 3 ? "That is the last bargain you get today." : "You can try again, step back to the basket, or pay with the best result you have."}`;
@@ -3271,17 +3578,16 @@ function updateGroceryTiming() {
   if (!paintState.active || paintState.mode !== "groceries" || !paintState.groceryTiming.active) return;
 }
 
-function hemmingRowRect(index) {
-  return {
-    x: HEMMING_LAYOUT.panel.x + 18,
-    y: HEMMING_LAYOUT.rowStartY + index * (HEMMING_LAYOUT.rowHeight + HEMMING_LAYOUT.rowGap),
-    w: HEMMING_LAYOUT.panel.w - 36,
-    h: HEMMING_LAYOUT.rowHeight,
-  };
-}
-
 function hemmingFinishRect() {
   return { ...HEMMING_LAYOUT.finish };
+}
+
+function hemmingGarmentFrameRect() {
+  return { ...HEMMING_LAYOUT.garmentFrame };
+}
+
+function hemmingStitchLineRect() {
+  return { ...HEMMING_LAYOUT.stitchLine };
 }
 
 function hemmingTimingPopupRect() {
@@ -3306,12 +3612,11 @@ function rectsOverlap(a, b) {
 
 function randomHemmingTimingPopupRect() {
   const size = HEMMING_TIMING_WIDGET_SIZE;
-  const margin = HEMMING_TIMING_WIDGET_MARGIN;
   const safeBounds = {
-    x: margin,
-    y: margin,
-    w: paintCanvas.width - margin * 2,
-    h: paintCanvas.height - margin * 2,
+    x: HEMMING_LAYOUT.panel.x + 16,
+    y: HEMMING_LAYOUT.panel.y + 54,
+    w: HEMMING_LAYOUT.panel.w - 32,
+    h: HEMMING_LAYOUT.panel.h - 138,
   };
   const finish = hemmingFinishRect();
   const maxX = safeBounds.x + Math.max(0, safeBounds.w - size);
@@ -3335,6 +3640,38 @@ function randomHemmingTimingPopupRect() {
   choice.x = Math.round(choice.x);
   choice.y = Math.round(choice.y);
   return choice;
+}
+
+function currentHemmingTaskIndex() {
+  if (!gameState.hemmingTasks.length) return -1;
+  let index = Math.max(0, Math.min(gameState.hemmingTasks.length - 1, Number(paintState.hemmingTaskIndex || 0)));
+  const activeTask = gameState.hemmingTasks[index];
+  if (activeTask && activeTask.stitchesDone < activeTask.stitchesNeeded) {
+    paintState.hemmingTaskIndex = index;
+    return index;
+  }
+
+  index = gameState.hemmingTasks.findIndex((task) => task.stitchesDone < task.stitchesNeeded);
+  paintState.hemmingTaskIndex = index === -1 ? 0 : index;
+  return index;
+}
+
+function currentHemmingTask() {
+  const index = currentHemmingTaskIndex();
+  return index === -1 ? null : gameState.hemmingTasks[index] || null;
+}
+
+function nextUnfinishedHemmingTaskIndex(afterIndex = -1) {
+  if (!gameState.hemmingTasks.length) return -1;
+  for (let index = afterIndex + 1; index < gameState.hemmingTasks.length; index += 1) {
+    const task = gameState.hemmingTasks[index];
+    if (task && task.stitchesDone < task.stitchesNeeded) return index;
+  }
+  for (let index = 0; index <= afterIndex && index < gameState.hemmingTasks.length; index += 1) {
+    const task = gameState.hemmingTasks[index];
+    if (task && task.stitchesDone < task.stitchesNeeded) return index;
+  }
+  return -1;
 }
 
 function createHemmingTasks() {
@@ -3516,7 +3853,7 @@ function startHemmingTiming(taskIndex) {
   return true;
 }
 
-function resolveHemmingTiming() {
+function resolveHemmingTiming(clickX = null, clickY = null) {
   const timing = currentHemmingTimingState();
   if (!timing) return false;
   const task = gameState.hemmingTasks[timing.taskIndex];
@@ -3535,7 +3872,9 @@ function resolveHemmingTiming() {
   paintState.hemmingTiming.active = false;
   paintState.hemmingTiming.popupX = 0;
   paintState.hemmingTiming.popupY = 0;
-  showTimingFeedback(grade, timing.popupX + timing.popupSize / 2, timing.popupY - 18);
+  const feedbackX = typeof clickX === "number" ? clickX : (timing.popupX + timing.popupSize / 2);
+  const feedbackY = typeof clickY === "number" ? clickY : (timing.popupY - 18);
+  showTimingFeedback(grade, feedbackX, feedbackY);
 
   const gradeWord = grade === "perfect"
     ? "perfect"
@@ -3548,8 +3887,15 @@ function resolveHemmingTiming() {
   if (task.stitchesDone >= task.stitchesNeeded) {
     paintPrompt.textContent = `${task.label} finished with ${taskHemmingQualityLabel(task).toLowerCase()} stitching.`;
     immediateReaction = immediateHemmingReactionForTask(task);
-    if (immediateReaction) {
+    const nextTaskIndex = nextUnfinishedHemmingTaskIndex(timing.taskIndex);
+    paintState.hemmingTaskIndex = nextTaskIndex === -1 ? timing.taskIndex : nextTaskIndex;
+    const nextTask = nextTaskIndex === -1 ? null : gameState.hemmingTasks[nextTaskIndex];
+    if (immediateReaction && nextTask) {
+      mixPrompt.textContent = `${immediateReaction} ${nextTask.label} is next on the table.`;
+    } else if (immediateReaction) {
       mixPrompt.textContent = immediateReaction;
+    } else if (nextTask) {
+      mixPrompt.textContent = `${nextTask.label} is next on the table.`;
     }
   } else {
     paintPrompt.textContent = `${gradeWord.toUpperCase()} timing. Continue along ${task.label}.`;
@@ -3591,6 +3937,27 @@ function hemmingSummary() {
   return `${completed} hem${completed === 1 ? "" : "s"} finished with ${stitched} timed stitches`;
 }
 
+function hemmingGarmentOutcomeCounts() {
+  const counts = { unfinished: 0, perfect: 0, good: 0, okay: 0, bad: 0 };
+  for (const task of gameState.hemmingTasks) {
+    const outcome = hemmingTaskOutcomeKey(task);
+    if (counts[outcome] !== undefined) {
+      counts[outcome] += 1;
+    }
+  }
+  return counts;
+}
+
+function recordWeeklyHemmingOutcome() {
+  const counts = hemmingGarmentOutcomeCounts();
+  gameState.weekPerfectHems += counts.perfect;
+  gameState.weekGoodHems += counts.good;
+  gameState.weekOkayHems += counts.okay;
+  gameState.weekBadHems += counts.bad;
+  gameState.weekCompletedGarments += counts.perfect + counts.good + counts.okay + counts.bad;
+  return counts;
+}
+
 function hemmingReflectionText() {
   const health = gameState.hiddenStats.health;
   const lastThought = gameState.lastShiftThoughtLog[gameState.lastShiftThoughtLog.length - 1];
@@ -3629,12 +3996,13 @@ function openHemmingTrip() {
   paintState.hemmingTiming.popupX = 0;
   paintState.hemmingTiming.popupY = 0;
   paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
+  paintState.hemmingTaskIndex = 0;
   clearTimingFeedback();
   gameState.hemmingTasks = createHemmingTasks();
   hideWorkspaceBanner(true);
   minigameHeading.textContent = "Evening Hemming";
   paintPrompt.textContent = hemmingReflectionText();
-  mixPrompt.textContent = "Click a stitch dot to start timing. A time-stitch box will pop up somewhere on the cloth; click it when the moving marker lines up for bad/okay/good/perfect quality. You can also skip the rest of the hemming if you need to head to bed.";
+  mixPrompt.textContent = "Each garment gets its own pass tonight. Click the next stitch mark, then hit the time-stitch box when the moving marker lines up. You can still skip the rest of the hemming if you need to head to bed.";
   updateHemmingStats();
   setStationControlsHidden(true);
   minigameOverlay.classList.remove("hidden");
@@ -3642,41 +4010,37 @@ function openHemmingTrip() {
 }
 
 function stitchPointForTask(taskIndex, stitchIndex) {
-  const rect = hemmingRowRect(taskIndex);
-  const lineStart = rect.x + 190;
-  const lineEnd = rect.x + rect.w - 24;
+  const line = hemmingStitchLineRect();
   const count = Math.max(1, gameState.hemmingTasks[taskIndex].stitchesNeeded);
-  const x = lineStart + ((lineEnd - lineStart) * (stitchIndex + 0.5)) / count;
-  const y = rect.y + rect.h - 19;
+  const x = line.x + (line.w * (stitchIndex + 0.5)) / count;
+  const y = line.y;
   return { x, y };
 }
 
 function applyHemStitch(x, y) {
   if (paintState.hemmingTiming.active) {
     if (pointInsideRect(x, y, hemmingTimingPopupRect())) {
-      resolveHemmingTiming();
+      resolveHemmingTiming(x, y);
     } else {
       paintPrompt.textContent = "Watch the time-stitch box and click inside it when the moving marker lines up.";
     }
     return;
   }
 
-  let best = null;
-  for (let i = 0; i < gameState.hemmingTasks.length; i += 1) {
-    const task = gameState.hemmingTasks[i];
-    if (task.stitchesDone >= task.stitchesNeeded) continue;
-    const spot = stitchPointForTask(i, task.stitchesDone);
-    const distance = Math.hypot(spot.x - x, spot.y - y);
-    if (!best || distance < best.distance) {
-      best = { task, taskIndex: i, distance };
-    }
+  const taskIndex = currentHemmingTaskIndex();
+  const task = currentHemmingTask();
+  if (!task || taskIndex === -1) {
+    paintPrompt.textContent = "Every garment is finished. You can head to bed whenever you're ready.";
+    return;
   }
 
-  if (!best || best.distance > 24) {
+  const spot = stitchPointForTask(taskIndex, task.stitchesDone);
+  const distance = Math.hypot(spot.x - x, spot.y - y);
+  if (distance > 24) {
     paintPrompt.textContent = "Click the next stitch dot to begin timing that stitch.";
     return;
   }
-  startHemmingTiming(best.taskIndex);
+  startHemmingTiming(taskIndex);
 }
 
 function hemmingHomeSceneText() {
@@ -3740,6 +4104,7 @@ function finishGroceriesTrip() {
     gameState.groceryFundsTenths += savingsTenths;
     paintState.groceryTiming.lastSavingsTenths = savingsTenths;
   }
+  recordWeeklyGroceryOutcome();
   gameState.savedFundsTenths = Math.max(0, Math.round(gameState.groceryFundsTenths));
   closeMinigame();
   showHomeSceneAfterShopping();
@@ -3755,6 +4120,7 @@ function finishHemmingTrip() {
     paintState.hemmingTiming.popupY = 0;
     paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
   }
+  recordWeeklyHemmingOutcome();
   closeMinigame();
   showHomeScene(hemmingHomeSceneText(), hemmingSummary());
   updateHud();
@@ -3828,9 +4194,19 @@ function resetWeek() {
   gameState.groceryFundsTenths = 0;
   gameState.groceryCart = {};
   gameState.groceryPurchasePrices = {};
+  gameState.weekHappyGroceries = 0;
+  gameState.weekSteadyGroceries = 0;
+  gameState.weekLeanGroceries = 0;
+  gameState.weekEmptyGroceries = 0;
+  gameState.weekGroceryComfortScore = 0;
   gameState.postShiftActivity = "groceries";
   gameState.postHomeSummary = "";
   gameState.hemmingTasks = [];
+  gameState.weekPerfectHems = 0;
+  gameState.weekGoodHems = 0;
+  gameState.weekOkayHems = 0;
+  gameState.weekBadHems = 0;
+  gameState.weekCompletedGarments = 0;
   gameState.workerProgress = buildDefaultWorkerProgress();
   gameState.handRestUnlocked = false;
   gameState.buttonHintState = buildDefaultButtonHintState();
@@ -3854,6 +4230,7 @@ function resetWeek() {
   paintState.hemmingTiming.popupX = 0;
   paintState.hemmingTiming.popupY = 0;
   paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
+  paintState.hemmingTaskIndex = 0;
   clearTimingFeedback();
   hideShiftRecap();
   hideWorkspaceBanner(true);
@@ -4757,13 +5134,14 @@ function trimDialEdgeNoise(dial, sealed = false) {
 function computeDialStraySeverity(dial) {
   const marks = Array.isArray(dial?.strayPoints) ? dial.strayPoints : [];
   if (marks.length === 0) return 0;
+  const spillLeniency = currentNumeralSpillLeniency();
   let severity = 0;
   for (const mark of marks) {
     const markRadius = Math.max(0.8, mark.r || 0);
     const distanceToGuide = nearestGuideDistance(dial.targetPoints, mark.x, mark.y);
-    const edgeAllowance = 4.5 + markRadius * 0.58;
+    const edgeAllowance = (4.5 + markRadius * 0.58) * spillLeniency;
     const overspill = Math.max(0, distanceToGuide - edgeAllowance);
-    if (overspill <= 0.35) continue;
+    if (overspill <= 0.35 * spillLeniency) continue;
     const alphaWeight = Math.max(0.45, mark.a || 0.7);
     const radiusWeight = 0.5 + Math.min(0.8, markRadius * 0.08);
     severity += overspill * alphaWeight * radiusWeight;
@@ -4774,14 +5152,15 @@ function computeDialStraySeverity(dial) {
 function visibleSpillCount(dial, minOverspill = 0.85, minRadius = 0) {
   const marks = Array.isArray(dial?.strayPoints) ? dial.strayPoints : [];
   if (marks.length === 0) return 0;
+  const spillLeniency = currentNumeralSpillLeniency();
   let count = 0;
   for (const mark of marks) {
     const markRadius = Math.max(0.8, mark.r || 0);
     if (markRadius < minRadius) continue;
     const distanceToGuide = nearestGuideDistance(dial.targetPoints, mark.x, mark.y);
-    const edgeAllowance = 4.5 + markRadius * 0.58;
+    const edgeAllowance = (4.5 + markRadius * 0.58) * spillLeniency;
     const overspill = Math.max(0, distanceToGuide - edgeAllowance);
-    if (overspill >= minOverspill) count += 1;
+    if (overspill >= minOverspill * spillLeniency) count += 1;
   }
   return count;
 }
@@ -4793,14 +5172,15 @@ function correctionHotspotsForDial(dial, limit = 6) {
   if (!guidePoints || guidePoints.length === 0 || strayPoints.length === 0) return [];
 
   const zoomed = paintState.zoomedDialIndex !== -1;
+  const spillLeniency = currentNumeralSpillLeniency();
   const hotspots = [];
 
   for (const mark of strayPoints) {
     const markRadius = Math.max(0.8, mark.r || 0);
     const distanceToGuide = nearestGuideDistance(guidePoints, mark.x, mark.y);
-    const edgeAllowance = (zoomed ? 6.1 : 4.8) + markRadius * (zoomed ? 0.72 : 0.58);
+    const edgeAllowance = ((zoomed ? 6.1 : 4.8) + markRadius * (zoomed ? 0.72 : 0.58)) * spillLeniency;
     const overspill = Math.max(0, distanceToGuide - edgeAllowance);
-    if (overspill < 0.62) continue;
+    if (overspill < 0.62 * spillLeniency) continue;
     const alphaWeight = Math.max(0.45, mark.a || 0.7);
     const score = overspill * alphaWeight * (0.74 + Math.min(1.2, markRadius * 0.12));
     hotspots.push({
@@ -4936,19 +5316,20 @@ function dialNeedsCorrection(dial) {
   const hotspots = correctionHotspotsForDial(dial, 10);
   const visibleSpills = hotspots.length;
   if (visibleSpills === 0) return false;
-  const visibleLargeSpills = hotspots.filter((hotspot) => hotspot.overspill >= 1.24 && hotspot.r >= 5.5).length;
-  const visibleMediumSpills = hotspots.filter((hotspot) => hotspot.overspill >= 0.86).length;
+  const spillLeniency = currentNumeralSpillLeniency();
+  const visibleLargeSpills = hotspots.filter((hotspot) => hotspot.overspill >= 1.24 * spillLeniency && hotspot.r >= 5.5).length;
+  const visibleMediumSpills = hotspots.filter((hotspot) => hotspot.overspill >= 0.86 * spillLeniency).length;
   const straySeverity = Number.isFinite(dial.straySeverity)
     ? dial.straySeverity
     : computeDialStraySeverity(dial);
-  const messThreshold = 0.31;
-  const severityThreshold = 10.2;
+  const messThreshold = 0.31 + (spillLeniency - 1) * 0.12;
+  const severityThreshold = 10.2 * spillLeniency;
   return (
     dial.mess > messThreshold
     || straySeverity > severityThreshold
-    || visibleLargeSpills >= 3
-    || visibleMediumSpills >= 5
-    || (visibleSpills >= 3 && straySeverity > 5.8)
+    || visibleLargeSpills >= (spillLeniency > 1 ? 4 : 3)
+    || visibleMediumSpills >= (spillLeniency > 1 ? 6 : 5)
+    || (visibleSpills >= (spillLeniency > 1 ? 4 : 3) && straySeverity > 5.8 * spillLeniency)
   );
 }
 
@@ -5447,6 +5828,7 @@ function analyzeBrushFootprint(renderPoints, x, y, hitRadius) {
   }
 
   const zoomed = paintState.zoomedDialIndex !== -1;
+  const spillLeniency = currentNumeralSpillLeniency();
   const spreadPenalty = Math.max(0, (paintState.brushSize - BRUSH_ROUGH_THRESHOLD) / Math.max(0.001, MAX_BRUSH_SIZE - BRUSH_ROUGH_THRESHOLD));
   const ringSampleCount = zoomed ? 22 : 18;
   const ringConfigs = zoomed
@@ -5473,7 +5855,7 @@ function analyzeBrushFootprint(renderPoints, x, y, hitRadius) {
     const tolerance = Math.max(
       zoomed ? 2.4 : 1.35,
       (zoomed ? 5.2 : 2.45) + (1 - ring.factor) * (zoomed ? 7 : 2.8) - spreadPenalty * (zoomed ? 1.85 : 0.75)
-    );
+    ) * spillLeniency;
     for (let i = 0; i < ringSampleCount; i += 1) {
       const angle = (Math.PI * 2 * i) / ringSampleCount;
       const sampleX = x + Math.cos(angle) * ringRadius;
@@ -5483,7 +5865,7 @@ function analyzeBrushFootprint(renderPoints, x, y, hitRadius) {
       sampleCount += ring.weight;
       if (overspill <= 0) continue;
       outsideCount += ring.weight * (1 + Math.min(1.4, overspill * (zoomed ? 0.16 : 0.24)));
-      if (ring.factor >= 0.9 || overspill >= (zoomed ? 1.2 : 0.7)) {
+      if (ring.factor >= 0.9 || overspill >= (zoomed ? 1.2 : 0.7) * spillLeniency) {
         outsideSamples.push({
           x: sampleX,
           y: sampleY,
@@ -5561,6 +5943,7 @@ function paintAt(x, y) {
   }
 
   const hitRadius = currentBrushPaintRadius();
+  const spillLeniency = currentNumeralSpillLeniency();
   const spreadPenalty = Math.max(0, (paintState.brushSize - BRUSH_ROUGH_THRESHOLD) / Math.max(0.001, MAX_BRUSH_SIZE - BRUSH_ROUGH_THRESHOLD));
   let paintedPoints = 0;
   let partialPoints = 0;
@@ -5593,13 +5976,16 @@ function paintAt(x, y) {
     }
   }
 
-  const strictRadius = Math.max(4, hitRadius * (0.65 - spreadPenalty * 0.18));
+  const strictRadius = Math.max(4, hitRadius * ((0.65 - spreadPenalty * 0.18) * Math.min(1.12, spillLeniency)));
   if (hit.distance > strictRadius) {
     offGuidePoints += 1;
   }
   const footprint = analyzeBrushFootprint(renderPoints, x, y, hitRadius);
   const overflowRatio = footprint.ratio;
-  const overflowTrigger = Math.max(0.055, 0.15 - spreadPenalty * 0.062);
+  const overflowTrigger = Math.min(
+    0.24,
+    Math.max(0.055, 0.15 - spreadPenalty * 0.062) * spillLeniency
+  );
   if (overflowRatio > overflowTrigger || footprint.outsideSamples.length >= (paintState.zoomedDialIndex === -1 ? 3 : 4)) {
     const overflowSeverity = Math.max(0, (overflowRatio - overflowTrigger) / Math.max(0.001, 1 - overflowTrigger));
     offGuidePoints += Math.max(
@@ -6626,10 +7012,98 @@ function drawHemmingTimingWidget(timing) {
   paintCtx.restore();
 }
 
+function hemmingTaskPhotoKey(task) {
+  const key = hemmingTaskNarrativeKey(task);
+  if (key === "dress") return "hemDressPhoto";
+  if (key === "elly") return "hemSkirtPhoto";
+  if (key === "denny") return "hemShirtPhoto";
+  if (key === "maggie") return "hemApronPhoto";
+  return "";
+}
+
+function drawPixelatedGarmentPhoto(task) {
+  const frame = hemmingGarmentFrameRect();
+  const imageKey = hemmingTaskPhotoKey(task);
+  const image = assetImages[imageKey];
+
+  paintCtx.save();
+  paintCtx.fillStyle = "rgba(12, 12, 12, 0.88)";
+  paintCtx.fillRect(frame.x, frame.y, frame.w, frame.h);
+  paintCtx.strokeStyle = "rgba(255,255,255,0.14)";
+  paintCtx.lineWidth = 2;
+  paintCtx.strokeRect(frame.x, frame.y, frame.w, frame.h);
+
+  if (!imageReady(image)) {
+    paintCtx.fillStyle = "rgba(255,255,255,0.08)";
+    paintCtx.fillRect(frame.x + 12, frame.y + 12, frame.w - 24, frame.h - 24);
+    paintCtx.restore();
+    return;
+  }
+
+  const cacheKey = `${imageKey}:${frame.w}x${frame.h}`;
+  let tempCanvas = garmentPhotoCache[cacheKey];
+  if (!tempCanvas) {
+    tempCanvas = document.createElement("canvas");
+    tempCanvas.width = Math.max(34, Math.round(frame.w / 12));
+    tempCanvas.height = Math.max(26, Math.round(frame.h / 12));
+    const tempCtx = tempCanvas.getContext("2d");
+    if (!tempCtx) {
+      paintCtx.restore();
+      return;
+    }
+
+    tempCtx.imageSmoothingEnabled = true;
+    tempCtx.fillStyle = "#111";
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    tempCtx.filter = "grayscale(1) contrast(1.45) brightness(0.92)";
+
+    const imgRatio = image.naturalWidth / image.naturalHeight;
+    const boxRatio = tempCanvas.width / tempCanvas.height;
+    let drawW = tempCanvas.width;
+    let drawH = tempCanvas.height;
+    if (imgRatio > boxRatio) {
+      drawH = tempCanvas.width / imgRatio;
+    } else {
+      drawW = tempCanvas.height * imgRatio;
+    }
+    const drawX = (tempCanvas.width - drawW) / 2;
+    const drawY = (tempCanvas.height - drawH) / 2;
+    tempCtx.drawImage(image, drawX, drawY, drawW, drawH);
+    tempCtx.filter = "none";
+    garmentPhotoCache[cacheKey] = tempCanvas;
+  }
+
+  paintCtx.imageSmoothingEnabled = false;
+  paintCtx.drawImage(tempCanvas, frame.x + 10, frame.y + 10, frame.w - 20, frame.h - 20);
+  paintCtx.imageSmoothingEnabled = true;
+
+  paintCtx.fillStyle = "rgba(0,0,0,0.24)";
+  paintCtx.fillRect(frame.x + 10, frame.y + 10, frame.w - 20, frame.h - 20);
+  paintCtx.strokeStyle = "rgba(255,255,255,0.08)";
+  for (let x = frame.x + 10; x < frame.x + frame.w - 10; x += 12) {
+    paintCtx.beginPath();
+    paintCtx.moveTo(x, frame.y + 10);
+    paintCtx.lineTo(x, frame.y + frame.h - 10);
+    paintCtx.stroke();
+  }
+  for (let y = frame.y + 10; y < frame.y + frame.h - 10; y += 12) {
+    paintCtx.beginPath();
+    paintCtx.moveTo(frame.x + 10, y);
+    paintCtx.lineTo(frame.x + frame.w - 10, y);
+    paintCtx.stroke();
+  }
+
+  paintCtx.restore();
+}
+
 function drawHemmingView() {
   const w = paintCanvas.width;
   const h = paintCanvas.height;
   const timing = currentHemmingTimingState();
+  const taskIndex = currentHemmingTaskIndex();
+  const task = currentHemmingTask();
+  const frame = hemmingGarmentFrameRect();
+  const stitchLine = hemmingStitchLineRect();
 
   paintCtx.clearRect(0, 0, w, h);
   const bg = paintCtx.createLinearGradient(0, 0, 0, h);
@@ -6654,51 +7128,52 @@ function drawHemmingView() {
   paintCtx.fillStyle = "rgba(255,255,255,0.92)";
   paintCtx.font = "24px Georgia";
   paintCtx.fillText("HEMMING TABLE", HEMMING_LAYOUT.panel.x + 18, HEMMING_LAYOUT.panel.y + 30);
-
   paintCtx.font = "14px Georgia";
-  gameState.hemmingTasks.forEach((task, index) => {
-    const rect = hemmingRowRect(index);
-    paintCtx.fillStyle = "rgba(255,255,255,0.07)";
-    paintCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    paintCtx.strokeStyle = "rgba(255,255,255,0.16)";
-    paintCtx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+  paintCtx.fillStyle = "rgba(220, 220, 220, 0.76)";
+  paintCtx.fillText(
+    task ? `Garment ${taskIndex + 1} of ${gameState.hemmingTasks.length}` : "All garments complete",
+    HEMMING_LAYOUT.panel.x + 18,
+    HEMMING_LAYOUT.progressY,
+  );
 
-    paintCtx.fillStyle = "#f5f5f5";
-    paintCtx.fillText(task.label, rect.x + 12, rect.y + 22);
-
+  if (task) {
     paintCtx.textAlign = "right";
-    paintCtx.fillStyle = "rgba(255,255,255,0.76)";
-    paintCtx.fillText(`${task.stitchesDone}/${task.stitchesNeeded}`, rect.x + rect.w - 12, rect.y + 22);
-    paintCtx.fillStyle = "rgba(255,255,255,0.55)";
-    paintCtx.font = "12px Georgia";
-    paintCtx.fillText(taskHemmingQualityLabel(task), rect.x + rect.w - 12, rect.y + rect.h - 48);
-    paintCtx.font = "14px Georgia";
+    paintCtx.fillStyle = "rgba(255,255,255,0.78)";
+    paintCtx.fillText(`${task.stitchesDone}/${task.stitchesNeeded} stitches`, HEMMING_LAYOUT.panel.x + HEMMING_LAYOUT.panel.w - 18, HEMMING_LAYOUT.progressY);
     paintCtx.textAlign = "left";
 
-    const lineY = rect.y + rect.h - 19;
-    const lineStart = rect.x + 190;
-    const lineEnd = rect.x + rect.w - 24;
-    paintCtx.strokeStyle = "rgba(205, 184, 156, 0.42)";
+    paintCtx.fillStyle = "#f5f5f5";
+    paintCtx.font = "22px Georgia";
+    paintCtx.fillText(task.label, frame.x, frame.y - 26);
+    paintCtx.textAlign = "right";
+    paintCtx.fillStyle = "rgba(255,255,255,0.64)";
+    paintCtx.font = "14px Georgia";
+    paintCtx.fillText(taskHemmingQualityLabel(task), frame.x + frame.w, frame.y - 26);
+    paintCtx.textAlign = "left";
+
+    drawPixelatedGarmentPhoto(task);
+
+    paintCtx.strokeStyle = "rgba(205, 184, 156, 0.5)";
     paintCtx.lineWidth = 2;
     paintCtx.beginPath();
-    paintCtx.moveTo(lineStart, lineY);
-    paintCtx.lineTo(lineEnd, lineY);
+    paintCtx.moveTo(stitchLine.x, stitchLine.y);
+    paintCtx.lineTo(stitchLine.x + stitchLine.w, stitchLine.y);
     paintCtx.stroke();
 
     for (let stitch = 0; stitch < task.stitchesNeeded; stitch += 1) {
-      const spot = stitchPointForTask(index, stitch);
+      const spot = stitchPointForTask(taskIndex, stitch);
       const done = stitch < task.stitchesDone;
       const pendingTimed = timing
         && timing.active
-        && timing.taskIndex === index
+        && timing.taskIndex === taskIndex
         && timing.stitchIndex === stitch;
       paintCtx.beginPath();
-      paintCtx.arc(spot.x, spot.y, done ? 4.4 : (pendingTimed ? 5.2 : 3.3), 0, Math.PI * 2);
+      paintCtx.arc(spot.x, spot.y, done ? 4.8 : (pendingTimed ? 5.6 : 3.5), 0, Math.PI * 2);
       paintCtx.fillStyle = done
         ? "rgba(255, 224, 140, 0.94)"
         : pendingTimed
           ? "rgba(249, 244, 186, 0.95)"
-          : "rgba(208, 208, 208, 0.28)";
+          : "rgba(208, 208, 208, 0.3)";
       paintCtx.fill();
       if (!done) {
         paintCtx.strokeStyle = pendingTimed ? "rgba(255, 245, 194, 0.88)" : "rgba(255,255,255,0.22)";
@@ -6706,7 +7181,15 @@ function drawHemmingView() {
         paintCtx.stroke();
       }
     }
-  });
+  } else {
+    paintCtx.textAlign = "center";
+    paintCtx.fillStyle = "rgba(255,255,255,0.9)";
+    paintCtx.font = "24px Georgia";
+    paintCtx.fillText("Every hem is finished.", HEMMING_LAYOUT.panel.x + HEMMING_LAYOUT.panel.w / 2, HEMMING_LAYOUT.panel.y + 180);
+    paintCtx.font = "16px Georgia";
+    paintCtx.fillStyle = "rgba(255,255,255,0.68)";
+    paintCtx.fillText("You can leave the table whenever you are ready.", HEMMING_LAYOUT.panel.x + HEMMING_LAYOUT.panel.w / 2, HEMMING_LAYOUT.panel.y + 218);
+  }
 
   const finish = hemmingFinishRect();
   paintCtx.fillStyle = hemmingAllFinished() ? "rgba(217, 245, 122, 0.2)" : "rgba(255,255,255,0.12)";
@@ -7491,7 +7974,7 @@ bindPress(infoCanvas, () => {
     drawWatchMinigame();
     return;
   }
-  resolveHemmingTiming();
+  resolveHemmingTiming(paintState.pointerX, paintState.pointerY);
   drawWatchMinigame();
 });
 
@@ -7604,7 +8087,7 @@ function handlePaintCanvasPress(event) {
     if (groceryTiming && groceryTiming.active) {
       const hitRadius = Math.max(groceryTiming.targetRadius + 8, groceryTiming.outerRadius + 6);
       if (Math.hypot(position.x - groceryTiming.x, position.y - groceryTiming.y) <= hitRadius) {
-        resolveGroceryPurchase("click");
+        resolveGroceryPurchase("click", position.x, position.y);
       } else {
         paintPrompt.textContent = "Keep your eye on the pulsing bargain ring and click when it crosses the middle guide.";
         updateGroceryStats();

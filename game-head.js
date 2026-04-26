@@ -183,10 +183,10 @@ const GROCERY_DISCOUNT_RATES = {
   bad: 0,
 };
 const HEMMING_LAYOUT = {
-  panel: { x: 52, y: 42, w: 504, h: 446 },
-  rowStartY: 110,
-  rowHeight: 74,
-  rowGap: 12,
+  panel: { x: 56, y: 40, w: 528, h: 512 },
+  garmentFrame: { x: 118, y: 106, w: 404, h: 290 },
+  stitchLine: { x: 136, y: 448, w: 368 },
+  progressY: 86,
   finish: { x: 398, y: 510, w: 160, h: 42 },
 };
 const HEMMING_TIMING_WIDGET_SIZE = 176;
@@ -284,6 +284,16 @@ const HEMMING_TIMING_WINDOWS = {
 };
 const NUMERAL_SHEET_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 const NUMERAL_STYLE_KEYS = ["numeralsStyleOrnate", "numeralsStyleBlock"];
+const NUMERAL_STYLE_RULES = {
+  numeralsStyleOrnate: {
+    payMultiplier: 2,
+    spillLeniency: 1.16,
+  },
+  numeralsStyleBlock: {
+    payMultiplier: 1,
+    spillLeniency: 1,
+  },
+};
 const ASSET_PATHS = {
   backgroundRoom: "./assets/background-radium-girls.jpg",
   roomClock: "./assets/room-clock.png",
@@ -304,6 +314,10 @@ const ASSET_PATHS = {
   mixBottle: "https://commons.wikimedia.org/wiki/Special:FilePath/Reagent%20bottle.png",
   mixWaterDropper: "https://commons.wikimedia.org/wiki/Special:FilePath/Dropper.png",
   mixBeaker: "https://commons.wikimedia.org/wiki/Special:FilePath/Lab%20beaker.png",
+  hemDressPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Dress%20-%20MET%2026.265.96.jpg",
+  hemSkirtPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Skirt%20MET%2026.265.48.jpg",
+  hemShirtPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Shirt%20MET%204568.jpg",
+  hemApronPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Apron%20%28AM%2012676-1%29.jpg",
   directWipeHand: "./assets/direct-wipe-hand.png",
   cursorHemming: "./assets/cursor-hemming.png",
   thoughtPopup: "./assets/thought-popup.png",
@@ -361,9 +375,19 @@ const gameState = {
   groceryFundsTenths: 0,
   groceryCart: {},
   groceryPurchasePrices: {},
+  weekHappyGroceries: 0,
+  weekSteadyGroceries: 0,
+  weekLeanGroceries: 0,
+  weekEmptyGroceries: 0,
+  weekGroceryComfortScore: 0,
   postShiftActivity: "groceries",
   postHomeSummary: "",
   hemmingTasks: [],
+  weekPerfectHems: 0,
+  weekGoodHems: 0,
+  weekOkayHems: 0,
+  weekBadHems: 0,
+  weekCompletedGarments: 0,
   workerProgress: {},
   tutorialSeen: false,
   handRestUnlocked: false,
@@ -430,6 +454,7 @@ const paintState = {
     popupY: 0,
     popupSize: HEMMING_TIMING_WIDGET_SIZE,
   },
+  hemmingTaskIndex: 0,
   timingFeedback: {
     active: false,
     label: "",
@@ -457,6 +482,8 @@ const workspaceBannerState = {
   hideTimer: 0,
   cycleIndex: 0,
 };
+
+const garmentPhotoCache = {};
 
 const bellState = {
   iframe: null,

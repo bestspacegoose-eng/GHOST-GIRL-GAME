@@ -97,6 +97,11 @@
         <div class="menu-panel">
           <h2>GAME MENU</h2>
           <p id="menuStatus" class="menu-status">No local save found.</p>
+          <section class="menu-saves" aria-label="save slots">
+            <h3>Save slots</h3>
+            <p class="menu-saves-copy">Choose a slot, then save, load, or delete that run.</p>
+            <div id="saveSlotGrid" class="save-slot-grid"></div>
+          </section>
           <div class="menu-audio" aria-label="audio controls">
             <label class="menu-slider-row" for="musicVolumeSlider">
               <span>Music volume</span>
@@ -110,9 +115,9 @@
             <input id="sfxVolumeSlider" class="menu-slider" type="range" min="0" max="100" step="1" value="70" />
           </div>
           <div class="menu-actions">
-            <button id="saveButton" type="button">Save locally</button>
-            <button id="loadButton" type="button">Load local save</button>
-            <button id="deleteSaveButton" type="button">Delete local save</button>
+            <button id="saveButton" type="button">Save to selected slot</button>
+            <button id="loadButton" type="button">Load selected slot</button>
+            <button id="deleteSaveButton" type="button">Delete selected slot</button>
             <button id="newWeekButton" type="button">Start new week</button>
             <button id="closeMenuButton" type="button">Close menu</button>
           </div>

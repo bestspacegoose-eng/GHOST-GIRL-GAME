@@ -44,6 +44,7 @@ const workspaceBannerBody = document.getElementById("workspaceBannerBody");
 const menuButton = document.getElementById("menuButton");
 const menuOverlay = document.getElementById("menuOverlay");
 const menuStatus = document.getElementById("menuStatus");
+const saveSlotGrid = document.getElementById("saveSlotGrid");
 const musicVolumeSlider = document.getElementById("musicVolumeSlider");
 const musicVolumeValue = document.getElementById("musicVolumeValue");
 const sfxVolumeSlider = document.getElementById("sfxVolumeSlider");
@@ -92,6 +93,9 @@ const MAX_MINIGAME_SPEED_MULTIPLIER = 1.65;
 const LOCAL_SAVE_SCHEMA_VERSION = 2;
 const LOCAL_SAVE_KEY = `ghost_girl_local_save_v${LOCAL_SAVE_SCHEMA_VERSION}`;
 const LEGACY_LOCAL_SAVE_KEYS = ["ghost_girl_local_save_v1"];
+const LOCAL_SAVE_SLOT_KEY_PREFIX = `ghost_girl_local_save_slots_v${LOCAL_SAVE_SCHEMA_VERSION}_slot_`;
+const LOCAL_SAVE_SELECTED_SLOT_KEY = "ghost_girl_selected_save_slot_v1";
+const LOCAL_SAVE_SLOT_COUNT = 6;
 const LOCAL_AUDIO_SETTINGS_KEY = "ghost_girl_audio_settings_v1";
 const COMPLETION_BELL_TRACK_URL = "https://soundcloud.com/user-966880386/tibetan-bell-04";
 const COMPLETION_BELL_EMBED_URL =
@@ -417,6 +421,7 @@ const paintState = {
 
 let workerConversationState = null;
 let activeShiftEndReason = "";
+let selectedSaveSlotIndex = 0;
 
 const recapState = {
   active: false,
@@ -2247,10 +2252,19 @@ function normalizeLogText(text) {
     .trim();
 }
 
+function shouldHideTextLogEntry(source = "", title = "") {
+  const normalizedSource = normalizeLogText(source);
+  const normalizedTitle = normalizeLogText(title).toLowerCase();
+  if (normalizedSource === "Workspace memory") return true;
+  if (normalizedSource === "Minigame" && normalizedTitle.startsWith("watch painting")) return true;
+  return false;
+}
+
 function appendTextLog(title, body, source = "Log") {
   const normalizedTitle = normalizeLogText(title);
   const normalizedBody = normalizeLogText(body);
   if (!normalizedTitle && !normalizedBody) return;
+  if (shouldHideTextLogEntry(source, normalizedTitle)) return;
 
   const entry = {
     source,
@@ -2285,7 +2299,11 @@ function renderTextLog() {
   if (!textLogList) return;
   textLogList.replaceChildren();
 
-  if (!Array.isArray(gameState.textLog) || gameState.textLog.length === 0) {
+  const entries = Array.isArray(gameState.textLog)
+    ? gameState.textLog.filter((entry) => !shouldHideTextLogEntry(entry?.source, entry?.title))
+    : [];
+
+  if (entries.length === 0) {
     const empty = document.createElement("p");
     empty.className = "text-log-empty";
     empty.textContent = "No logged text yet.";
@@ -2293,8 +2311,7 @@ function renderTextLog() {
     return;
   }
 
-  const entries = gameState.textLog.slice().reverse();
-  for (const entry of entries) {
+  for (const entry of entries.slice().reverse()) {
     const article = document.createElement("article");
     article.className = "text-log-entry";
 
@@ -2483,21 +2500,144 @@ observeLoggedTextNode(
   () => `${normalizeLogText(minigameHeading?.textContent || "Minigame")} note`,
 );
 
-function readLocalSave() {
+function normalizeSaveSlotIndex(value) {
+  return Math.max(0, Math.min(LOCAL_SAVE_SLOT_COUNT - 1, Number(value) || 0));
+}
+
+function saveSlotStorageKey(slotIndex) {
+  return `${LOCAL_SAVE_SLOT_KEY_PREFIX}${normalizeSaveSlotIndex(slotIndex) + 1}`;
+}
+
+function saveSlotLabel(slotIndex) {
+  return `Slot ${normalizeSaveSlotIndex(slotIndex) + 1}`;
+}
+
+function parseStoredSave(key) {
   try {
-    const keys = [LOCAL_SAVE_KEY, ...LEGACY_LOCAL_SAVE_KEYS];
-    for (const key of keys) {
-      const raw = localStorage.getItem(key);
-      if (!raw) continue;
-      const payload = JSON.parse(raw);
-      if (payload && typeof payload === "object") {
-        payload.__storageKey = key;
-      }
-      return payload;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const payload = JSON.parse(raw);
+    if (payload && typeof payload === "object") {
+      payload.__storageKey = key;
     }
-    return null;
+    return payload;
   } catch (error) {
     return null;
+  }
+}
+
+function readLegacyLocalSave() {
+  const keys = [LOCAL_SAVE_KEY, ...LEGACY_LOCAL_SAVE_KEYS];
+  for (const key of keys) {
+    const payload = parseStoredSave(key);
+    if (payload) return payload;
+  }
+  return null;
+}
+
+function readSlotSave(slotIndex) {
+  return parseStoredSave(saveSlotStorageKey(slotIndex));
+}
+
+function readAllSlotSaves() {
+  return Array.from({ length: LOCAL_SAVE_SLOT_COUNT }, (_, slotIndex) => readSlotSave(slotIndex));
+}
+
+function readLocalSave(slotIndex = selectedSaveSlotIndex) {
+  const slotted = readSlotSave(slotIndex);
+  if (slotted) return slotted;
+  if (readAllSlotSaves().some(Boolean)) return null;
+  return readLegacyLocalSave();
+}
+
+function persistSelectedSaveSlotIndex() {
+  try {
+    localStorage.setItem(LOCAL_SAVE_SELECTED_SLOT_KEY, String(selectedSaveSlotIndex));
+  } catch (error) {
+    // Ignore browsers that deny persistence.
+  }
+}
+
+function loadSelectedSaveSlotIndex() {
+  try {
+    const raw = localStorage.getItem(LOCAL_SAVE_SELECTED_SLOT_KEY);
+    return normalizeSaveSlotIndex(raw);
+  } catch (error) {
+    return 0;
+  }
+}
+
+function ensureSaveSlotsMigrated() {
+  try {
+    if (readAllSlotSaves().some(Boolean)) return false;
+    const legacy = readLegacyLocalSave();
+    if (!legacy) return false;
+    const targetKey = saveSlotStorageKey(selectedSaveSlotIndex);
+    const payload = clonePlain(legacy);
+    delete payload.__storageKey;
+    localStorage.setItem(targetKey, JSON.stringify(payload));
+    localStorage.removeItem(LOCAL_SAVE_KEY);
+    for (const key of LEGACY_LOCAL_SAVE_KEYS) {
+      localStorage.removeItem(key);
+    }
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function saveSlotSummary(save) {
+  if (!save || !save.gameState) {
+    return {
+      subtitle: "Empty slot",
+      meta: "No saved week yet.",
+    };
+  }
+
+  const day = Number.isFinite(save.gameState.currentDay) ? save.gameState.currentDay + 1 : "?";
+  const dials = Math.max(0, Number(save.gameState.totalDialsPainted ?? 0));
+  const money = formatCurrency(Number(save.gameState.totalEarningsCents ?? 0));
+  return {
+    subtitle: `Day ${day} • ${dials} dials • ${money}`,
+    meta: `Saved ${formatSaveTimestamp(save.savedAt)}`,
+  };
+}
+
+function renderSaveSlotGrid() {
+  if (!saveSlotGrid) return;
+  saveSlotGrid.replaceChildren();
+  const slotSaves = readAllSlotSaves();
+
+  for (let slotIndex = 0; slotIndex < LOCAL_SAVE_SLOT_COUNT; slotIndex += 1) {
+    const card = document.createElement("button");
+    const save = slotSaves[slotIndex];
+    const summary = saveSlotSummary(save);
+    card.type = "button";
+    card.className = `save-slot-card${slotIndex === selectedSaveSlotIndex ? " selected" : ""}${save ? "" : " empty"}`;
+    card.setAttribute("aria-pressed", slotIndex === selectedSaveSlotIndex ? "true" : "false");
+
+    const title = document.createElement("p");
+    title.className = "save-slot-title";
+    title.textContent = slotIndex === selectedSaveSlotIndex
+      ? `${saveSlotLabel(slotIndex)} • selected`
+      : saveSlotLabel(slotIndex);
+
+    const subtitle = document.createElement("p");
+    subtitle.className = "save-slot-subtitle";
+    subtitle.textContent = summary.subtitle;
+
+    const meta = document.createElement("p");
+    meta.className = "save-slot-meta";
+    meta.textContent = summary.meta;
+
+    card.append(title, subtitle, meta);
+    bindPress(card, () => {
+      selectedSaveSlotIndex = slotIndex;
+      persistSelectedSaveSlotIndex();
+      renderSaveSlotGrid();
+      updateMenuStatus();
+    });
+    saveSlotGrid.appendChild(card);
   }
 }
 
@@ -2510,23 +2650,28 @@ function formatSaveTimestamp(value) {
 
 function updateMenuStatus(message = "") {
   if (!menuStatus) return;
-  const save = readLocalSave();
+  if (!message) {
+    ensureSaveSlotsMigrated();
+  }
+  const save = readLocalSave(selectedSaveSlotIndex);
   if (message) {
     menuStatus.textContent = message;
     return;
   }
   if (!save) {
-    menuStatus.textContent = "No local save found.";
+    menuStatus.textContent = `${saveSlotLabel(selectedSaveSlotIndex)} is empty.`;
     return;
   }
   const day = Number.isFinite(save?.gameState?.currentDay) ? save.gameState.currentDay + 1 : "?";
-  menuStatus.textContent = `Local save found: Day ${day}. Saved ${formatSaveTimestamp(save.savedAt)}.`;
+  menuStatus.textContent = `${saveSlotLabel(selectedSaveSlotIndex)}: Day ${day}. Saved ${formatSaveTimestamp(save.savedAt)}.`;
 }
 
 function openMenu() {
   if (!menuOverlay) return;
+  ensureSaveSlotsMigrated();
   menuOverlay.classList.remove("hidden");
   updateAudioControls();
+  renderSaveSlotGrid();
   updateMenuStatus();
   renderTextLog();
 }
@@ -2951,21 +3096,29 @@ function buildLocalSavePayload() {
   };
 }
 
-function saveGameToLocal() {
+function saveGameToLocal(slotIndex = selectedSaveSlotIndex) {
   try {
-    localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify(buildLocalSavePayload()));
-    updateMenuStatus("Saved locally.");
+    const targetSlotIndex = normalizeSaveSlotIndex(slotIndex);
+    selectedSaveSlotIndex = targetSlotIndex;
+    persistSelectedSaveSlotIndex();
+    localStorage.setItem(saveSlotStorageKey(targetSlotIndex), JSON.stringify(buildLocalSavePayload()));
+    renderSaveSlotGrid();
+    updateMenuStatus(`Saved to ${saveSlotLabel(targetSlotIndex)}.`);
     return true;
   } catch (error) {
-    updateMenuStatus("Saving failed in this browser context.");
+    updateMenuStatus(`Saving failed for ${saveSlotLabel(slotIndex)} in this browser context.`);
     return false;
   }
 }
 
-function loadGameFromLocal() {
-  const payload = readLocalSave();
+function loadGameFromLocal(slotIndex = selectedSaveSlotIndex) {
+  const targetSlotIndex = normalizeSaveSlotIndex(slotIndex);
+  selectedSaveSlotIndex = targetSlotIndex;
+  persistSelectedSaveSlotIndex();
+  ensureSaveSlotsMigrated();
+  const payload = readLocalSave(targetSlotIndex);
   if (!payload || !payload.gameState) {
-    updateMenuStatus("No local save found to load.");
+    updateMenuStatus(`${saveSlotLabel(targetSlotIndex)} is empty.`);
     return false;
   }
 
@@ -3039,7 +3192,7 @@ function loadGameFromLocal() {
         dayIndex: Math.max(0, Math.min(DAY_NAMES.length - 1, Number(entry?.dayIndex ?? gameState.currentDay))),
         dayLabel: normalizeLogText(entry?.dayLabel || currentDayLogLabel(Number(entry?.dayIndex ?? gameState.currentDay))),
       }))
-      .filter((entry) => entry.title || entry.body)
+      .filter((entry) => (entry.title || entry.body) && !shouldHideTextLogEntry(entry.source, entry.title))
       .slice(-TEXT_LOG_LIMIT)
     : [];
   gameState.dialogMode = "";
@@ -3111,9 +3264,13 @@ function loadGameFromLocal() {
   } else {
     stopShiftTicking();
   }
-  if (payload.__storageKey !== LOCAL_SAVE_KEY || needsNumeralMigration) {
+  const targetKey = saveSlotStorageKey(targetSlotIndex);
+  if (payload.__storageKey !== targetKey || needsNumeralMigration) {
     try {
-      localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify(buildLocalSavePayload()));
+      localStorage.setItem(targetKey, JSON.stringify(buildLocalSavePayload()));
+      if (payload.__storageKey === LOCAL_SAVE_KEY) {
+        localStorage.removeItem(LOCAL_SAVE_KEY);
+      }
       for (const key of LEGACY_LOCAL_SAVE_KEYS) {
         localStorage.removeItem(key);
       }
@@ -3122,20 +3279,32 @@ function loadGameFromLocal() {
     }
   }
   closeMenu();
-  updateMenuStatus(needsNumeralMigration ? "Legacy local save loaded and updated." : "Local save loaded.");
+  renderSaveSlotGrid();
+  updateMenuStatus(
+    needsNumeralMigration
+      ? `${saveSlotLabel(targetSlotIndex)} loaded and updated.`
+      : `${saveSlotLabel(targetSlotIndex)} loaded.`,
+  );
   return true;
 }
 
-function deleteLocalSave() {
+function deleteLocalSave(slotIndex = selectedSaveSlotIndex) {
   try {
-    localStorage.removeItem(LOCAL_SAVE_KEY);
-    for (const key of LEGACY_LOCAL_SAVE_KEYS) {
-      localStorage.removeItem(key);
+    const targetSlotIndex = normalizeSaveSlotIndex(slotIndex);
+    selectedSaveSlotIndex = targetSlotIndex;
+    persistSelectedSaveSlotIndex();
+    localStorage.removeItem(saveSlotStorageKey(targetSlotIndex));
+    if (targetSlotIndex === 0) {
+      localStorage.removeItem(LOCAL_SAVE_KEY);
+      for (const key of LEGACY_LOCAL_SAVE_KEYS) {
+        localStorage.removeItem(key);
+      }
     }
-    updateMenuStatus("Local save deleted.");
+    renderSaveSlotGrid();
+    updateMenuStatus(`${saveSlotLabel(targetSlotIndex)} deleted.`);
     return true;
   } catch (error) {
-    updateMenuStatus("Could not delete local save in this browser context.");
+    updateMenuStatus(`Could not delete ${saveSlotLabel(slotIndex)} in this browser context.`);
     return false;
   }
 }
@@ -8602,7 +8771,10 @@ canvas.addEventListener("mousemove", (event) => {
 
 showTitleCard();
 initializeAudioSettings();
+selectedSaveSlotIndex = loadSelectedSaveSlotIndex();
+ensureSaveSlotsMigrated();
 updateHud();
 drawWatchMinigame();
+renderSaveSlotGrid();
 updateMenuStatus();
 requestAnimationFrame(frame);

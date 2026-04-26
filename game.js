@@ -49,6 +49,18 @@ const closeMenuButton = document.getElementById("closeMenuButton");
 const textLogList = document.getElementById("textLogList");
 const bgMusic = document.getElementById("bgMusic");
 
+const STATION_BUTTONS = {
+  correct: correctButton,
+  lick: lickButton,
+  checkNumeral: checkNumeralButton,
+  restHand: restHandButton,
+  mixReset: mixResetButton,
+};
+
+const TUTORIAL_BUTTON_STEP_MAP = {
+  4: ["correct", "checkNumeral", "lick"],
+};
+
 const WIDTH = canvas.width;
 const HEIGHT = canvas.height;
 const HALF_HEIGHT = HEIGHT / 2;
@@ -326,6 +338,7 @@ const gameState = {
   workerProgress: {},
   tutorialSeen: false,
   handRestUnlocked: false,
+  buttonHintState: { restHand: false },
   textLog: [],
 };
 
@@ -442,7 +455,7 @@ const TUTORIAL_STEPS = [
   {
     title: "Center Bench Tutorial",
     body:
-      "\"That is the heart of it. If the paint strays, Switch to fingernails for a small correction, Wipe paint directly for a ruined numeral, and Sharpen brush when the tip starts to spread. Press Escape to pull back from the numeral.\"",
+      "\"That is the heart of it. If the paint strays, use Switch to fingernails for a small correction. If you lose the weak spots, Check numeral will show them back to you. Use Sharpen brush when the tip starts to spread. Press Escape to pull back from the numeral.\"",
   },
   {
     title: "Center Bench Tutorial",
@@ -1213,6 +1226,12 @@ function buildDefaultWorkerProgress() {
   return progress;
 }
 
+function buildDefaultButtonHintState() {
+  return {
+    restHand: false,
+  };
+}
+
 function ensureWorkerProgressState() {
   if (!gameState.workerProgress || typeof gameState.workerProgress !== "object") {
     gameState.workerProgress = buildDefaultWorkerProgress();
@@ -1233,6 +1252,19 @@ function ensureWorkerProgressState() {
     }
   }
   return gameState.workerProgress;
+}
+
+function ensureButtonHintState() {
+  if (!gameState.buttonHintState || typeof gameState.buttonHintState !== "object") {
+    gameState.buttonHintState = buildDefaultButtonHintState();
+    return gameState.buttonHintState;
+  }
+
+  const defaults = buildDefaultButtonHintState();
+  for (const key of Object.keys(defaults)) {
+    gameState.buttonHintState[key] = Boolean(gameState.buttonHintState[key]);
+  }
+  return gameState.buttonHintState;
 }
 
 function workerProgressFor(id) {
@@ -1455,9 +1487,9 @@ function workerConversationTitle(id, context, relationship = null) {
     : workerNameVisibleInConversation(id);
   const label = canUseName ? workerName(id) : "???";
   if (context === "afterShift") {
-    return canUseName ? `${label} - After The Bell` : "After The Bell";
+    return `${label} - After The Bell`;
   }
-  return canUseName ? label : "At The Bench";
+  return `${label} - At The Bench`;
 }
 
 function workerConversationPrompt(id, context, relationship) {
@@ -1483,20 +1515,11 @@ function workerConversationPrompt(id, context, relationship) {
   return `${setup} ${workerAppearanceText(id)} ${openness}${notes ? ` ${notes}` : ""} How do you open the conversation?`;
 }
 
-function spokenChoiceLead(choice) {
-  if (!choice?.label) return "";
-  if (choice.id === "wry") {
-    return `You say, "${choice.label}" `;
-  }
-  return `You ask, "${choice.label}" `;
-}
-
 function workerConversationResponse(id, context, choice) {
   const progress = workerProgressFor(id);
   const choiceId = choice?.id || "";
   const coda = workerConversationCoda(id, context);
   let responseText = "";
-  const lead = spokenChoiceLead(choice);
   if (context === "afterShift") {
     const profile = WORKER_AFTER_SHIFT_DIALOGUE[id] || {};
     if (profile[choiceId]) {
@@ -1508,25 +1531,25 @@ function workerConversationResponse(id, context, choice) {
     } else {
       responseText = `She says the work gets easier to repeat long before it gets easier to live with. ${coda}`.trim();
     }
-    return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
+    return concealUnknownWorkerName(responseText, id);
   }
 
   if (id === "worker-2" && choiceId === "work" && gameState.currentDay >= 1 && !gameState.handRestUnlocked) {
     gameState.handRestUnlocked = true;
     responseText = `Ruth watches the stiffness in your wrist before speaking. "If your hand starts going uncertain, brace the heel of it on the side of the face," she says, showing you with two fingers against the rim. "It eats the clock, but it keeps the numeral true." You could try that at the bench now. ${coda}`.trim();
-    return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
+    return concealUnknownWorkerName(responseText, id);
   }
 
   if (choiceId === "work") {
     const [primary, secondary] = workerDialogueLines(id);
     responseText = `${[primary, secondary].filter(Boolean).join(" ")} ${coda}`.trim();
-    return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
+    return concealUnknownWorkerName(responseText, id);
   }
 
   const profile = WORKER_SHIFT_CHOICE_DIALOGUE[id] || {};
   if (profile[choiceId]) {
     responseText = `${profile[choiceId]} ${coda}`.trim();
-    return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
+    return concealUnknownWorkerName(responseText, id);
   }
 
   if (choiceId === "personal") {
@@ -1534,10 +1557,10 @@ function workerConversationResponse(id, context, choice) {
       ? "She answers more honestly than she means to, then returns to the tray before the feeling can settle."
       : "She hesitates, gives you the smallest honest answer she can afford, and bends back over the dial.")
       + ` ${coda}`;
-    return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
+    return concealUnknownWorkerName(responseText.trim(), id);
   }
   responseText = `That finally earns a brief smile before the room pulls her attention back to the tray. ${coda}`.trim();
-  return concealUnknownWorkerName(`${lead}${responseText}`.trim(), id);
+  return concealUnknownWorkerName(responseText, id);
 }
 
 function configureDialogChoiceButton(button, text, choiceId = "") {
@@ -2483,6 +2506,7 @@ function buildLocalSavePayload() {
       workerProgress: clonePlain(gameState.workerProgress),
       tutorialSeen: gameState.tutorialSeen,
       handRestUnlocked: gameState.handRestUnlocked,
+      buttonHintState: clonePlain(gameState.buttonHintState),
       textLog: clonePlain(gameState.textLog),
     },
     paintState: {
@@ -2581,6 +2605,8 @@ function loadGameFromLocal() {
   gameState.workerProgress = clonePlain(loadedGame.workerProgress || buildDefaultWorkerProgress());
   gameState.tutorialSeen = Boolean(loadedGame.tutorialSeen);
   gameState.handRestUnlocked = Boolean(loadedGame.handRestUnlocked);
+  gameState.buttonHintState = clonePlain(loadedGame.buttonHintState || buildDefaultButtonHintState());
+  ensureButtonHintState();
   gameState.textLog = Array.isArray(loadedGame.textLog)
     ? loadedGame.textLog
       .map((entry) => ({
@@ -3107,6 +3133,39 @@ function setStationControlsHidden(hidden) {
   checkNumeralButton.classList.toggle("hidden", hidden);
   restHandButton.classList.toggle("hidden", hidden || !canUseRestHandSupport());
   mixResetButton.classList.toggle("hidden", hidden);
+  syncStationButtonHighlights();
+}
+
+function stationButtonVisible(button) {
+  return Boolean(button) && !button.classList.contains("hidden");
+}
+
+function tutorialHighlightedButtonKeys() {
+  if (!paintState.tutorial) return new Set();
+  return new Set(TUTORIAL_BUTTON_STEP_MAP[paintState.tutorial.step] || []);
+}
+
+function syncStationButtonHighlights() {
+  const buttonHintState = ensureButtonHintState();
+  const tutorialKeys = tutorialHighlightedButtonKeys();
+
+  for (const [key, button] of Object.entries(STATION_BUTTONS)) {
+    if (!button) continue;
+    const visible = stationButtonVisible(button);
+    button.classList.toggle("tutorial-focus", visible && tutorialKeys.has(key));
+    button.classList.toggle(
+      "new-control",
+      key === "restHand" && visible && !buttonHintState.restHand,
+    );
+  }
+}
+
+function acknowledgeStationButtonHint(key) {
+  const buttonHintState = ensureButtonHintState();
+  if (key === "restHand") {
+    buttonHintState.restHand = true;
+  }
+  syncStationButtonHighlights();
 }
 
 function shouldOpenFracturePuzzle() {
@@ -4239,6 +4298,7 @@ function resetWeek() {
   gameState.hemmingTasks = [];
   gameState.workerProgress = buildDefaultWorkerProgress();
   gameState.handRestUnlocked = false;
+  gameState.buttonHintState = buildDefaultButtonHintState();
   gameState.textLog = [];
   paintState.active = false;
   paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS[0];
@@ -4812,6 +4872,7 @@ function setTutorialStep(step) {
       ? "Follow the woman at the center bench step by step before the shift begins."
       : mixTextureFeedback();
   updatePaintStats();
+  syncStationButtonHighlights();
 }
 
 function advanceTutorialStep(eventName) {
@@ -5374,6 +5435,7 @@ function updatePaintStats() {
     restHandButton.classList.toggle("active", canUseRestHandSupport() && paintState.restHandOnSide);
   }
   updateCheckNumeralButton();
+  syncStationButtonHighlights();
 }
 
 function spendHealth(amount) {
@@ -7565,6 +7627,7 @@ bindPress(checkNumeralButton, () => {
 
 bindPress(restHandButton, () => {
   if (!canUseRestHandSupport()) return;
+  acknowledgeStationButtonHint("restHand");
   paintState.restHandOnSide = !paintState.restHandOnSide;
   paintPrompt.textContent = paintState.restHandOnSide
     ? "You brace the heel of your hand against the side. The line steadies, but the shift clock starts running faster."

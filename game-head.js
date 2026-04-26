@@ -321,10 +321,10 @@ const ASSET_PATHS = {
   mixBottle: "./assets/mix-tar-bottle.jpg",
   mixWaterDropper: "./assets/mix-water-dropper.jpg",
   mixBeaker: "./assets/mix-beaker-photo.jpg",
-  hemDressPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Dress%20-%20MET%2026.265.96.jpg",
-  hemSkirtPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Skirt%20MET%2026.265.48.jpg",
-  hemShirtPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Shirt%20MET%204568.jpg",
-  hemApronPhoto: "https://commons.wikimedia.org/wiki/Special:FilePath/Apron%20%28AM%2012676-1%29.jpg",
+  hemDressSheet: "./assets/hemming-blue-dress-sheet.png",
+  hemSkirtSheet: "./assets/hemming-school-skirt-sheet.png",
+  hemShirtSheet: "./assets/hemming-shirt-hem-sheet.png",
+  hemApronSheet: "./assets/hemming-apron-sheet.png",
   directWipeHand: "./assets/direct-wipe-hand.png",
   cursorHemming: "./assets/cursor-hemming.png",
   thoughtPopup: "./assets/thought-popup.png",
@@ -490,8 +490,6 @@ const workspaceBannerState = {
   hideTimer: 0,
   cycleIndex: 0,
 };
-
-const garmentPhotoCache = {};
 
 const bellState = {
   iframe: null,

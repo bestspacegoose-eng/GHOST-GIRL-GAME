@@ -7180,18 +7180,29 @@ function drawHemmingTimingWidget(timing) {
   paintCtx.restore();
 }
 
-function hemmingTaskPhotoKey(task) {
+function hemmingTaskSpriteKey(task) {
   const key = hemmingTaskNarrativeKey(task);
-  if (key === "dress") return "hemDressPhoto";
-  if (key === "elly") return "hemSkirtPhoto";
-  if (key === "denny") return "hemShirtPhoto";
-  if (key === "maggie") return "hemApronPhoto";
+  if (key === "dress") return "hemDressSheet";
+  if (key === "elly") return "hemSkirtSheet";
+  if (key === "denny") return "hemShirtSheet";
+  if (key === "maggie") return "hemApronSheet";
   return "";
 }
 
-function drawPixelatedGarmentPhoto(task) {
+function currentHemmingSpriteFrame(task, taskIndex) {
+  if (!task) return 0;
+  const timing = currentHemmingTimingState();
+  if (timing && timing.active && timing.taskIndex === taskIndex) {
+    return Math.max(0, Math.min(5, Math.floor(timing.phase * 6)));
+  }
+  if (task.stitchesDone >= task.stitchesNeeded) return 5;
+  const progress = Math.max(0, Math.min(1, task.stitchesDone / Math.max(1, task.stitchesNeeded)));
+  return Math.max(0, Math.min(4, Math.floor(progress * 5)));
+}
+
+function drawHemmingSpritesheet(task, taskIndex) {
   const frame = hemmingGarmentFrameRect();
-  const imageKey = hemmingTaskPhotoKey(task);
+  const imageKey = hemmingTaskSpriteKey(task);
   const image = assetImages[imageKey];
 
   paintCtx.save();
@@ -7208,58 +7219,43 @@ function drawPixelatedGarmentPhoto(task) {
     return;
   }
 
-  const cacheKey = `${imageKey}:${frame.w}x${frame.h}`;
-  let tempCanvas = garmentPhotoCache[cacheKey];
-  if (!tempCanvas) {
-    tempCanvas = document.createElement("canvas");
-    tempCanvas.width = Math.max(34, Math.round(frame.w / 12));
-    tempCanvas.height = Math.max(26, Math.round(frame.h / 12));
-    const tempCtx = tempCanvas.getContext("2d");
-    if (!tempCtx) {
-      paintCtx.restore();
-      return;
-    }
+  const frameIndex = currentHemmingSpriteFrame(task, taskIndex);
+  const sheetCols = 3;
+  const sheetRows = 2;
+  const sourceW = Math.floor(image.naturalWidth / sheetCols);
+  const sourceH = Math.floor(image.naturalHeight / sheetRows);
+  const sourceCol = frameIndex % sheetCols;
+  const sourceRow = Math.floor(frameIndex / sheetCols);
+  const sourceX = sourceCol * sourceW;
+  const sourceY = sourceRow * sourceH;
+  const targetX = frame.x + 8;
+  const targetY = frame.y + 8;
+  const targetW = frame.w - 16;
+  const targetH = frame.h - 16;
 
-    tempCtx.imageSmoothingEnabled = true;
-    tempCtx.fillStyle = "#111";
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-    tempCtx.filter = "grayscale(1) contrast(1.45) brightness(0.92)";
+  paintCtx.fillStyle = "rgba(6, 8, 10, 0.5)";
+  paintCtx.fillRect(targetX, targetY, targetW, targetH);
 
-    const imgRatio = image.naturalWidth / image.naturalHeight;
-    const boxRatio = tempCanvas.width / tempCanvas.height;
-    let drawW = tempCanvas.width;
-    let drawH = tempCanvas.height;
-    if (imgRatio > boxRatio) {
-      drawH = tempCanvas.width / imgRatio;
-    } else {
-      drawW = tempCanvas.height * imgRatio;
-    }
-    const drawX = (tempCanvas.width - drawW) / 2;
-    const drawY = (tempCanvas.height - drawH) / 2;
-    tempCtx.drawImage(image, drawX, drawY, drawW, drawH);
-    tempCtx.filter = "none";
-    garmentPhotoCache[cacheKey] = tempCanvas;
-  }
-
-  paintCtx.imageSmoothingEnabled = false;
-  paintCtx.drawImage(tempCanvas, frame.x + 10, frame.y + 10, frame.w - 20, frame.h - 20);
+  paintCtx.save();
+  paintCtx.shadowColor = "rgba(0,0,0,0.34)";
+  paintCtx.shadowBlur = 10;
+  paintCtx.shadowOffsetY = 3;
   paintCtx.imageSmoothingEnabled = true;
+  paintCtx.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceW,
+    sourceH,
+    targetX,
+    targetY,
+    targetW,
+    targetH,
+  );
+  paintCtx.restore();
 
-  paintCtx.fillStyle = "rgba(0,0,0,0.24)";
-  paintCtx.fillRect(frame.x + 10, frame.y + 10, frame.w - 20, frame.h - 20);
   paintCtx.strokeStyle = "rgba(255,255,255,0.08)";
-  for (let x = frame.x + 10; x < frame.x + frame.w - 10; x += 12) {
-    paintCtx.beginPath();
-    paintCtx.moveTo(x, frame.y + 10);
-    paintCtx.lineTo(x, frame.y + frame.h - 10);
-    paintCtx.stroke();
-  }
-  for (let y = frame.y + 10; y < frame.y + frame.h - 10; y += 12) {
-    paintCtx.beginPath();
-    paintCtx.moveTo(frame.x + 10, y);
-    paintCtx.lineTo(frame.x + frame.w - 10, y);
-    paintCtx.stroke();
-  }
+  paintCtx.strokeRect(targetX, targetY, targetW, targetH);
 
   paintCtx.restore();
 }
@@ -7319,7 +7315,7 @@ function drawHemmingView() {
     paintCtx.fillText(taskHemmingQualityLabel(task), frame.x + frame.w, frame.y - 26);
     paintCtx.textAlign = "left";
 
-    drawPixelatedGarmentPhoto(task);
+    drawHemmingSpritesheet(task, taskIndex);
 
     paintCtx.strokeStyle = "rgba(205, 184, 156, 0.5)";
     paintCtx.lineWidth = 2;

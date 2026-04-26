@@ -3184,7 +3184,7 @@ function endOfDayReflection() {
       "You think about your family first: six siblings, too many hungry mouths, and you in the middle of them trying to turn one of the few jobs available to women into something steady and respectable. The pay still feels worth chasing. Any soreness in your hand or jaw is easy enough to dismiss as the cost of learning skilled work.";
   } else if (health >= 60) {
     body =
-      "A little unease has begun to trail you home. Your mouth feels tender and your body more tired than it should after sitting at a bench all day, but you keep folding those thoughts away. Your family needs the wage more than you need certainty, and you tell yourself that modern paint and respectable pay cannot possibly be the danger some small frightened part of you imagines.";
+      "A little unease has begun to trail you home. Your mouth feels tender and your body more tired than it should after sitting at a bench all day, but you keep folding those thoughts away. Your family needs the wage more than you need certainty, and you tell yourself that a clean bench and a promised envelope of pay cannot possibly hide the danger some small frightened part of you imagines.";
   } else if (health >= 35) {
     body =
       "The defects are harder to ignore now. Your gums ache, your strength ebbs faster, and you catch yourself wondering whether the glow has left something inside you that will not come back out. Even so, you think of the family depending on you and make the same bargain again: one more day, one more shift, one more envelope of pay before you allow yourself to be afraid.";

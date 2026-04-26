@@ -4426,22 +4426,57 @@ function chooseRandomNumeralStyle(previousStyle = null) {
   return candidates[index] || NUMERAL_STYLE_KEYS[0];
 }
 
-function rowSortComponents(components) {
+const NUMERAL_SHEET_ROW_LAYOUTS = {
+  numeralsStyleBlock: [10],
+  numeralsStyleOrnate: [5, 5],
+};
+
+function groupNumeralComponentsByRow(components) {
   const sorted = [...components].sort((a, b) => (a.minY - b.minY) || (a.minX - b.minX));
   const rows = [];
   for (const component of sorted) {
+    const centerY = (component.minY + component.maxY) / 2;
+    const compHeight = component.maxY - component.minY + 1;
     const last = rows[rows.length - 1];
-    if (!last || component.minY > last.maxY + 48) {
-      rows.push({ maxY: component.maxY, items: [component] });
+    if (!last) {
+      rows.push({ centerY, avgHeight: compHeight, items: [component] });
       continue;
     }
-    last.maxY = Math.max(last.maxY, component.maxY);
+    const tolerance = Math.max(56, last.avgHeight * 0.72, compHeight * 0.72);
+    if (Math.abs(centerY - last.centerY) > tolerance) {
+      rows.push({ centerY, avgHeight: compHeight, items: [component] });
+      continue;
+    }
+    const nextCount = last.items.length + 1;
+    last.centerY = ((last.centerY * last.items.length) + centerY) / nextCount;
+    last.avgHeight = ((last.avgHeight * last.items.length) + compHeight) / nextCount;
     last.items.push(component);
   }
 
-  return rows
-    .flatMap((row) => row.items.sort((a, b) => a.minX - b.minX))
-    .slice(0, NUMERAL_SHEET_DIGITS.length);
+  return rows.map((row) => ({
+    ...row,
+    items: [...row.items].sort((a, b) => a.minX - b.minX),
+  }));
+}
+
+function selectNumeralTemplateComponents(styleKey, rows) {
+  const layout = NUMERAL_SHEET_ROW_LAYOUTS[styleKey];
+  if (layout) {
+    const selected = [];
+    for (let i = 0; i < layout.length && i < rows.length; i += 1) {
+      selected.push(...rows[i].items.slice(0, layout[i]));
+    }
+    if (selected.length >= NUMERAL_SHEET_DIGITS.length) {
+      return selected.slice(0, NUMERAL_SHEET_DIGITS.length);
+    }
+  }
+
+  const ordered = [];
+  for (const row of rows) {
+    ordered.push(...row.items);
+    if (ordered.length >= NUMERAL_SHEET_DIGITS.length) break;
+  }
+  return ordered.slice(0, NUMERAL_SHEET_DIGITS.length);
 }
 
 function extractNumeralTemplates(styleKey) {
@@ -4522,7 +4557,8 @@ function extractNumeralTemplates(styleKey) {
     }
   }
 
-  const ordered = rowSortComponents(components);
+  const rows = groupNumeralComponentsByRow(components);
+  const ordered = selectNumeralTemplateComponents(styleKey, rows);
   if (ordered.length < NUMERAL_SHEET_DIGITS.length) return null;
 
   const templates = {};

@@ -199,7 +199,31 @@ canvas {
   background: rgba(0, 0, 0, 0.78);
 }
 
-.dialog-overlay.hidden,
+.dialog-overlay {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.22s ease, visibility 0s linear 0s;
+}
+
+.dialog-overlay .dialog-box {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.dialog-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s ease, visibility 0s linear 0.18s;
+}
+
+.dialog-overlay.hidden .dialog-box {
+  opacity: 0;
+  transform: translateY(10px) scale(0.985);
+}
+
 .minigame-overlay.hidden,
 .menu-overlay.hidden {
   display: none;

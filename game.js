@@ -403,6 +403,10 @@ const paintState = {
     durationMs: 1080,
     startRadius: 32,
     targetRadius: 11,
+    checkoutActive: false,
+    attemptsUsed: 0,
+    bestGrade: "",
+    bestProgress: 0,
     lastGrade: "",
     lastItemLabel: "",
     lastSavingsTenths: 0,
@@ -3236,6 +3240,10 @@ function loadGameFromLocal(slotIndex = selectedSaveSlotIndex) {
   paintState.groceryTiming.active = false;
   paintState.groceryTiming.itemId = "";
   paintState.groceryTiming.rowIndex = -1;
+  paintState.groceryTiming.checkoutActive = false;
+  paintState.groceryTiming.attemptsUsed = 0;
+  paintState.groceryTiming.bestGrade = "";
+  paintState.groceryTiming.bestProgress = 0;
   paintState.groceryTiming.lastGrade = "";
   paintState.groceryTiming.lastItemLabel = "";
   paintState.groceryTiming.lastSavingsTenths = 0;
@@ -4092,6 +4100,24 @@ function groceryFinishRect() {
   return { ...GROCERY_LAYOUT.finish };
 }
 
+function groceryBackRect() {
+  return {
+    x: GROCERY_LAYOUT.panel.x + 16,
+    y: GROCERY_LAYOUT.finish.y,
+    w: 108,
+    h: GROCERY_LAYOUT.finish.h,
+  };
+}
+
+function groceryBargainRect() {
+  return {
+    x: GROCERY_LAYOUT.panel.x + 16,
+    y: GROCERY_LAYOUT.finish.y - 50,
+    w: GROCERY_LAYOUT.panel.w - 32,
+    h: 38,
+  };
+}
+
 function groceryControlsRect(index) {
   const rect = groceryRowRect(index);
   return {
@@ -4127,6 +4153,15 @@ function groceryCount(id) {
   return gameState.groceryCart[id] || 0;
 }
 
+function bargainGradeLabel(grade) {
+  if (!grade) return "";
+  return timingFeedbackLabel(grade).replace("!", "");
+}
+
+function groceryCartBaseTotalTenths() {
+  return GROCERY_ITEMS.reduce((sum, item) => sum + groceryCount(item.id) * item.priceTenths, 0);
+}
+
 function groceryPurchasedAny(ids) {
   return ids.some((id) => groceryCount(id) > 0);
 }
@@ -4153,19 +4188,19 @@ function groceryReflectionText() {
 }
 
 function updateGroceryStats() {
-  const pendingItem = paintState.groceryTiming.active
-    ? GROCERY_ITEMS.find((item) => item.id === paintState.groceryTiming.itemId)
-    : null;
-  const pendingText = pendingItem
-    ? ` Timing ${pendingItem.label.toLowerCase()}.`
+  const cartTotal = groceryCartBaseTotalTenths();
+  const projectedSavings = groceryCurrentSavingsTenths();
+  const bestDeal = paintState.groceryTiming.bestGrade
+    ? ` Best bargain: ${bargainGradeLabel(paintState.groceryTiming.bestGrade)}${projectedSavings > 0 ? ` (-${formatTenthsCents(projectedSavings)})` : ""}.`
     : "";
-  const lastDeal = paintState.groceryTiming.lastItemLabel
-    ? ` Last deal: ${paintState.groceryTiming.lastItemLabel} ${paintState.groceryTiming.lastGrade}${paintState.groceryTiming.lastSavingsTenths > 0 ? ` (-${formatTenthsCents(paintState.groceryTiming.lastSavingsTenths)})` : " at full price"}.`
+  const attempts = ` Bargains ${paintState.groceryTiming.attemptsUsed}/3.`;
+  const checkoutState = paintState.groceryTiming.checkoutActive
+    ? ` Checkout total ${formatGroceryAmount(cartTotal)}.${projectedSavings > 0 ? ` After bargaining: ${formatGroceryAmount(Math.max(0, cartTotal - projectedSavings))}.` : ""}`
     : "";
   paintStats.textContent =
     `Remaining ${formatGroceryAmount(gameState.groceryFundsTenths)}. ` +
     `Bought ${groceryItemsPurchasedCount()} item${groceryItemsPurchasedCount() === 1 ? "" : "s"}. ` +
-    `${pendingText}${lastDeal} Basket: ${groceryCartSummary()}.`;
+    `Basket: ${groceryCartSummary()}.${attempts}${bestDeal}${checkoutState}`;
 }
 
 function groceryHomeSceneText() {
@@ -4239,6 +4274,10 @@ function openGroceriesTrip() {
   paintState.groceryTiming.durationMs = Math.max(520, Math.round((980 + Math.random() * 360) / minigameSpeedMultiplier()));
   paintState.groceryTiming.startRadius = 32;
   paintState.groceryTiming.targetRadius = 11;
+  paintState.groceryTiming.checkoutActive = false;
+  paintState.groceryTiming.attemptsUsed = 0;
+  paintState.groceryTiming.bestGrade = "";
+  paintState.groceryTiming.bestProgress = 0;
   paintState.groceryTiming.lastGrade = "";
   paintState.groceryTiming.lastItemLabel = "";
   paintState.groceryTiming.lastSavingsTenths = 0;
@@ -4248,21 +4287,19 @@ function openGroceriesTrip() {
   paintPrompt.textContent = groceryReflectionText();
   mixPrompt.textContent =
     `You enter the market with ${formatGroceryAmount(gameState.groceryBudgetTenths)} saved for the week. ` +
-    "Click + on any item to haggle for that purchase. The ring keeps swelling and shrinking; click when it crosses the middle guide to get the deepest discount.";
+    "Click + to add items at their marked price and - to put them back. When the basket is settled, go to checkout and decide whether to spend one of your three bargaining attempts.";
   updateGroceryStats();
   setStationControlsHidden(true);
   minigameOverlay.classList.remove("hidden");
   drawWatchMinigame();
 }
 
-function buyGrocery(item, grade = "bad") {
+function buyGrocery(item) {
   if (!item) return;
-  const discountRate = GROCERY_DISCOUNT_RATES[grade] || 0;
-  const savingsTenths = Math.round(item.priceTenths * discountRate);
-  const finalPriceTenths = Math.max(0, item.priceTenths - savingsTenths);
+  const finalPriceTenths = Math.max(0, item.priceTenths);
   if (gameState.groceryFundsTenths < finalPriceTenths) {
     paintPrompt.textContent =
-      `${item.label} costs ${formatTenthsCents(finalPriceTenths)} after haggling, but only ${formatGroceryAmount(gameState.groceryFundsTenths)} remains in your wallet.`;
+      `${item.label} costs ${formatTenthsCents(finalPriceTenths)}, but only ${formatGroceryAmount(gameState.groceryFundsTenths)} remains in your wallet.`;
     updateGroceryStats();
     return;
   }
@@ -4273,18 +4310,7 @@ function buyGrocery(item, grade = "bad") {
     gameState.groceryPurchasePrices[item.id] = [];
   }
   gameState.groceryPurchasePrices[item.id].push(finalPriceTenths);
-  paintState.groceryTiming.lastItemLabel = item.label;
-  paintState.groceryTiming.lastGrade = grade;
-  paintState.groceryTiming.lastSavingsTenths = savingsTenths;
-  if (grade === "perfect") {
-    paintPrompt.textContent = `Perfect timing. The grocer relents, and ${item.label.toLowerCase()} goes into the basket for ${formatTenthsCents(finalPriceTenths)}.`;
-  } else if (grade === "good") {
-    paintPrompt.textContent = `A good catch. You shave a little off ${item.label.toLowerCase()} before adding it to the basket.`;
-  } else if (grade === "okay") {
-    paintPrompt.textContent = `You only manage a slight concession on ${item.label.toLowerCase()}, but it still helps.`;
-  } else {
-    paintPrompt.textContent = `You miss the moment and pay full price for ${item.label.toLowerCase()}.`;
-  }
+  paintPrompt.textContent = `${item.label} goes into the basket at the marked price. You can still try to bargain the total down when you reach checkout.`;
   updateGroceryStats();
 }
 
@@ -4305,13 +4331,12 @@ function removeGrocery(item) {
   updateGroceryStats();
 }
 
-function groceryTimingCircle(index) {
-  const rect = groceryRowRect(index);
+function groceryTimingCircle() {
   const innerRadius = 11;
   const maxRadius = 32;
   return {
-    x: rect.x + 34,
-    y: rect.y + rect.h / 2,
+    x: 146,
+    y: 356,
     innerRadius,
     maxRadius,
     targetRadius: innerRadius + (maxRadius - innerRadius) * 0.5,
@@ -4322,7 +4347,7 @@ function currentGroceryTimingState() {
   if (!paintState.groceryTiming.active) return null;
   const elapsed = Math.max(0, performance.now() - paintState.groceryTiming.startedAt);
   const cyclePhase = (elapsed % Math.max(1, paintState.groceryTiming.durationMs)) / Math.max(1, paintState.groceryTiming.durationMs);
-  const circle = groceryTimingCircle(paintState.groceryTiming.rowIndex);
+  const circle = groceryTimingCircle();
   const minRadius = Math.min(paintState.groceryTiming.startRadius, paintState.groceryTiming.targetRadius);
   const maxRadius = Math.max(paintState.groceryTiming.startRadius, paintState.groceryTiming.targetRadius);
   const radiusRange = Math.max(1, maxRadius - minRadius);
@@ -4332,8 +4357,6 @@ function currentGroceryTimingState() {
   const closeness = Math.max(0, 1 - Math.abs(pulseRadius - sweetSpotRadius) / (radiusRange * 0.5));
   return {
     active: true,
-    itemId: paintState.groceryTiming.itemId,
-    rowIndex: paintState.groceryTiming.rowIndex,
     progress: closeness,
     cyclePhase,
     x: circle.x,
@@ -4351,6 +4374,39 @@ function groceryTimingGradeFromProgress(progress) {
   if (delta <= GROCERY_TIMING_WINDOWS.good) return "good";
   if (delta <= GROCERY_TIMING_WINDOWS.okay) return "okay";
   return "bad";
+}
+
+function groceryCurrentSavingsTenths() {
+  const bestGrade = paintState.groceryTiming.bestGrade;
+  if (!bestGrade) return 0;
+  const discountRate = GROCERY_DISCOUNT_RATES[bestGrade] || 0;
+  return Math.round(groceryCartBaseTotalTenths() * discountRate);
+}
+
+function groceryCheckoutStatusText() {
+  const attemptsLeft = Math.max(0, 3 - paintState.groceryTiming.attemptsUsed);
+  if (paintState.groceryTiming.bestGrade) {
+    return `Best result so far: ${bargainGradeLabel(paintState.groceryTiming.bestGrade)}. ${attemptsLeft} bargain${attemptsLeft === 1 ? "" : "s"} left.`;
+  }
+  return `No bargain landed yet. ${attemptsLeft} bargain${attemptsLeft === 1 ? "" : "s"} left.`;
+}
+
+function enterGroceryCheckout() {
+  paintState.groceryTiming.checkoutActive = true;
+  paintState.groceryTiming.active = false;
+  paintPrompt.textContent = "You step up to the grocer and decide whether to bargain before you pay.";
+  mixPrompt.textContent =
+    "Choose Bargain if you want to risk one of your three tries on the total. The best timing you land will be kept, and you can pay whenever you like.";
+  updateGroceryStats();
+}
+
+function leaveGroceryCheckout() {
+  paintState.groceryTiming.checkoutActive = false;
+  paintState.groceryTiming.active = false;
+  paintPrompt.textContent = "You step back from the counter and look over the basket again.";
+  mixPrompt.textContent =
+    "Click + to add items, - to put them back, and go to checkout again when you are ready.";
+  updateGroceryStats();
 }
 
 function timingFeedbackLabel(grade) {
@@ -4421,41 +4477,61 @@ function drawTimingFeedback() {
   paintCtx.restore();
 }
 
-function beginGroceryPurchase(item, index) {
-  if (!item) return;
+function beginGroceryBargain() {
   if (paintState.groceryTiming.active) {
-    paintPrompt.textContent = "Finish the pulsing bubble on the open item before haggling for another.";
+    paintPrompt.textContent = "Finish the pulsing bargain already in motion before trying again.";
     updateGroceryStats();
     return;
   }
-  if (gameState.groceryFundsTenths < item.priceTenths) {
-    paintPrompt.textContent =
-      `${item.label} costs ${formatTenthsCents(item.priceTenths)}, but only ${formatGroceryAmount(gameState.groceryFundsTenths)} remains in your wallet.`;
+  if (!paintState.groceryTiming.checkoutActive) {
+    paintPrompt.textContent = "Go to checkout before you try to bargain with the grocer.";
+    updateGroceryStats();
+    return;
+  }
+  if (groceryItemsPurchasedCount() <= 0) {
+    paintPrompt.textContent = "There is nothing in the basket to bargain over yet.";
+    updateGroceryStats();
+    return;
+  }
+  if (paintState.groceryTiming.attemptsUsed >= 3) {
+    paintPrompt.textContent = "You have already used all three bargain attempts for today. Pay now or step back to change the basket.";
     updateGroceryStats();
     return;
   }
   paintState.groceryTiming.active = true;
-  paintState.groceryTiming.itemId = item.id;
-  paintState.groceryTiming.rowIndex = index;
+  paintState.groceryTiming.itemId = "";
+  paintState.groceryTiming.rowIndex = -1;
   paintState.groceryTiming.startedAt = performance.now();
   paintState.groceryTiming.durationMs = Math.max(460, Math.round((960 + Math.random() * 340) / minigameSpeedMultiplier()));
   paintState.groceryTiming.startRadius = 32;
   paintState.groceryTiming.targetRadius = 11;
-  paintPrompt.textContent = `The grocer watches your hand over ${item.label.toLowerCase()}. Click when the pulsing ring passes through the middle guide.`;
+  paintPrompt.textContent = "The grocer watches your face, waiting to see whether you press your luck. Click when the pulsing ring crosses the middle guide.";
   updateGroceryStats();
 }
 
 function resolveGroceryPurchase(reason = "click") {
   const timing = currentGroceryTimingState();
   if (!timing || !timing.active) return false;
-  const item = GROCERY_ITEMS.find((entry) => entry.id === timing.itemId);
   paintState.groceryTiming.active = false;
   paintState.groceryTiming.itemId = "";
   paintState.groceryTiming.rowIndex = -1;
-  if (!item) return false;
   const grade = reason === "timeout" ? "bad" : groceryTimingGradeFromProgress(timing.progress);
+  paintState.groceryTiming.attemptsUsed = Math.min(3, paintState.groceryTiming.attemptsUsed + 1);
+  paintState.groceryTiming.lastGrade = grade;
+  if (timing.progress >= paintState.groceryTiming.bestProgress) {
+    paintState.groceryTiming.bestProgress = timing.progress;
+    paintState.groceryTiming.bestGrade = grade;
+  }
+  paintState.groceryTiming.lastSavingsTenths = groceryCurrentSavingsTenths();
   showTimingFeedback(grade, timing.x, timing.y - Math.max(30, timing.outerRadius + 18));
-  buyGrocery(item, grade);
+  paintPrompt.textContent =
+    `${timingFeedbackLabel(grade)} ${groceryCheckoutStatusText()} ` +
+    `${paintState.groceryTiming.attemptsUsed >= 3 ? "That is the last bargain you get today." : "You can try again, step back to the basket, or pay with the best result you have."}`;
+  mixPrompt.textContent =
+    paintState.groceryTiming.bestGrade
+      ? `If you pay now, the best bargain so far cuts ${formatTenthsCents(groceryCurrentSavingsTenths())} from the total.`
+      : "If you pay now, you will pay the marked total.";
+  updateGroceryStats();
   return true;
 }
 
@@ -4918,9 +4994,19 @@ function showHomeSceneAfterShopping() {
 
 function finishGroceriesTrip() {
   if (paintState.groceryTiming.active) {
-    paintPrompt.textContent = "Finish the pulsing bubble on the current item before you leave the grocer.";
+    paintPrompt.textContent = "Finish the bargain already in motion before you leave the grocer.";
     drawWatchMinigame();
     return;
+  }
+  if (!paintState.groceryTiming.checkoutActive && groceryItemsPurchasedCount() > 0) {
+    enterGroceryCheckout();
+    drawWatchMinigame();
+    return;
+  }
+  const savingsTenths = groceryCurrentSavingsTenths();
+  if (savingsTenths > 0) {
+    gameState.groceryFundsTenths += savingsTenths;
+    paintState.groceryTiming.lastSavingsTenths = savingsTenths;
   }
   gameState.savedFundsTenths = Math.max(0, Math.round(gameState.groceryFundsTenths));
   closeMinigame();
@@ -5023,6 +5109,10 @@ function resetWeek() {
   paintState.groceryTiming.active = false;
   paintState.groceryTiming.itemId = "";
   paintState.groceryTiming.rowIndex = -1;
+  paintState.groceryTiming.checkoutActive = false;
+  paintState.groceryTiming.attemptsUsed = 0;
+  paintState.groceryTiming.bestGrade = "";
+  paintState.groceryTiming.bestProgress = 0;
   paintState.groceryTiming.lastGrade = "";
   paintState.groceryTiming.lastItemLabel = "";
   paintState.groceryTiming.lastSavingsTenths = 0;
@@ -5834,6 +5924,10 @@ function closeMinigame() {
   paintState.fracturePieces = [];
   paintState.draggedPieceIndex = -1;
   paintState.groceryTiming.active = false;
+  paintState.groceryTiming.checkoutActive = false;
+  paintState.groceryTiming.attemptsUsed = 0;
+  paintState.groceryTiming.bestGrade = "";
+  paintState.groceryTiming.bestProgress = 0;
   clearTimingFeedback();
   minigameHeading.textContent = "Watch Painting";
   setStationControlsHidden(false);
@@ -7350,6 +7444,9 @@ function drawGroceriesView() {
   const w = paintCanvas.width;
   const h = paintCanvas.height;
   const groceryTiming = currentGroceryTimingState();
+  const checkoutActive = paintState.groceryTiming.checkoutActive;
+  const cartTotal = groceryCartBaseTotalTenths();
+  const projectedSavings = groceryCurrentSavingsTenths();
 
   paintCtx.clearRect(0, 0, w, h);
   if (!drawAssetCover(assetImages.groceries, 0, 0, w, h, 1)) {
@@ -7407,37 +7504,59 @@ function drawGroceriesView() {
       ["-", controls.minus, count > 0],
       ["+", controls.plus, affordable],
       ]) {
-      paintCtx.fillStyle = enabled ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)";
+      const usable = enabled && !checkoutActive;
+      paintCtx.fillStyle = usable ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)";
       paintCtx.fillRect(box.x, box.y, box.w, box.h);
-      paintCtx.strokeStyle = enabled ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.12)";
+      paintCtx.strokeStyle = usable ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.12)";
       paintCtx.strokeRect(box.x, box.y, box.w, box.h);
-      paintCtx.fillStyle = enabled ? "#f5f5f5" : "rgba(255,255,255,0.34)";
+      paintCtx.fillStyle = usable ? "#f5f5f5" : "rgba(255,255,255,0.34)";
       paintCtx.fillText(symbol, box.x + box.w / 2, box.y + box.h / 2 + 1);
     }
 
     paintCtx.textAlign = "left";
+  }
 
-    const timingCircle = groceryTimingCircle(i);
-    paintCtx.save();
-    paintCtx.strokeStyle = "rgba(255,255,255,0.08)";
+  const circle = groceryTimingCircle();
+  paintCtx.save();
+  paintCtx.fillStyle = "rgba(8, 8, 8, 0.54)";
+  paintCtx.fillRect(26, 204, 244, 250);
+  paintCtx.strokeStyle = "rgba(255,255,255,0.14)";
+  paintCtx.strokeRect(26, 204, 244, 250);
+  paintCtx.textAlign = "center";
+  paintCtx.textBaseline = "middle";
+  paintCtx.fillStyle = "rgba(255,255,255,0.9)";
+  paintCtx.font = "22px Georgia";
+  paintCtx.fillText(checkoutActive ? "CHECKOUT" : "BASKET", 148, 232);
+  paintCtx.font = "14px Georgia";
+  paintCtx.fillStyle = "rgba(255,255,255,0.8)";
+  paintCtx.fillText(`Marked total: ${formatGroceryAmount(cartTotal)}`, 148, 266);
+  if (checkoutActive) {
+    paintCtx.fillText(groceryCheckoutStatusText(), 148, 292);
+    if (paintState.groceryTiming.bestGrade) {
+      paintCtx.fillText(`Projected savings: ${formatTenthsCents(projectedSavings)}`, 148, 318);
+      paintCtx.fillText(`Pay after bargain: ${formatGroceryAmount(Math.max(0, cartTotal - projectedSavings))}`, 148, 344);
+    } else {
+      paintCtx.fillText("No bargain saved yet.", 148, 318);
+      paintCtx.fillText("Pay now to accept the marked total.", 148, 344);
+    }
+
+    paintCtx.strokeStyle = "rgba(255,255,255,0.1)";
     paintCtx.lineWidth = 1.5;
     paintCtx.beginPath();
-    paintCtx.arc(timingCircle.x, timingCircle.y, timingCircle.maxRadius, 0, Math.PI * 2);
+    paintCtx.arc(circle.x, circle.y, circle.maxRadius, 0, Math.PI * 2);
     paintCtx.stroke();
-    paintCtx.strokeStyle = "rgba(217, 245, 122, 0.42)";
+    paintCtx.strokeStyle = "rgba(217, 245, 122, 0.38)";
     paintCtx.setLineDash([4, 4]);
     paintCtx.beginPath();
-    paintCtx.arc(timingCircle.x, timingCircle.y, timingCircle.targetRadius, 0, Math.PI * 2);
+    paintCtx.arc(circle.x, circle.y, circle.targetRadius, 0, Math.PI * 2);
     paintCtx.stroke();
     paintCtx.setLineDash([]);
-    paintCtx.fillStyle = "rgba(255,255,255,0.2)";
+    paintCtx.fillStyle = "rgba(255,255,255,0.25)";
     paintCtx.beginPath();
-    paintCtx.arc(timingCircle.x, timingCircle.y, 2.2, 0, Math.PI * 2);
+    paintCtx.arc(circle.x, circle.y, 2.4, 0, Math.PI * 2);
     paintCtx.fill();
-    paintCtx.restore();
 
-    if (timingHere) {
-      paintCtx.save();
+    if (groceryTiming && groceryTiming.active) {
       paintCtx.strokeStyle = "rgba(246, 255, 197, 0.96)";
       paintCtx.lineWidth = 3;
       paintCtx.beginPath();
@@ -7451,14 +7570,21 @@ function drawGroceriesView() {
       paintCtx.stroke();
       paintCtx.setLineDash([]);
       paintCtx.fillStyle = "rgba(255,255,255,0.8)";
-      paintCtx.font = "12px Georgia";
-      paintCtx.textAlign = "left";
-      paintCtx.fillText("hit the middle ring", rect.x + 68, rect.y + rect.h / 2);
-      paintCtx.restore();
+      paintCtx.fillText("hit the middle ring", 148, 416);
+    } else {
+      paintCtx.fillStyle = "rgba(255,255,255,0.76)";
+      paintCtx.fillText("Best result sticks. You can try up to three times.", 148, 416);
     }
+  } else {
+    paintCtx.fillText("Build the basket first, then decide whether to bargain at checkout.", 148, 306);
+    paintCtx.fillText("Removing items will not restore spent bargain attempts.", 148, 334);
   }
+  paintCtx.restore();
 
   const finish = groceryFinishRect();
+  const finishLabel = checkoutActive
+    ? (groceryItemsPurchasedCount() > 0 ? "Pay now" : "Leave market")
+    : (groceryItemsPurchasedCount() > 0 ? "Go to checkout" : "Leave market");
   paintCtx.fillStyle = "rgba(217, 245, 122, 0.16)";
   paintCtx.fillRect(finish.x, finish.y, finish.w, finish.h);
   paintCtx.strokeStyle = "rgba(217, 245, 122, 0.7)";
@@ -7466,7 +7592,31 @@ function drawGroceriesView() {
   paintCtx.textAlign = "center";
   paintCtx.fillStyle = "#f5f5f5";
   paintCtx.font = "18px Georgia";
-  paintCtx.fillText("Finish shopping", finish.x + finish.w / 2, finish.y + finish.h / 2);
+  paintCtx.fillText(finishLabel, finish.x + finish.w / 2, finish.y + finish.h / 2);
+
+  if (checkoutActive) {
+    const back = groceryBackRect();
+    const bargain = groceryBargainRect();
+    const canBargain = groceryItemsPurchasedCount() > 0 && paintState.groceryTiming.attemptsUsed < 3;
+    const bargainLabel = canBargain
+      ? (paintState.groceryTiming.attemptsUsed === 0 ? "Bargain (3 tries)" : `Bargain again (${3 - paintState.groceryTiming.attemptsUsed} left)`)
+      : (paintState.groceryTiming.bestGrade ? `Best kept: ${bargainGradeLabel(paintState.groceryTiming.bestGrade)}` : "No bargains left");
+
+    paintCtx.fillStyle = "rgba(255,255,255,0.1)";
+    paintCtx.fillRect(back.x, back.y, back.w, back.h);
+    paintCtx.strokeStyle = "rgba(255,255,255,0.34)";
+    paintCtx.strokeRect(back.x, back.y, back.w, back.h);
+    paintCtx.fillStyle = "#f5f5f5";
+    paintCtx.fillText("Back to cart", back.x + back.w / 2, back.y + back.h / 2);
+
+    paintCtx.fillStyle = canBargain ? "rgba(255, 231, 150, 0.16)" : "rgba(255,255,255,0.06)";
+    paintCtx.fillRect(bargain.x, bargain.y, bargain.w, bargain.h);
+    paintCtx.strokeStyle = canBargain ? "rgba(255, 231, 150, 0.62)" : "rgba(255,255,255,0.16)";
+    paintCtx.strokeRect(bargain.x, bargain.y, bargain.w, bargain.h);
+    paintCtx.fillStyle = canBargain ? "#fff2bf" : "rgba(255,255,255,0.52)";
+    paintCtx.font = "16px Georgia";
+    paintCtx.fillText(bargainLabel, bargain.x + bargain.w / 2, bargain.y + bargain.h / 2);
+  }
 
   paintCtx.textAlign = "left";
   paintCtx.fillStyle = "rgba(255,255,255,0.92)";
@@ -7474,12 +7624,14 @@ function drawGroceriesView() {
   paintCtx.fillText(`Wallet: ${formatGroceryAmount(gameState.groceryFundsTenths)}`, 36, 74);
   paintCtx.font = "14px Georgia";
   if (groceryTiming && groceryTiming.active) {
-    const activeItem = GROCERY_ITEMS.find((item) => item.id === groceryTiming.itemId);
-    paintCtx.fillText(`Haggling: ${activeItem ? activeItem.label : "item"}`, 36, 102);
+    paintCtx.fillText(`Bargain attempt ${paintState.groceryTiming.attemptsUsed + 1} of 3`, 36, 102);
     paintCtx.fillText("Click when the pulsing ring crosses the middle guide.", 36, 128);
+  } else if (checkoutActive) {
+    paintCtx.fillText("Checkout is open. Choose whether to bargain again, pay now, or step back to the basket.", 36, 102);
+    paintCtx.fillText(`Best saved result: ${bargainGradeLabel(paintState.groceryTiming.bestGrade) || "none yet"}.`, 36, 128);
   } else {
-    paintCtx.fillText("Click + on an item to haggle that purchase.", 36, 102);
-    paintCtx.fillText("Perfect timing lands at the middle of the pulse, not the smallest point.", 36, 128);
+    paintCtx.fillText("Click + to add at the marked price. Bargaining happens later, when you choose checkout.", 36, 102);
+    paintCtx.fillText("You only get three bargain attempts for the whole trip, even if you go back and change the basket.", 36, 128);
   }
   paintCtx.fillText(`Basket: ${groceryCartSummary()}`, 36, 154);
   drawTimingFeedback();
@@ -8547,8 +8699,7 @@ function handlePaintCanvasPress(event) {
       if (Math.hypot(position.x - groceryTiming.x, position.y - groceryTiming.y) <= hitRadius) {
         resolveGroceryPurchase("click");
       } else {
-        const activeItem = GROCERY_ITEMS.find((item) => item.id === groceryTiming.itemId);
-        paintPrompt.textContent = `Keep your eye on ${activeItem ? activeItem.label.toLowerCase() : "the item"} and click the pulsing bubble.`;
+        paintPrompt.textContent = "Keep your eye on the pulsing bargain ring and click when it crosses the middle guide.";
         updateGroceryStats();
       }
       drawWatchMinigame();
@@ -8561,13 +8712,29 @@ function handlePaintCanvasPress(event) {
       return;
     }
 
+    if (paintState.groceryTiming.checkoutActive) {
+      const back = groceryBackRect();
+      const bargain = groceryBargainRect();
+      if (pointInsideRect(position.x, position.y, back)) {
+        leaveGroceryCheckout();
+        drawWatchMinigame();
+        return;
+      }
+      if (pointInsideRect(position.x, position.y, bargain)) {
+        beginGroceryBargain();
+        drawWatchMinigame();
+        return;
+      }
+      return;
+    }
+
     const rowHit = groceryItemAt(position.x, position.y);
     if (rowHit) {
       const controls = groceryControlsRect(rowHit.index);
       if (pointInsideRect(position.x, position.y, controls.minus)) {
         removeGrocery(rowHit.item);
       } else if (pointInsideRect(position.x, position.y, controls.plus)) {
-        beginGroceryPurchase(rowHit.item, rowHit.index);
+        buyGrocery(rowHit.item);
       }
       drawWatchMinigame();
     }

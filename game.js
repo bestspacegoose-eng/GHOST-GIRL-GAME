@@ -213,6 +213,32 @@ const HEMMING_SIBLING_REACTION_TABLE = {
     perfect: "Maggie delights in the tidier apron at once, holding it up by the straps as though it has turned back into her favorite thing.",
   },
 };
+const HEMMING_IMMEDIATE_REACTION_TABLE = {
+  dress: {
+    bad: "You hold up your blue dress and wince. The seam is closed, but only barely, and the cloth shows every tired place in your hand.",
+    okay: "You smooth your blue dress over your lap and tell yourself it will hold for now, even if the hem still wanders.",
+    good: "You lift your blue dress by the hem and feel a little steadier. The new line sits cleanly enough to trust through tomorrow.",
+    perfect: "You hold your blue dress to the light and let yourself enjoy it for a second. The hem lies so neatly it almost feels like getting something back.",
+  },
+  elly: {
+    bad: "Elly turns the skirt edge through her fingers and says, \"It'll still get me through class.\" She means to be grateful, but she hears the roughness too.",
+    okay: "Elly presses the school skirt flat and gives you a quick nod. \"It's all right. Better than it was this morning.\"",
+    good: "Elly smiles the moment the skirt is back in her hands. \"This should hold,\" she says, already sounding less worried about tomorrow.",
+    perfect: "Elly beams and runs both palms over the hem. \"It looks nearly new,\" she says, delighted enough to forget how tired you both are.",
+  },
+  denny: {
+    bad: "Denny gives the shirt hem a careful tug and says, \"I can make this do.\" The words are brave, even if the seam still looks fragile.",
+    okay: "Denny checks the line of stitches with a thoughtful squint, then nods once. \"That's plenty better,\" he says.",
+    good: "Denny pulls the shirt hem straight, tests it, and grins. \"That'll last,\" he says, sounding relieved more than anything.",
+    perfect: "Denny gives the repaired hem an approving snap between his fingers. \"Now that's proper work,\" he says with a grin he can't hide.",
+  },
+  maggie: {
+    bad: "Maggie hugs the apron to her middle anyway. \"I still like it,\" she says softly, trying to rescue the moment for you.",
+    okay: "Maggie tilts the apron, studies the stitches, and smiles in that small careful way of hers. \"It looks better,\" she says.",
+    good: "Maggie brightens at once and lifts the apron by its straps. \"It's nice again,\" she says, pleased enough to rock on her heels.",
+    perfect: "Maggie gasps when she sees the finished edge and holds the apron up like a prize. \"It's beautiful,\" she says, all simple certainty.",
+  },
+};
 const HEMMING_GRADE_ORDER = ["bad", "okay", "good", "perfect"];
 const HEMMING_TIMING_WINDOWS = {
   perfect: 0.045,
@@ -884,17 +910,130 @@ const WORKER_SHIFT_CHOICE_DIALOGUE = {
       "When you ask how she's holding up, Vi admits she plans around her shaking now, as if naming it a habit might keep it from becoming something worse.",
   },
 };
-const WORKER_CONVERSATION_OPTIONS = {
-  shift: [
-    { id: "work", label: "Ask about the brushwork" },
-    { id: "wry", label: "Offer a dry joke" },
-    { id: "personal", label: "Ask how she's holding up" },
-  ],
-  afterShift: [
-    { id: "work", label: "Talk about the shift" },
-    { id: "wry", label: "Try a dry joke" },
-    { id: "home", label: "Ask about home" },
-  ],
+const WORKER_DIALOGUE_TOPICS = {
+  "worker-1": {
+    bench: "your first tray",
+    detail: "counting the curve under your breath",
+    joke: "numerals marching home in your sleep",
+    tell: "how tightly you keep your shoulders set",
+    home: "who gets your pay envelope first",
+  },
+  "worker-2": {
+    bench: "those inside edges",
+    detail: "keeping the ones and tens light",
+    joke: "the manager taxing the air in here",
+    tell: "how fast you're forcing your hands to move",
+    home: "what your brother says about the glow on your cuffs",
+  },
+  "worker-3": {
+    bench: "a tray when you're half teasing it",
+    detail: "pulling the second digit on the elevens",
+    joke: "this row mistaking you for a saint",
+    tell: "what the joking is covering up today",
+    home: "whether the room feels worse once it goes quiet",
+  },
+  "worker-4": {
+    bench: "a dial that still needs weight",
+    detail: "getting the mixture to drag instead of glide",
+    joke: "paint being easier company than management",
+    tell: "how much routine is carrying you now",
+    home: "what people hear when they call this work a blessing",
+  },
+  "worker-5": {
+    bench: "a face when you're trying not to waste a stroke",
+    detail: "saving the second pass after a mistake",
+    joke: "smiling without sending the line crooked",
+    tell: "how much patience you have left after the factory",
+    home: "the mending waiting for you after the bell",
+  },
+  "worker-6": {
+    bench: "a face under the kinder lamp",
+    detail: "letting the sixes turn without forcing them",
+    joke: "the lamps following us home to finish the chores",
+    tell: "how much of the ache you're still pretending is ordinary",
+    home: "whether home feels any quieter than this room",
+  },
+  "worker-7": {
+    bench: "a tray when the manager starts prowling",
+    detail: "recovering after a bad first stroke",
+    joke: "earning enough to mock this place properly",
+    tell: "what you do with the feelings that follow the tasks home",
+    home: "how much work is still waiting when you get in",
+  },
+  "worker-8": {
+    bench: "a bowl that wants to turn thin",
+    detail: "keeping the paint bright without pressing too hard",
+    joke: "the glow outlasting all of us",
+    tell: "what you try to leave at the washbasin each night",
+    home: "what the younger children make of the shine on your cuffs",
+  },
+  "worker-9": {
+    bench: "a face when your hand starts to shake",
+    detail: "using less paint on the inside edge",
+    joke: "sleeping through the dark for once",
+    tell: "how long you've been planning around the tremor",
+    home: "why you still hide the glow before you reach the washbasin",
+  },
+};
+const WORKER_CONVERSATION_TEMPLATES = {
+  shift: {
+    work: [
+      "How do you keep {bench} so even?",
+      "Will you show me what you do first when {detail} starts going wrong?",
+      "What do you watch for before you trust {bench}?",
+      "When the paint turns mean, what saves {bench}?",
+      "At this point, what matters more for {bench}: speed or nerve?",
+      "If I stole one habit from you at the bench, should it be {detail}?",
+      "If I only remember one lesson about {bench}, what should it be?",
+    ],
+    wry: [
+      "Do you think {joke}, or is it too early for that?",
+      "If {joke} were part of the pay, would any of us be rich by now?",
+      "Do you ever laugh about {joke}, or only after the lamps go dark?",
+      "At what point does {joke} stop sounding funny and start sounding true?",
+      "Should I treat {joke} as a warning or as the only joke this room deserves?",
+      "If we survive the week, do we finally earn the right to joke about {joke}?",
+      "When you think about {joke}, do you laugh first or flinch first?",
+    ],
+    personal: [
+      "Are you always this good at hiding {tell}?",
+      "How are you managing {tell} today?",
+      "Do you want to tell the truth about {tell}, or should I leave it alone?",
+      "Has {tell} been worse since the week began?",
+      "When did {tell} stop feeling temporary?",
+      "Do you still know what rest feels like beneath {tell}?",
+      "What have you been telling yourself about {tell} just to get through?",
+    ],
+  },
+  afterShift: {
+    work: [
+      "When you think back on today, what part of {bench} are you still replaying?",
+      "Did {detail} behave any better once the manager stopped circling?",
+      "Was there a moment today when {bench} finally felt easy?",
+      "What part of {bench} took the most out of you today?",
+      "If tomorrow starts badly, what would you fix first on {bench}?",
+      "Do you still trust yourself more than the paint when it comes to {detail}?",
+      "After a week like this, what does good work on {bench} even feel like to you?",
+    ],
+    wry: [
+      "Do you think {joke} once you get outside, or does it stay in the room?",
+      "If {joke} were printed on the tally sheet, would the manager finally notice us?",
+      "Is it wrong that {joke} is the funniest part of the day to me?",
+      "Do you ever think {joke} is the room's idea of a personality?",
+      "At this point, is {joke} a warning or the only joke left to us?",
+      "If we had any strength left, would {joke} still make us laugh?",
+      "After a week of this, does {joke} land as humor or prophecy?",
+    ],
+    home: [
+      "Who usually sees {home} before you even get to sit down?",
+      "What does home sound like once {home} starts waiting for you?",
+      "Do you think about {home} all shift, or only once the bell goes?",
+      "Has {home} gotten easier to answer, or harder?",
+      "When you walk in carrying this week on you, does {home} come before anybody asks how you are?",
+      "Does {home} make it easier to keep showing up, or only harder to stop?",
+      "After a week like this, what truth do you hide first when {home} is waiting on the other side of the door?",
+    ],
+  },
 };
 const FAMILIAR_WORKERS_REQUIRED = 3;
 const SHIFT_CONVERSATION_DAY_FRAMES = [
@@ -3693,6 +3832,12 @@ function siblingReactionForTask(task, name, garment) {
   return `${name} says thank you anyway, but keeps tracing the rough seam on the ${garment} with uncertain fingers.`;
 }
 
+function immediateHemmingReactionForTask(task) {
+  const key = hemmingTaskNarrativeKey(task);
+  const outcome = hemmingTaskOutcomeKey(task);
+  return HEMMING_IMMEDIATE_REACTION_TABLE[key]?.[outcome] || "";
+}
+
 function parentsReactionForHemming(completed, total, counts) {
   const strongWork = counts.perfect + counts.good;
   const weakWork = counts.bad + counts.okay;
@@ -3790,15 +3935,22 @@ function resolveHemmingTiming() {
       : grade === "okay"
         ? "okay"
         : "bad";
+  let immediateReaction = "";
   if (task.stitchesDone >= task.stitchesNeeded) {
     paintPrompt.textContent = `${task.label} finished with ${taskHemmingQualityLabel(task).toLowerCase()} stitching.`;
+    immediateReaction = immediateHemmingReactionForTask(task);
+    if (immediateReaction) {
+      mixPrompt.textContent = immediateReaction;
+    }
   } else {
     paintPrompt.textContent = `${gradeWord.toUpperCase()} timing. Continue along ${task.label}.`;
   }
 
   updateHemmingStats();
   if (hemmingAllFinished()) {
-    mixPrompt.textContent = "Every hem is stitched. Finish chores when you're ready to head to bed.";
+    mixPrompt.textContent = immediateReaction
+      ? `${immediateReaction} Every hem is stitched now. Finish chores when you're ready to head to bed.`
+      : "Every hem is stitched. Finish chores when you're ready to head to bed.";
   }
   return true;
 }
@@ -6424,7 +6576,7 @@ function drawGroceriesView() {
       paintCtx.strokeStyle = "rgba(246, 255, 197, 0.96)";
       paintCtx.lineWidth = 3;
       paintCtx.beginPath();
-      paintCtx.arc(groceryTiming.x, groceryTiming.y, Math.max(groceryTiming.targetRadius, groceryTiming.outerRadius), 0, Math.PI * 2);
+      paintCtx.arc(groceryTiming.x, groceryTiming.y, groceryTiming.outerRadius, 0, Math.PI * 2);
       paintCtx.stroke();
       paintCtx.strokeStyle = "rgba(255, 226, 146, 0.92)";
       paintCtx.lineWidth = 2;

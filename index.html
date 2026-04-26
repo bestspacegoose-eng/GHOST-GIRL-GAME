@@ -72,4 +72,64 @@
               <button id="correctButton" class="station-button" type="button">Switch to fingernails</button>
               <button id="lickButton" class="station-button" type="button">Sharpen brush</button>
               <button id="checkNumeralButton" class="station-button" type="button">Check numeral</button>
-              <b
+              <button id="restHandButton" class="station-button hidden" type="button">Rest hand on side</button>
+              <button id="mixResetButton" class="station-button" type="button">Empty the dish</button>
+            </div>
+          </div>
+
+          <div class="watch-stage">
+            <canvas id="paintCanvas" width="640" height="640" aria-label="watch painting table"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="menu-overlay hidden" id="menuOverlay" aria-live="polite">
+        <div class="menu-panel">
+          <h2>GAME MENU</h2>
+          <p id="menuStatus" class="menu-status">No local save found.</p>
+          <div class="menu-audio" aria-label="audio controls">
+            <label class="menu-slider-row" for="musicVolumeSlider">
+              <span>Music volume</span>
+              <span id="musicVolumeValue">32%</span>
+            </label>
+            <input id="musicVolumeSlider" class="menu-slider" type="range" min="0" max="100" step="1" value="32" />
+            <label class="menu-slider-row" for="sfxVolumeSlider">
+              <span>Sound effects</span>
+              <span id="sfxVolumeValue">70%</span>
+            </label>
+            <input id="sfxVolumeSlider" class="menu-slider" type="range" min="0" max="100" step="1" value="70" />
+          </div>
+          <div class="menu-actions">
+            <button id="saveButton" type="button">Save locally</button>
+            <button id="loadButton" type="button">Load local save</button>
+            <button id="deleteSaveButton" type="button">Delete local save</button>
+            <button id="newWeekButton" type="button">Start new week</button>
+            <button id="closeMenuButton" type="button">Close menu</button>
+          </div>
+          <section class="menu-log" aria-label="text log">
+            <h3>Text log</h3>
+            <p class="menu-log-copy">Dialogue, status updates, and bench instructions you have already seen are collected here.</p>
+            <div id="textLogList" class="text-log-list">
+              <p class="text-log-empty">No logged text yet.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <iframe
+        id="bgMusic"
+        class="youtube-player-host"
+        src="https://www.youtube.com/embed/x2aUyoujeUM?autoplay=1&loop=1&playlist=x2aUyoujeUM&controls=0&disablekb=1&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&mute=1"
+        title="Background music"
+        allow="autoplay; encrypted-media"
+        referrerpolicy="strict-origin-when-cross-origin"
+        loading="eager"
+        tabindex="-1"
+        aria-hidden="true"
+      ></iframe>
+    </main>
+
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>

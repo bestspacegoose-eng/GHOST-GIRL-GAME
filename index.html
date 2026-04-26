@@ -47,6 +47,11 @@
         <div class="dialog-box">
           <p id="dialogTitle">Shift manager</p>
           <p id="dialogBody">Good evening.</p>
+          <div id="dialogPager" class="dialog-pager hidden" aria-label="dialogue navigation">
+            <button id="dialogPrevButton" class="dialog-page-button" type="button" aria-label="Previous section">←</button>
+            <p id="dialogPageIndicator">1 / 1</p>
+            <button id="dialogNextButton" class="dialog-page-button" type="button" aria-label="Next section">→</button>
+          </div>
           <button id="dialogAltButton" class="hidden" type="button">Alternative</button>
           <button id="dialogThirdButton" class="hidden" type="button">Third option</button>
           <button id="dialogButton" type="button">Continue</button>
@@ -67,57 +72,4 @@
               <button id="correctButton" class="station-button" type="button">Switch to fingernails</button>
               <button id="lickButton" class="station-button" type="button">Sharpen brush</button>
               <button id="checkNumeralButton" class="station-button" type="button">Check numeral</button>
-              <button id="restHandButton" class="station-button hidden" type="button">Rest hand on side</button>
-              <button id="mixResetButton" class="station-button" type="button">Empty the dish</button>
-            </div>
-          </div>
-
-          <div class="watch-stage">
-            <canvas id="paintCanvas" width="640" height="640" aria-label="watch painting table"></canvas>
-          </div>
-        </div>
-      </section>
-
-      <section class="menu-overlay hidden" id="menuOverlay" aria-live="polite">
-        <div class="menu-panel">
-          <h2>GAME MENU</h2>
-          <p id="menuStatus" class="menu-status">No local save found.</p>
-          <div class="menu-audio" aria-label="audio controls">
-            <label class="menu-slider-row" for="musicVolumeSlider">
-              <span>Music volume</span>
-              <span id="musicVolumeValue">32%</span>
-            </label>
-            <input id="musicVolumeSlider" class="menu-slider" type="range" min="0" max="100" step="1" value="32" />
-            <label class="menu-slider-row" for="sfxVolumeSlider">
-              <span>Sound effects</span>
-              <span id="sfxVolumeValue">70%</span>
-            </label>
-            <input id="sfxVolumeSlider" class="menu-slider" type="range" min="0" max="100" step="1" value="70" />
-          </div>
-          <div class="menu-actions">
-            <button id="saveButton" type="button">Save locally</button>
-            <button id="loadButton" type="button">Load local save</button>
-            <button id="deleteSaveButton" type="button">Delete local save</button>
-            <button id="newWeekButton" type="button">Start new week</button>
-            <button id="closeMenuButton" type="button">Close menu</button>
-          </div>
-        </div>
-      </section>
-
-      <iframe
-        id="bgMusic"
-        class="youtube-player-host"
-        src="https://www.youtube.com/embed/x2aUyoujeUM?autoplay=1&loop=1&playlist=x2aUyoujeUM&controls=0&disablekb=1&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&mute=1"
-        title="Background music"
-        allow="autoplay; encrypted-media"
-        referrerpolicy="strict-origin-when-cross-origin"
-        loading="eager"
-        tabindex="-1"
-        aria-hidden="true"
-      ></iframe>
-    </main>
-
-    <script src="https://www.youtube.com/iframe_api"></script>
-    <script src="./game.js"></script>
-  </body>
-</html>
+              <b

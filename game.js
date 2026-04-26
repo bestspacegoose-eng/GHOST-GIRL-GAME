@@ -13,6 +13,10 @@ const titleCardText = document.getElementById("titleCardText");
 const dialogOverlay = document.getElementById("dialogOverlay");
 const dialogTitle = document.getElementById("dialogTitle");
 const dialogBody = document.getElementById("dialogBody");
+const dialogPager = document.getElementById("dialogPager");
+const dialogPrevButton = document.getElementById("dialogPrevButton");
+const dialogPageIndicator = document.getElementById("dialogPageIndicator");
+const dialogNextButton = document.getElementById("dialogNextButton");
 const dialogAltButton = document.getElementById("dialogAltButton");
 const dialogThirdButton = document.getElementById("dialogThirdButton");
 const dialogButton = document.getElementById("dialogButton");
@@ -42,6 +46,7 @@ const loadButton = document.getElementById("loadButton");
 const deleteSaveButton = document.getElementById("deleteSaveButton");
 const newWeekButton = document.getElementById("newWeekButton");
 const closeMenuButton = document.getElementById("closeMenuButton");
+const textLogList = document.getElementById("textLogList");
 const bgMusic = document.getElementById("bgMusic");
 
 const WIDTH = canvas.width;
@@ -77,6 +82,8 @@ const COMPLETION_BELL_RETRIGGER_MS = 180;
 const COMPLETION_BELL_MAX_PLAY_MS = 2000;
 const BACKGROUND_MUSIC_VIDEO_ID = "x2aUyoujeUM";
 const GUARANTEED_THRESHOLD_THOUGHT = "Why does my hand feel unsteady already? It shouldn't be this hard to hold a straight line.";
+const DIALOG_PAGE_CHARACTER_LIMIT = 270;
+const TEXT_LOG_LIMIT = 360;
 const DEFAULT_BRUSH_SIZE = 0.22;
 const BRUSH_ROUGH_THRESHOLD = 0.95;
 const BRUSH_FANNED_THRESHOLD = 1.45;
@@ -293,6 +300,7 @@ const gameState = {
   workerProgress: {},
   tutorialSeen: false,
   handRestUnlocked: false,
+  textLog: [],
 };
 
 const paintState = {
@@ -375,6 +383,13 @@ const backgroundMusicState = {
 const audioSettings = {
   musicVolume: 32,
   sfxVolume: 70,
+};
+
+const dialogPageState = {
+  pages: [""],
+  index: 0,
+  title: "",
+  fullText: "",
 };
 
 const TUTORIAL_STEPS = [
@@ -1359,6 +1374,7 @@ function configureDialogChoiceButton(button, text, choiceId = "") {
   button.textContent = text;
   button.dataset.choiceId = choiceId;
   button.classList.remove("hidden");
+  syncDialogActionButtons();
 }
 
 function openWorkerConversation(id, context = "shift") {
@@ -1379,8 +1395,10 @@ function openWorkerConversation(id, context = "shift") {
 
   const choices = workerConversationChoices(context);
   resetDialogButtons();
-  dialogTitle.textContent = workerConversationTitle(id, context, relationship);
-  dialogBody.textContent = workerConversationPrompt(id, context, relationship);
+  setDialogContent(
+    workerConversationTitle(id, context, relationship),
+    workerConversationPrompt(id, context, relationship),
+  );
   configureDialogChoiceButton(dialogAltButton, choices[0].label, choices[0].id);
   configureDialogChoiceButton(dialogThirdButton, choices[1].label, choices[1].id);
   configureDialogChoiceButton(dialogButton, choices[2].label, choices[2].id);
@@ -1392,8 +1410,10 @@ function resolveWorkerConversationChoice(choiceId) {
   if (!workerConversationState) return;
   const { workerId, context } = workerConversationState;
   resetDialogButtons();
-  dialogTitle.textContent = workerConversationTitle(workerId, context);
-  dialogBody.textContent = workerConversationResponse(workerId, context, choiceId);
+  setDialogContent(
+    workerConversationTitle(workerId, context),
+    workerConversationResponse(workerId, context, choiceId),
+  );
   dialogButton.textContent = context === "afterShift" ? "Continue to chores" : "Back to the room";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "worker-talk-result";
@@ -1796,6 +1816,255 @@ function initializeAudioSettings() {
   applyAudioSettings();
 }
 
+function currentDayLogLabel(dayIndex = gameState.currentDay) {
+  const safeDay = Math.max(0, Math.min(DAY_NAMES.length - 1, Number(dayIndex || 0)));
+  return `${DAY_NAMES[safeDay]} - DAY ${safeDay + 1}`;
+}
+
+function normalizeLogText(text) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function appendTextLog(title, body, source = "Log") {
+  const normalizedTitle = normalizeLogText(title);
+  const normalizedBody = normalizeLogText(body);
+  if (!normalizedTitle && !normalizedBody) return;
+
+  const entry = {
+    source,
+    title: normalizedTitle,
+    body: normalizedBody,
+    dayIndex: Math.max(0, Math.min(DAY_NAMES.length - 1, gameState.currentDay)),
+    dayLabel: currentDayLogLabel(),
+  };
+
+  const lastEntry = gameState.textLog[gameState.textLog.length - 1];
+  if (
+    lastEntry
+    && lastEntry.source === entry.source
+    && lastEntry.title === entry.title
+    && lastEntry.body === entry.body
+    && lastEntry.dayIndex === entry.dayIndex
+  ) {
+    return;
+  }
+
+  gameState.textLog.push(entry);
+  if (gameState.textLog.length > TEXT_LOG_LIMIT) {
+    gameState.textLog.splice(0, gameState.textLog.length - TEXT_LOG_LIMIT);
+  }
+
+  if (isMenuOpen()) {
+    renderTextLog();
+  }
+}
+
+function renderTextLog() {
+  if (!textLogList) return;
+  textLogList.replaceChildren();
+
+  if (!Array.isArray(gameState.textLog) || gameState.textLog.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "text-log-empty";
+    empty.textContent = "No logged text yet.";
+    textLogList.appendChild(empty);
+    return;
+  }
+
+  const entries = gameState.textLog.slice().reverse();
+  for (const entry of entries) {
+    const article = document.createElement("article");
+    article.className = "text-log-entry";
+
+    const meta = document.createElement("p");
+    meta.className = "text-log-meta";
+    meta.textContent = `${entry.source} · ${entry.dayLabel}`;
+    article.appendChild(meta);
+
+    if (entry.title) {
+      const title = document.createElement("h3");
+      title.className = "text-log-title";
+      title.textContent = entry.title;
+      article.appendChild(title);
+    }
+
+    if (entry.body) {
+      const body = document.createElement("p");
+      body.className = "text-log-body";
+      body.textContent = entry.body;
+      article.appendChild(body);
+    }
+
+    textLogList.appendChild(article);
+  }
+}
+
+function observeLoggedTextNode(element, source, titleResolver = null) {
+  if (!element) return;
+  let previous = normalizeLogText(element.textContent);
+  const observer = new MutationObserver(() => {
+    const current = normalizeLogText(element.textContent);
+    if (!current || current === previous) return;
+    previous = current;
+    if (!paintState.active && minigameOverlay.classList.contains("hidden")) return;
+    const title = typeof titleResolver === "function" ? titleResolver() : "";
+    appendTextLog(title, current, source);
+  });
+  observer.observe(element, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+}
+
+function splitLongDialogSegment(segment, maxChars) {
+  const chunks = [];
+  let remaining = segment.trim();
+  while (remaining.length > maxChars) {
+    let breakAt = remaining.lastIndexOf(", ", maxChars);
+    if (breakAt < Math.floor(maxChars * 0.5)) {
+      breakAt = remaining.lastIndexOf(" ", maxChars);
+    }
+    if (breakAt < Math.floor(maxChars * 0.4)) {
+      breakAt = maxChars;
+    }
+    chunks.push(remaining.slice(0, breakAt).trim());
+    remaining = remaining.slice(breakAt).trim();
+  }
+  if (remaining) {
+    chunks.push(remaining);
+  }
+  return chunks;
+}
+
+function splitDialogBodyIntoPages(bodyText, maxChars = DIALOG_PAGE_CHARACTER_LIMIT) {
+  const raw = String(bodyText || "").replace(/\r/g, "").trim();
+  if (!raw) return [""];
+
+  const paragraphs = raw
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const pages = [];
+  for (const paragraph of paragraphs) {
+    const fragments = paragraph.match(/[^.!?]+(?:[.!?]+["']?)*|.+$/g) || [paragraph];
+    const segments = fragments
+      .map((fragment) => fragment.trim())
+      .filter(Boolean)
+      .flatMap((fragment) => (fragment.length > maxChars ? splitLongDialogSegment(fragment, maxChars) : [fragment]));
+
+    let page = "";
+    for (const segment of segments) {
+      const candidate = page ? `${page} ${segment}` : segment;
+      if (candidate.length <= maxChars) {
+        page = candidate;
+      } else {
+        if (page) {
+          pages.push(page.trim());
+        }
+        page = segment;
+      }
+    }
+    if (page) {
+      pages.push(page.trim());
+    }
+  }
+
+  return pages.length > 0 ? pages : [raw];
+}
+
+function resetDialogPaging() {
+  dialogPageState.pages = [""];
+  dialogPageState.index = 0;
+  dialogPageState.title = "";
+  dialogPageState.fullText = "";
+  if (dialogPager) {
+    dialogPager.classList.add("hidden");
+  }
+  if (dialogPageIndicator) {
+    dialogPageIndicator.textContent = "";
+  }
+  if (dialogPrevButton) {
+    dialogPrevButton.disabled = true;
+  }
+  if (dialogNextButton) {
+    dialogNextButton.disabled = true;
+  }
+}
+
+function syncDialogActionButtons() {
+  const lockActions = dialogPageState.pages.length > 1 && dialogPageState.index < dialogPageState.pages.length - 1;
+  for (const button of [dialogAltButton, dialogThirdButton, dialogButton]) {
+    if (!button) continue;
+    button.disabled = lockActions && !button.classList.contains("hidden");
+  }
+}
+
+function renderDialogPage() {
+  const pages = dialogPageState.pages.length > 0 ? dialogPageState.pages : [""];
+  const index = Math.max(0, Math.min(pages.length - 1, dialogPageState.index));
+  dialogPageState.index = index;
+  dialogBody.textContent = pages[index] || "";
+
+  const multiplePages = pages.length > 1;
+  if (dialogPager) {
+    dialogPager.classList.toggle("hidden", !multiplePages);
+  }
+  if (dialogPageIndicator) {
+    dialogPageIndicator.textContent = multiplePages ? `${index + 1} / ${pages.length}` : "";
+  }
+  if (dialogPrevButton) {
+    dialogPrevButton.disabled = !multiplePages || index === 0;
+  }
+  if (dialogNextButton) {
+    dialogNextButton.disabled = !multiplePages || index >= pages.length - 1;
+  }
+  syncDialogActionButtons();
+}
+
+function setDialogContent(title, body, options = {}) {
+  const {
+    log = true,
+    source = "Dialogue",
+  } = options;
+  dialogTitle.textContent = title;
+  dialogPageState.title = title;
+  dialogPageState.fullText = String(body || "");
+  dialogPageState.pages = splitDialogBodyIntoPages(dialogPageState.fullText);
+  dialogPageState.index = 0;
+  renderDialogPage();
+  if (log) {
+    appendTextLog(title, dialogPageState.fullText, source);
+  }
+}
+
+function shiftDialogPage(step) {
+  const nextIndex = dialogPageState.index + step;
+  if (nextIndex < 0 || nextIndex >= dialogPageState.pages.length) return;
+  dialogPageState.index = nextIndex;
+  renderDialogPage();
+}
+
+function alternatingPostShiftActivity(dayIndex = gameState.currentDay) {
+  return dayIndex % 2 === 0 ? "groceries" : "hemming";
+}
+
+observeLoggedTextNode(
+  paintPrompt,
+  "Minigame",
+  () => `${normalizeLogText(minigameHeading?.textContent || "Minigame")} prompt`,
+);
+observeLoggedTextNode(
+  mixPrompt,
+  "Minigame",
+  () => `${normalizeLogText(minigameHeading?.textContent || "Minigame")} note`,
+);
+
 function readLocalSave() {
   try {
     const raw = localStorage.getItem(LOCAL_SAVE_KEY);
@@ -1833,6 +2102,7 @@ function openMenu() {
   menuOverlay.classList.remove("hidden");
   updateAudioControls();
   updateMenuStatus();
+  renderTextLog();
 }
 
 function closeMenu() {
@@ -2041,6 +2311,7 @@ function buildLocalSavePayload() {
       workerProgress: clonePlain(gameState.workerProgress),
       tutorialSeen: gameState.tutorialSeen,
       handRestUnlocked: gameState.handRestUnlocked,
+      textLog: clonePlain(gameState.textLog),
     },
     paintState: {
       tableLabel: paintState.tableLabel,
@@ -2138,6 +2409,18 @@ function loadGameFromLocal() {
   gameState.workerProgress = clonePlain(loadedGame.workerProgress || buildDefaultWorkerProgress());
   gameState.tutorialSeen = Boolean(loadedGame.tutorialSeen);
   gameState.handRestUnlocked = Boolean(loadedGame.handRestUnlocked);
+  gameState.textLog = Array.isArray(loadedGame.textLog)
+    ? loadedGame.textLog
+      .map((entry) => ({
+        source: normalizeLogText(entry?.source || "Log"),
+        title: normalizeLogText(entry?.title || ""),
+        body: normalizeLogText(entry?.body || ""),
+        dayIndex: Math.max(0, Math.min(DAY_NAMES.length - 1, Number(entry?.dayIndex ?? gameState.currentDay))),
+        dayLabel: normalizeLogText(entry?.dayLabel || currentDayLogLabel(Number(entry?.dayIndex ?? gameState.currentDay))),
+      }))
+      .filter((entry) => entry.title || entry.body)
+      .slice(-TEXT_LOG_LIMIT)
+    : [];
   gameState.dialogMode = "";
 
   paintState.active = false;
@@ -2517,6 +2800,7 @@ function setMessage(primary, secondary = "") {
   hint.textContent = primary;
   subhint.textContent = secondary;
   activeMessageTimer = 4;
+  appendTextLog(primary, secondary, "Status");
 }
 
 function formatCurrency(cents) {
@@ -2635,6 +2919,7 @@ function showTitleCard() {
   titleCard.classList.add("visible");
   titleCard.classList.remove("fade-out");
   gameState.dayTransition = true;
+  appendTextLog("Day card", titleCardText.textContent, "Day start");
 }
 
 function fadeTitleCard() {
@@ -2780,6 +3065,7 @@ function finalEndingForHealth() {
 }
 
 function resetDialogButtons() {
+  resetDialogPaging();
   dialogAltButton.classList.add("hidden");
   dialogThirdButton.classList.add("hidden");
   dialogAltButton.textContent = "Alternative";
@@ -2792,8 +3078,7 @@ function resetDialogButtons() {
 
 function showEnding(title, body) {
   resetDialogButtons();
-  dialogTitle.textContent = title;
-  dialogBody.textContent = body;
+  setDialogContent(title, body);
   dialogButton.textContent = "Try again?";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "restart";
@@ -2801,9 +3086,10 @@ function showEnding(title, body) {
 
 function showLowHealthWarning() {
   resetDialogButtons();
-  dialogTitle.textContent = "On The Way Home";
-  dialogBody.textContent =
-    "On the walk home, you begin to notice something horribly wrong. Your teeth feel loose in your gums, though they should be fully grown and set. When you touch them, two come free at once and land in your palm.";
+  setDialogContent(
+    "On The Way Home",
+    "On the walk home, you begin to notice something horribly wrong. Your teeth feel loose in your gums, though they should be fully grown and set. When you touch them, two come free at once and land in your palm.",
+  );
   dialogButton.textContent = "Continue";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "low-health-warning";
@@ -2811,9 +3097,10 @@ function showLowHealthWarning() {
 
 function showDayOneIntro() {
   resetDialogButtons();
-  dialogTitle.textContent = "Day 1 - New Hire";
-  dialogBody.textContent =
-    "You've heard talk of it for weeks, months now; this lucrative new job where skill translates directly to high pay. Its one of the few jobs you could have taken-- as a woman, and one as young as you are. Unlike most other jobs, both attributes make you the perfect hire: young deft hands for this delicate work, and one of the few people left behind while the men valiantly fight for your country. You are a full-blown patriot now, a hero of your family and your country. oo long. At home, there are six siblings and too much need to go around, and as the middle child you have learned how often duty lands in the hands of the one who can least refuse it. So you take your place at the bench telling yourself this is what luck looks like at last. Everyone talks about the paint as if it belongs to the future: luminous, fashionable, and made with the same remarkable material turning up in all the newest products. You have even heard it said that it is good for the health. By the time the shift is ready to begin, you want very badly to believe every word of it.";
+  setDialogContent(
+    "Day 1 - New Hire",
+    "You've heard talk of it for weeks, months now; this lucrative new job where skill translates directly to high pay. Its one of the few jobs you could have taken-- as a woman, and one as young as you are. Unlike most other jobs, both attributes make you the perfect hire: young deft hands for this delicate work, and one of the few people left behind while the men valiantly fight for your country. You are a full-blown patriot now, a hero of your family and your country. oo long. At home, there are six siblings and too much need to go around, and as the middle child you have learned how often duty lands in the hands of the one who can least refuse it. So you take your place at the bench telling yourself this is what luck looks like at last. Everyone talks about the paint as if it belongs to the future: luminous, fashionable, and made with the same remarkable material turning up in all the newest products. You have even heard it said that it is good for the health. By the time the shift is ready to begin, you want very badly to believe every word of it.",
+  );
   dialogButton.textContent = "Begin shift";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "day-one-intro";
@@ -2825,23 +3112,26 @@ function showBenchTutorial() {
 
 function showDayFiveCutscene() {
   resetDialogButtons();
-  dialogTitle.textContent = "Day 5 - Before The Bell";
   const familiarCount = familiarWorkersCount();
   const unlocksSolidarity = canStandWithWorkers();
   const sharedIntro =
     "The remaining girls gather before the shift whistle. They speak in hushed bursts about the dial painters who came together in real life to demand compensation: the New Jersey women led by Grace Fryer, and later the Illinois workers who kept pressing their claims even while their health failed.";
   if (unlocksSolidarity) {
-    dialogBody.textContent =
+    setDialogContent(
+      "Day 5 - Before The Bell",
       `${sharedIntro} The room goes still while they decide whether to stand together now, or let the benches swallow another day. ` +
-      `You have earned familiar standing with ${familiarCount} workers, enough that they ask you to choose with them.`;
+        `You have earned familiar standing with ${familiarCount} workers, enough that they ask you to choose with them.`,
+    );
     dialogAltButton.textContent = "Return to the bench";
     dialogAltButton.classList.remove("hidden");
     dialogButton.textContent = "Stand with the girls";
     gameState.dialogMode = "day-five-choice";
   } else {
-    dialogBody.textContent =
+    setDialogContent(
+      "Day 5 - Before The Bell",
       `${sharedIntro} You are still outside the inner circle: familiar standing with ${familiarCount}/${FAMILIAR_WORKERS_REQUIRED} workers. ` +
-      "No one asks you to join the stand yet, and the line moves on without your voice in that room.";
+        "No one asks you to join the stand yet, and the line moves on without your voice in that room.",
+    );
     dialogButton.textContent = "Return to the bench";
     gameState.dialogMode = "day-five-locked";
   }
@@ -2850,9 +3140,10 @@ function showDayFiveCutscene() {
 
 function showSolidarityEnding() {
   resetDialogButtons();
-  dialogTitle.textContent = "Stand Together";
-  dialogBody.textContent =
-    "You step away from the bench and join the others. In the years that follow, women like Grace Fryer in New Jersey and Catherine Donohue in Illinois force the poison in the dial rooms into court records, headlines, and public memory. The companies are pushed into settlements, medical payments, and legal accountability; the cases help strengthen occupational disease law and become part of the longer fight that reshapes workplace safety in the United States. You still die years later from the damage already done inside your body, but your refusal to stay quiet helps leave behind stronger labor protections than the factory ever meant to allow.";
+  setDialogContent(
+    "Stand Together",
+    "You step away from the bench and join the others. In the years that follow, women like Grace Fryer in New Jersey and Catherine Donohue in Illinois force the poison in the dial rooms into court records, headlines, and public memory. The companies are pushed into settlements, medical payments, and legal accountability; the cases help strengthen occupational disease law and become part of the longer fight that reshapes workplace safety in the United States. You still die years later from the damage already done inside your body, but your refusal to stay quiet helps leave behind stronger labor protections than the factory ever meant to allow.",
+  );
   dialogButton.textContent = "Try again?";
   dialogOverlay.classList.remove("hidden");
   gameState.dialogMode = "restart";
@@ -2906,11 +3197,12 @@ function endShift(reason) {
     return;
   }
 
-  dialogTitle.textContent = `Shift manager - ${DAY_NAMES[gameState.currentDay]}`;
-  dialogBody.textContent =
+  setDialogContent(
+    `Shift manager - ${DAY_NAMES[gameState.currentDay]}`,
     `${reason === "timeout" ? "The bell cuts off the shift." : "The manager calls the day."} ` +
-    `${managerLineForDay()} ${endOfDayReflection()} ${darkRoomGathering()}`;
-  gameState.postShiftActivity = Math.random() < 0.5 ? "groceries" : "hemming";
+      `${managerLineForDay()} ${endOfDayReflection()} ${darkRoomGathering()}`,
+  );
+  gameState.postShiftActivity = alternatingPostShiftActivity(gameState.currentDay);
   dialogButton.textContent = gameState.postShiftActivity === "groceries" ? "Buy groceries" : "Go hem clothes";
   dialogAltButton.textContent = "Talk with the women";
   dialogAltButton.classList.remove("hidden");
@@ -3086,7 +3378,7 @@ function openGroceriesTrip() {
   paintPrompt.textContent = groceryReflectionText();
   mixPrompt.textContent =
     `You enter the market with ${formatGroceryAmount(gameState.groceryBudgetTenths)} saved for the week. ` +
-    "Click + on any item to haggle for that purchase. The pulsing bubble decides how much you save before the item goes into the basket.";
+    "Click + on any item to haggle for that purchase. The ring keeps swelling and shrinking; click when it crosses the middle guide to get the deepest discount.";
   updateGroceryStats();
   setStationControlsHidden(true);
   minigameOverlay.classList.remove("hidden");
@@ -3145,11 +3437,14 @@ function removeGrocery(item) {
 
 function groceryTimingCircle(index) {
   const rect = groceryRowRect(index);
+  const innerRadius = 11;
+  const maxRadius = 32;
   return {
     x: rect.x + 34,
     y: rect.y + rect.h / 2,
-    targetRadius: 11,
-    startRadius: 32,
+    innerRadius,
+    maxRadius,
+    targetRadius: innerRadius + (maxRadius - innerRadius) * 0.5,
   };
 }
 
@@ -3157,8 +3452,14 @@ function currentGroceryTimingState() {
   if (!paintState.groceryTiming.active) return null;
   const elapsed = Math.max(0, performance.now() - paintState.groceryTiming.startedAt);
   const cyclePhase = (elapsed % Math.max(1, paintState.groceryTiming.durationMs)) / Math.max(1, paintState.groceryTiming.durationMs);
-  const closeness = 1 - Math.abs(1 - cyclePhase * 2);
   const circle = groceryTimingCircle(paintState.groceryTiming.rowIndex);
+  const minRadius = Math.min(paintState.groceryTiming.startRadius, paintState.groceryTiming.targetRadius);
+  const maxRadius = Math.max(paintState.groceryTiming.startRadius, paintState.groceryTiming.targetRadius);
+  const radiusRange = Math.max(1, maxRadius - minRadius);
+  const pulse = (Math.sin(cyclePhase * Math.PI * 2 - Math.PI / 2) + 1) * 0.5;
+  const pulseRadius = minRadius + radiusRange * pulse;
+  const sweetSpotRadius = minRadius + radiusRange * 0.5;
+  const closeness = Math.max(0, 1 - Math.abs(pulseRadius - sweetSpotRadius) / (radiusRange * 0.5));
   return {
     active: true,
     itemId: paintState.groceryTiming.itemId,
@@ -3167,10 +3468,10 @@ function currentGroceryTimingState() {
     cyclePhase,
     x: circle.x,
     y: circle.y,
-    targetRadius: paintState.groceryTiming.targetRadius,
-    outerRadius:
-      paintState.groceryTiming.startRadius
-      + (paintState.groceryTiming.targetRadius - paintState.groceryTiming.startRadius) * closeness,
+    innerRadius: minRadius,
+    maxRadius,
+    targetRadius: sweetSpotRadius,
+    outerRadius: pulseRadius,
   };
 }
 
@@ -3202,7 +3503,7 @@ function beginGroceryPurchase(item, index) {
   paintState.groceryTiming.durationMs = Math.max(460, Math.round((960 + Math.random() * 340) / minigameSpeedMultiplier()));
   paintState.groceryTiming.startRadius = 32;
   paintState.groceryTiming.targetRadius = 11;
-  paintPrompt.textContent = `The grocer watches your hand over ${item.label.toLowerCase()}. Click when the pulsing ring closes over the center bubble.`;
+  paintPrompt.textContent = `The grocer watches your hand over ${item.label.toLowerCase()}. Click when the pulsing ring passes through the middle guide.`;
   updateGroceryStats();
 }
 
@@ -3570,7 +3871,7 @@ function openHemmingTrip() {
   gameState.hemmingTasks = createHemmingTasks();
   minigameHeading.textContent = "Evening Hemming";
   paintPrompt.textContent = hemmingReflectionText();
-  mixPrompt.textContent = "Click a stitch dot to start timing. A time-stitch box will pop up somewhere on the cloth; click it when the moving marker lines up for bad/okay/good/perfect quality.";
+  mixPrompt.textContent = "Click a stitch dot to start timing. A time-stitch box will pop up somewhere on the cloth; click it when the moving marker lines up for bad/okay/good/perfect quality. You can also skip the rest of the hemming if you need to head to bed.";
   updateHemmingStats();
   setStationControlsHidden(true);
   minigameOverlay.classList.remove("hidden");
@@ -3649,8 +3950,7 @@ function hemmingHomeSceneText() {
 
 function showHomeScene(bodyText, summaryText) {
   resetDialogButtons();
-  dialogTitle.textContent = "At Home";
-  dialogBody.textContent = bodyText;
+  setDialogContent("At Home", bodyText);
   dialogButton.textContent = "Continue";
   dialogOverlay.classList.remove("hidden");
   gameState.postHomeSummary = summaryText;
@@ -3675,14 +3975,12 @@ function finishGroceriesTrip() {
 
 function finishHemmingTrip() {
   if (paintState.hemmingTiming.active) {
-    paintPrompt.textContent = "Finish the current timing stitch first.";
-    drawWatchMinigame();
-    return;
-  }
-  if (!hemmingAllFinished()) {
-    paintPrompt.textContent = "There are still loose hems. Finish each garment's stitch line before heading to bed.";
-    drawWatchMinigame();
-    return;
+    paintState.hemmingTiming.active = false;
+    paintState.hemmingTiming.taskIndex = -1;
+    paintState.hemmingTiming.stitchIndex = -1;
+    paintState.hemmingTiming.popupX = 0;
+    paintState.hemmingTiming.popupY = 0;
+    paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
   }
   closeMinigame();
   showHomeScene(hemmingHomeSceneText(), hemmingSummary());
@@ -3758,6 +4056,7 @@ function resetWeek() {
   gameState.hemmingTasks = [];
   gameState.workerProgress = buildDefaultWorkerProgress();
   gameState.handRestUnlocked = false;
+  gameState.textLog = [];
   paintState.active = false;
   paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS[0];
   paintState.restHandOnSide = false;
@@ -6103,11 +6402,21 @@ function drawGroceriesView() {
 
     const timingCircle = groceryTimingCircle(i);
     paintCtx.save();
-    paintCtx.strokeStyle = "rgba(255,255,255,0.2)";
-    paintCtx.lineWidth = 2;
+    paintCtx.strokeStyle = "rgba(255,255,255,0.08)";
+    paintCtx.lineWidth = 1.5;
+    paintCtx.beginPath();
+    paintCtx.arc(timingCircle.x, timingCircle.y, timingCircle.maxRadius, 0, Math.PI * 2);
+    paintCtx.stroke();
+    paintCtx.strokeStyle = "rgba(217, 245, 122, 0.42)";
+    paintCtx.setLineDash([4, 4]);
     paintCtx.beginPath();
     paintCtx.arc(timingCircle.x, timingCircle.y, timingCircle.targetRadius, 0, Math.PI * 2);
     paintCtx.stroke();
+    paintCtx.setLineDash([]);
+    paintCtx.fillStyle = "rgba(255,255,255,0.2)";
+    paintCtx.beginPath();
+    paintCtx.arc(timingCircle.x, timingCircle.y, 2.2, 0, Math.PI * 2);
+    paintCtx.fill();
     paintCtx.restore();
 
     if (timingHere) {
@@ -6117,14 +6426,17 @@ function drawGroceriesView() {
       paintCtx.beginPath();
       paintCtx.arc(groceryTiming.x, groceryTiming.y, Math.max(groceryTiming.targetRadius, groceryTiming.outerRadius), 0, Math.PI * 2);
       paintCtx.stroke();
-      paintCtx.fillStyle = "rgba(246, 255, 197, 0.12)";
+      paintCtx.strokeStyle = "rgba(255, 226, 146, 0.92)";
+      paintCtx.lineWidth = 2;
+      paintCtx.setLineDash([4, 3]);
       paintCtx.beginPath();
       paintCtx.arc(groceryTiming.x, groceryTiming.y, groceryTiming.targetRadius, 0, Math.PI * 2);
-      paintCtx.fill();
+      paintCtx.stroke();
+      paintCtx.setLineDash([]);
       paintCtx.fillStyle = "rgba(255,255,255,0.8)";
       paintCtx.font = "12px Georgia";
       paintCtx.textAlign = "left";
-      paintCtx.fillText("click on the bubble", rect.x + 68, rect.y + rect.h / 2);
+      paintCtx.fillText("hit the middle ring", rect.x + 68, rect.y + rect.h / 2);
       paintCtx.restore();
     }
   }
@@ -6147,10 +6459,10 @@ function drawGroceriesView() {
   if (groceryTiming && groceryTiming.active) {
     const activeItem = GROCERY_ITEMS.find((item) => item.id === groceryTiming.itemId);
     paintCtx.fillText(`Haggling: ${activeItem ? activeItem.label : "item"}`, 36, 102);
-    paintCtx.fillText("Click when the pulsing outer ring closes on the center bubble.", 36, 128);
+    paintCtx.fillText("Click when the pulsing ring crosses the middle guide.", 36, 128);
   } else {
     paintCtx.fillText("Click + on an item to haggle that purchase.", 36, 102);
-    paintCtx.fillText("Perfect timing buys the item at the deepest discount.", 36, 128);
+    paintCtx.fillText("Perfect timing lands at the middle of the pulse, not the smallest point.", 36, 128);
   }
   paintCtx.fillText(`Basket: ${groceryCartSummary()}`, 36, 154);
 
@@ -6310,7 +6622,7 @@ function drawHemmingView() {
   paintCtx.textAlign = "center";
   paintCtx.fillStyle = "#f5f5f5";
   paintCtx.font = "18px Georgia";
-  paintCtx.fillText("Finish hemming", finish.x + finish.w / 2, finish.y + finish.h / 2);
+  paintCtx.fillText(hemmingAllFinished() ? "Finish hemming" : "Skip hemming", finish.x + finish.w / 2, finish.y + finish.h / 2);
 
   drawHemmingTimingWidget(timing);
 }
@@ -6964,6 +7276,14 @@ function bindPress(element, handler) {
   element.addEventListener("touchend", run);
 }
 
+bindPress(dialogPrevButton, () => {
+  shiftDialogPage(-1);
+});
+
+bindPress(dialogNextButton, () => {
+  shiftDialogPage(1);
+});
+
 bindPress(dialogButton, () => {
   if (gameState.dialogMode === "day-one-intro") {
     dialogOverlay.classList.add("hidden");
@@ -7391,6 +7711,18 @@ if (window.YT && typeof window.YT.Player === "function") {
 
 document.addEventListener("keydown", (event) => {
   keys.add(event.code);
+
+  if (!dialogOverlay.classList.contains("hidden") && event.code === "ArrowLeft") {
+    event.preventDefault();
+    shiftDialogPage(-1);
+    return;
+  }
+
+  if (!dialogOverlay.classList.contains("hidden") && event.code === "ArrowRight") {
+    event.preventDefault();
+    shiftDialogPage(1);
+    return;
+  }
 
   if (event.code === "KeyM") {
     event.preventDefault();

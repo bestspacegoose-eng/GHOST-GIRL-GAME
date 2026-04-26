@@ -242,11 +242,13 @@ canvas {
 }
 
 .menu-panel {
-  width: min(92%, 420px);
+  width: min(92%, 760px);
   background: rgba(10, 10, 10, 0.96);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
   border: 1px solid var(--line);
   padding: 18px;
+  max-height: min(90vh, 760px);
+  overflow: auto;
 }
 
 .menu-panel h2 {
@@ -313,185 +315,19 @@ canvas {
   background: #2b2b2b;
 }
 
-.dialog-box {
-  max-width: 520px;
-  padding: 24px;
-}
-
-.dialog-box p {
-  margin: 0;
-  line-height: 1.5;
-}
-
-#dialogTitle {
-  margin-bottom: 8px;
-  font-size: 1.2rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-#dialogBody {
-  color: var(--muted);
-}
-
-.dialog-box button,
-.station-button {
+.menu-log {
   margin-top: 16px;
-  padding: 12px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: #1e1e1e;
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-}
-
-.dialog-box button {
-  display: block;
-  width: 100%;
-  text-align: left;
-}
-
-.dialog-box button.hidden {
-  display: none;
-}
-
-.dialog-box button:hover,
-.station-button:hover {
-  background: #2b2b2b;
-}
-
-.minigame-panel {
-  display: grid;
-  grid-template-columns: minmax(220px, 248px) minmax(0, 1fr);
-  gap: 14px;
   padding: 14px;
-  max-height: calc(100vh - 28px);
-  align-items: stretch;
-}
-
-.minigame-copy {
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.03);
 }
 
-.minigame-copy h2 {
+.menu-log h3 {
   margin: 0 0 8px;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
+  font-size: 0.98rem;
 }
 
-.minigame-copy p {
-  margin: 0;
-  line-height: 1.5;
-}
-
-.minigame-copy p + p {
-  margin-top: 8px;
-}
-
-#mixPrompt {
-  color: var(--muted);
-}
-
-#paintStats {
-  color: var(--accent);
-}
-
-.info-canvas {
-  flex: 0 0 auto;
-  display: block;
-  width: min(100%, 208px);
-  height: auto;
-  aspect-ratio: 1 / 1;
-  margin: 18px auto 0;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.04);
-  cursor: pointer;
-}
-
-.info-canvas.hidden {
-  display: none;
-}
-
-.minigame-overlay.hemming-mode .minigame-copy {
-  gap: 8px;
-}
-
-.minigame-overlay.hemming-mode #infoCanvas {
-  order: 2;
-  width: min(100%, 176px);
-  margin: 8px auto 2px;
-}
-
-.minigame-overlay.hemming-mode #mixPrompt {
-  order: 3;
-}
-
-.minigame-overlay.hemming-mode #paintStats {
-  order: 4;
-}
-
-.minigame-overlay.hemming-mode .tool-actions {
-  display: none;
-}
-
-.tool-actions {
-  display: grid;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.station-button {
-  margin-top: 0;
-  text-align: left;
-}
-
-.station-button.active {
-  background: #3a3a24;
-  border-color: rgba(217, 245, 122, 0.42);
-}
-
-.station-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.station-button.hidden {
-  display: none;
-}
-
-.watch-stage {
-  position: relative;
-  display: grid;
-  place-items: center;
-  min-height: 0;
-  padding: 4px;
-  background: #000;
-  cursor: none;
-  overflow: hidden;
-}
-
-#paintCanvas {
-  width: min(100%, 760px);
-  height: auto;
-  aspect-ratio: 1 / 1;
-  cursor: none;
-}
-
-@media (max-width: 900px) {
-  .hud {
-    padding: 12px;
-  }
-
-  .title,
-  .shift-panel,
-  .status {
-    width: 100%;
-  }
-
-  .minigame-panel {
-    grid-template-columns: 1fr;
-  }
-}
+.menu-log-copy {
+  margi

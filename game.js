@@ -82,7 +82,9 @@ const DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATU
 const HEALTH_DRIFT_THRESHOLD = 80;
 const MINIGAME_SPEED_HEALTH_THRESHOLD = 80;
 const MAX_MINIGAME_SPEED_MULTIPLIER = 1.65;
-const LOCAL_SAVE_KEY = "ghost_girl_local_save_v1";
+const LOCAL_SAVE_SCHEMA_VERSION = 2;
+const LOCAL_SAVE_KEY = `ghost_girl_local_save_v${LOCAL_SAVE_SCHEMA_VERSION}`;
+const LEGACY_LOCAL_SAVE_KEYS = ["ghost_girl_local_save_v1"];
 const LOCAL_AUDIO_SETTINGS_KEY = "ghost_girl_audio_settings_v1";
 const COMPLETION_BELL_TRACK_URL = "https://soundcloud.com/user-966880386/tibetan-bell-04";
 const COMPLETION_BELL_EMBED_URL =
@@ -2307,9 +2309,17 @@ observeLoggedTextNode(
 
 function readLocalSave() {
   try {
-    const raw = localStorage.getItem(LOCAL_SAVE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
+    const keys = [LOCAL_SAVE_KEY, ...LEGACY_LOCAL_SAVE_KEYS];
+    for (const key of keys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const payload = JSON.parse(raw);
+      if (payload && typeof payload === "object") {
+        payload.__storageKey = key;
+      }
+      return payload;
+    }
+    return null;
   } catch (error) {
     return null;
   }
@@ -2578,7 +2588,7 @@ function buildLocalSavePayload() {
   }
 
   return {
-    version: 1,
+    version: LOCAL_SAVE_SCHEMA_VERSION,
     savedAt: new Date().toISOString(),
     gameState: {
       currentDay: gameState.currentDay,
@@ -2662,6 +2672,8 @@ function loadGameFromLocal() {
   const loadedGame = payload.gameState || {};
   const loadedPaint = payload.paintState || {};
   const loadedRoom = payload.roomState || {};
+  const saveSchemaVersion = Number(payload.version ?? 1);
+  const needsNumeralMigration = saveSchemaVersion < 2;
 
   if (!dialogOverlay.classList.contains("hidden")) {
     dialogOverlay.classList.add("hidden");
@@ -2696,7 +2708,7 @@ function loadGameFromLocal() {
   gameState.hiddenStats.fingernailUses = Math.max(0, Number(gameState.hiddenStats.fingernailUses ?? 0));
   gameState.thresholdThoughtQueued = Boolean(loadedGame.thresholdThoughtQueued);
   gameState.thresholdThoughtShown = Boolean(loadedGame.thresholdThoughtShown);
-  gameState.savedBenchWork = clonePlain(loadedGame.savedBenchWork || {});
+  gameState.savedBenchWork = needsNumeralMigration ? {} : clonePlain(loadedGame.savedBenchWork || {});
   gameState.shiftThoughtLog = clonePlain(loadedGame.shiftThoughtLog || []);
   gameState.lastShiftThoughtLog = clonePlain(loadedGame.lastShiftThoughtLog || []);
   gameState.savedFundsTenths = Math.max(0, Number(loadedGame.savedFundsTenths ?? 0));
@@ -2787,7 +2799,9 @@ function loadGameFromLocal() {
   updateHud();
   setMessage(
     `${DAY_NAMES[gameState.currentDay]} restored from local save.`,
-    gameState.shiftActive
+    needsNumeralMigration
+      ? "Older in-progress watch faces were refreshed so the numeral shapes use the corrected font."
+      : gameState.shiftActive
       ? "Shift is still live. Clock out at the wall clock when you're done, or return to the bench."
       : "Click the wall clock to begin when you're ready.",
   );
@@ -2796,14 +2810,27 @@ function loadGameFromLocal() {
   } else {
     stopShiftTicking();
   }
+  if (payload.__storageKey !== LOCAL_SAVE_KEY || needsNumeralMigration) {
+    try {
+      localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify(buildLocalSavePayload()));
+      for (const key of LEGACY_LOCAL_SAVE_KEYS) {
+        localStorage.removeItem(key);
+      }
+    } catch (error) {
+      // Keep the loaded state even if the browser refuses the migration write.
+    }
+  }
   closeMenu();
-  updateMenuStatus("Local save loaded.");
+  updateMenuStatus(needsNumeralMigration ? "Legacy local save loaded and updated." : "Local save loaded.");
   return true;
 }
 
 function deleteLocalSave() {
   try {
     localStorage.removeItem(LOCAL_SAVE_KEY);
+    for (const key of LEGACY_LOCAL_SAVE_KEYS) {
+      localStorage.removeItem(key);
+    }
     updateMenuStatus("Local save deleted.");
     return true;
   } catch (error) {
@@ -3157,7 +3184,7 @@ function updateHud() {
   dayLabel.textContent = `${DAY_NAMES[gameState.currentDay]} - DAY ${gameState.currentDay + 1}`;
   timeLabel.textContent = formatShiftTime();
   dialLabel.textContent = `Dials painted: ${gameState.dialsPaintedToday}`;
-  earningsLabel.textContent = `Due today: ${formatCurrency(gameState.dayEarningsCents)}`;
+  earningsLabel.textContent = `Amount earned today: ${formatCurrency(gameState.dayEarningsCents)}`;
   healthLabel.textContent = `Health: ${Math.round(health)}%`;
   healthFill.style.transform = `scaleX(${health / 100})`;
   healthFill.style.filter = health < 35 ? "saturate(0.7) brightness(0.8)" : "none";

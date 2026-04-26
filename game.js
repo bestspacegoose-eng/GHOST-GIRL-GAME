@@ -115,6 +115,7 @@ const BACKGROUND_MUSIC_VIDEO_ID = "x2aUyoujeUM";
 const GUARANTEED_THRESHOLD_THOUGHT = "Why does my hand feel unsteady already? It shouldn't be this hard to hold a straight line.";
 const DIALOG_PAGE_CHARACTER_LIMIT = 270;
 const TEXT_LOG_LIMIT = 360;
+const TIMING_FEEDBACK_DURATION_MS = 760;
 const DEFAULT_BRUSH_SIZE = 0.22;
 const BRUSH_ROUGH_THRESHOLD = 0.95;
 const BRUSH_FANNED_THRESHOLD = 1.45;
@@ -416,6 +417,15 @@ const paintState = {
     popupX: 0,
     popupY: 0,
     popupSize: HEMMING_TIMING_WIDGET_SIZE,
+  },
+  timingFeedback: {
+    active: false,
+    label: "",
+    color: "rgba(255,255,255,0.94)",
+    x: 0,
+    y: 0,
+    startedAt: 0,
+    durationMs: TIMING_FEEDBACK_DURATION_MS,
   },
 };
 
@@ -3235,6 +3245,7 @@ function loadGameFromLocal(slotIndex = selectedSaveSlotIndex) {
   paintState.hemmingTiming.popupX = 0;
   paintState.hemmingTiming.popupY = 0;
   paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
+  clearTimingFeedback();
 
   roomState.cursorX = Math.max(0, Math.min(WIDTH, Number(loadedRoom.cursorX ?? WIDTH / 2)));
   roomState.cursorY = Math.max(0, Math.min(HEIGHT, Number(loadedRoom.cursorY ?? HEIGHT / 2)));
@@ -4231,6 +4242,7 @@ function openGroceriesTrip() {
   paintState.groceryTiming.lastGrade = "";
   paintState.groceryTiming.lastItemLabel = "";
   paintState.groceryTiming.lastSavingsTenths = 0;
+  clearTimingFeedback();
   hideWorkspaceBanner(true);
   minigameHeading.textContent = "Groceries";
   paintPrompt.textContent = groceryReflectionText();
@@ -4341,6 +4353,74 @@ function groceryTimingGradeFromProgress(progress) {
   return "bad";
 }
 
+function timingFeedbackLabel(grade) {
+  if (grade === "perfect") return "Perfect!";
+  if (grade === "good") return "Good!";
+  if (grade === "okay") return "Okay!";
+  return "Bad!";
+}
+
+function timingFeedbackColor(grade) {
+  if (grade === "perfect") return "rgba(255, 246, 176, 0.98)";
+  if (grade === "good") return "rgba(214, 244, 165, 0.98)";
+  if (grade === "okay") return "rgba(232, 198, 140, 0.98)";
+  return "rgba(255, 156, 156, 0.98)";
+}
+
+function clearTimingFeedback() {
+  paintState.timingFeedback.active = false;
+  paintState.timingFeedback.label = "";
+  paintState.timingFeedback.startedAt = 0;
+}
+
+function showTimingFeedback(grade, x, y) {
+  paintState.timingFeedback.active = true;
+  paintState.timingFeedback.label = timingFeedbackLabel(grade);
+  paintState.timingFeedback.color = timingFeedbackColor(grade);
+  paintState.timingFeedback.x = x;
+  paintState.timingFeedback.y = y;
+  paintState.timingFeedback.startedAt = performance.now();
+  paintState.timingFeedback.durationMs = TIMING_FEEDBACK_DURATION_MS;
+}
+
+function currentTimingFeedback(now = performance.now()) {
+  const feedback = paintState.timingFeedback;
+  if (!feedback?.active) return null;
+  const durationMs = Math.max(1, Number(feedback.durationMs || TIMING_FEEDBACK_DURATION_MS));
+  const elapsed = Math.max(0, now - Number(feedback.startedAt || 0));
+  if (elapsed >= durationMs) {
+    clearTimingFeedback();
+    return null;
+  }
+  return {
+    ...feedback,
+    progress: elapsed / durationMs,
+    ageMs: elapsed,
+  };
+}
+
+function drawTimingFeedback() {
+  const feedback = currentTimingFeedback();
+  if (!feedback) return;
+  const eased = feedback.progress;
+  const alpha = Math.max(0, 1 - eased);
+  const rise = 18 * eased;
+  const x = Math.max(56, Math.min(paintCanvas.width - 56, feedback.x));
+  const y = Math.max(40, Math.min(paintCanvas.height - 24, feedback.y - rise));
+
+  paintCtx.save();
+  paintCtx.globalAlpha = alpha;
+  paintCtx.textAlign = "center";
+  paintCtx.textBaseline = "middle";
+  paintCtx.font = "bold 26px Georgia";
+  paintCtx.lineWidth = 4;
+  paintCtx.strokeStyle = "rgba(12, 12, 12, 0.72)";
+  paintCtx.strokeText(feedback.label, x, y);
+  paintCtx.fillStyle = feedback.color;
+  paintCtx.fillText(feedback.label, x, y);
+  paintCtx.restore();
+}
+
 function beginGroceryPurchase(item, index) {
   if (!item) return;
   if (paintState.groceryTiming.active) {
@@ -4374,6 +4454,7 @@ function resolveGroceryPurchase(reason = "click") {
   paintState.groceryTiming.rowIndex = -1;
   if (!item) return false;
   const grade = reason === "timeout" ? "bad" : groceryTimingGradeFromProgress(timing.progress);
+  showTimingFeedback(grade, timing.x, timing.y - Math.max(30, timing.outerRadius + 18));
   buyGrocery(item, grade);
   return true;
 }
@@ -4646,6 +4727,7 @@ function resolveHemmingTiming() {
   paintState.hemmingTiming.active = false;
   paintState.hemmingTiming.popupX = 0;
   paintState.hemmingTiming.popupY = 0;
+  showTimingFeedback(grade, timing.popupX + timing.popupSize / 2, timing.popupY - 18);
 
   const gradeWord = grade === "perfect"
     ? "perfect"
@@ -4739,6 +4821,7 @@ function openHemmingTrip() {
   paintState.hemmingTiming.popupX = 0;
   paintState.hemmingTiming.popupY = 0;
   paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
+  clearTimingFeedback();
   gameState.hemmingTasks = createHemmingTasks();
   hideWorkspaceBanner(true);
   minigameHeading.textContent = "Evening Hemming";
@@ -4949,6 +5032,7 @@ function resetWeek() {
   paintState.hemmingTiming.popupX = 0;
   paintState.hemmingTiming.popupY = 0;
   paintState.hemmingTiming.popupSize = HEMMING_TIMING_WIDGET_SIZE;
+  clearTimingFeedback();
   hideShiftRecap();
   hideWorkspaceBanner(true);
   showTitleCard();
@@ -5750,6 +5834,7 @@ function closeMinigame() {
   paintState.fracturePieces = [];
   paintState.draggedPieceIndex = -1;
   paintState.groceryTiming.active = false;
+  clearTimingFeedback();
   minigameHeading.textContent = "Watch Painting";
   setStationControlsHidden(false);
   paintCanvas.style.cursor = "none";
@@ -7397,6 +7482,7 @@ function drawGroceriesView() {
     paintCtx.fillText("Perfect timing lands at the middle of the pulse, not the smallest point.", 36, 128);
   }
   paintCtx.fillText(`Basket: ${groceryCartSummary()}`, 36, 154);
+  drawTimingFeedback();
 
   drawImageCursor("mix");
 }
@@ -7557,6 +7643,7 @@ function drawHemmingView() {
   paintCtx.fillText(hemmingAllFinished() ? "Finish hemming" : "Skip hemming", finish.x + finish.w / 2, finish.y + finish.h / 2);
 
   drawHemmingTimingWidget(timing);
+  drawTimingFeedback();
 }
 
 function drawWatchMinigame() {

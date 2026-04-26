@@ -133,16 +133,6 @@ canvas {
   transform-origin: left center;
 }
 
-.reticle {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 18px;
-  height: 18px;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
 .menu-button {
   position: absolute;
   top: 14px;
@@ -158,27 +148,6 @@ canvas {
 
 .menu-button:hover {
   background: rgba(34, 34, 34, 0.9);
-}
-
-.reticle::before,
-.reticle::after {
-  content: "";
-  position: absolute;
-  background: rgba(255, 255, 255, 0.92);
-}
-
-.reticle::before {
-  left: 8px;
-  top: 0;
-  width: 2px;
-  height: 18px;
-}
-
-.reticle::after {
-  top: 8px;
-  left: 0;
-  width: 18px;
-  height: 2px;
 }
 
 .title-card,

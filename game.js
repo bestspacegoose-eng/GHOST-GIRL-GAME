@@ -90,6 +90,12 @@ const COMPLETION_BELL_EMBED_URL =
   + "&auto_play=false&hide_related=true&show_comments=false&show_user=false"
   + "&show_reposts=false&show_teaser=false&visual=false&sharing=false&download=false"
   + "&buying=false&liking=false&single_active=false";
+const SHIFT_TICK_TRACK_URL = "https://soundcloud.com/user-121701775/ticking-clock-sound-1-hour";
+const SHIFT_TICK_EMBED_URL =
+  `https://w.soundcloud.com/player/?url=${encodeURIComponent(SHIFT_TICK_TRACK_URL)}`
+  + "&auto_play=false&hide_related=true&show_comments=false&show_user=false"
+  + "&show_reposts=false&show_teaser=false&visual=false&sharing=false&download=false"
+  + "&buying=false&liking=false&single_active=false";
 const COMPLETION_BELL_RETRIGGER_MS = 180;
 const COMPLETION_BELL_MAX_PLAY_MS = 2000;
 const BACKGROUND_MUSIC_VIDEO_ID = "x2aUyoujeUM";
@@ -120,8 +126,8 @@ const PAINT_POINT_COVERAGE_THRESHOLD = 0.92;
 const PAINT_POINT_SOFT_COVERAGE_THRESHOLD = 0.62;
 const STATION_LAYOUT = {
   powder: { x: 82, y: 160, w: 118, h: 156, rx: 44, ry: 48 },
-  gum: { x: 178, y: 382, w: 114, h: 90, rx: 42, ry: 30 },
-  water: { x: 66, y: 382, w: 114, h: 90, rx: 42, ry: 30 },
+  gum: { x: 178, y: 392, w: 114, h: 90, rx: 42, ry: 30 },
+  water: { x: 66, y: 398, w: 114, h: 90, rx: 42, ry: 30 },
   dish: { x: 112, y: 504, w: 156, h: 116, rx: 52, ry: 34 },
   zoomPaint: { x: 96, y: 108, w: 122, h: 90, rx: 44, ry: 30 },
   zoomWipe: { x: 96, y: 252, w: 126, h: 144 },
@@ -404,11 +410,24 @@ let workerConversationState = null;
 const bellState = {
   iframe: null,
   widget: null,
-  scriptLoading: false,
   widgetReady: false,
   pendingPlay: false,
   lastPlayAt: -Infinity,
   stopTimer: 0,
+};
+
+const shiftTickState = {
+  iframe: null,
+  widget: null,
+  widgetReady: false,
+  pendingPlay: false,
+  active: false,
+};
+
+const soundCloudApiState = {
+  scriptLoading: false,
+  ready: false,
+  pendingInitializers: [],
 };
 
 const backgroundMusicState = {
@@ -575,16 +594,16 @@ const componentRegions = [
 ];
 const ROOM_HOTSPOTS = [
   { id: "clock", x: 4, y: 18, w: 54, h: 146 },
-  { id: "bench-center", x: 114, y: 64, w: 46, h: 28 },
-  { id: "worker-1", x: 4, y: 86, w: 20, h: 46 },
-  { id: "worker-2", x: 54, y: 86, w: 20, h: 42 },
-  { id: "worker-5", x: 95, y: 80, w: 20, h: 40 },
-  { id: "worker-6", x: 123, y: 78, w: 20, h: 38 },
-  { id: "worker-3", x: 140, y: 74, w: 28, h: 74 },
-  { id: "worker-7", x: 187, y: 80, w: 22, h: 50 },
-  { id: "worker-4", x: 220, y: 79, w: 28, h: 58 },
-  { id: "worker-8", x: 255, y: 81, w: 22, h: 48 },
-  { id: "worker-9", x: 282, y: 82, w: 22, h: 44 },
+  { id: "bench-center", x: 229, y: 137, w: 58, h: 32 },
+  { id: "worker-1", x: 9, y: 92, w: 20, h: 48 },
+  { id: "worker-2", x: 53, y: 90, w: 20, h: 44 },
+  { id: "worker-5", x: 92, y: 86, w: 22, h: 42 },
+  { id: "worker-6", x: 120, y: 84, w: 22, h: 40 },
+  { id: "worker-3", x: 138, y: 77, w: 28, h: 74 },
+  { id: "worker-7", x: 184, y: 84, w: 24, h: 50 },
+  { id: "worker-4", x: 219, y: 82, w: 28, h: 58 },
+  { id: "worker-8", x: 253, y: 84, w: 24, h: 48 },
+  { id: "worker-9", x: 279, y: 85, w: 22, h: 46 },
 ];
 const REMOVED_WORKER_ORDER = ["worker-9", "worker-8", "worker-4", "worker-7", "worker-3", "worker-6", "worker-5", "worker-2", "worker-1"];
 const ROOM_REMOVAL_PATCHES = [
@@ -1992,8 +2011,12 @@ function applyMusicVolume() {
 }
 
 function applySfxVolume() {
-  if (!bellState.widgetReady || !bellState.widget) return;
-  bellState.widget.setVolume(audioSettings.sfxVolume);
+  if (bellState.widgetReady && bellState.widget) {
+    bellState.widget.setVolume(audioSettings.sfxVolume);
+  }
+  if (shiftTickState.widgetReady && shiftTickState.widget) {
+    shiftTickState.widget.setVolume(audioSettings.sfxVolume);
+  }
 }
 
 function applyAudioSettings() {
@@ -2386,6 +2409,34 @@ function primeBackgroundMusic() {
   backgroundMusicState.pendingStart = true;
 }
 
+function ensureSoundCloudWidgetApi(initializer) {
+  if (window.SC && typeof window.SC.Widget === "function") {
+    soundCloudApiState.ready = true;
+    initializer();
+    return;
+  }
+
+  soundCloudApiState.pendingInitializers.push(initializer);
+  if (soundCloudApiState.scriptLoading) return;
+
+  soundCloudApiState.scriptLoading = true;
+  const script = document.createElement("script");
+  script.src = "https://w.soundcloud.com/player/api.js";
+  script.async = true;
+  script.onload = () => {
+    soundCloudApiState.scriptLoading = false;
+    soundCloudApiState.ready = true;
+    const initializers = [...soundCloudApiState.pendingInitializers];
+    soundCloudApiState.pendingInitializers = [];
+    for (const callback of initializers) callback();
+  };
+  script.onerror = () => {
+    soundCloudApiState.scriptLoading = false;
+    soundCloudApiState.pendingInitializers = [];
+  };
+  document.head.appendChild(script);
+}
+
 function ensureCompletionBellWidget() {
   if (!bellState.iframe) {
     const iframe = document.createElement("iframe");
@@ -2402,25 +2453,7 @@ function ensureCompletionBellWidget() {
   }
 
   if (bellState.widget || bellState.widgetReady) return;
-
-  if (window.SC && typeof window.SC.Widget === "function") {
-    initializeCompletionBellWidget();
-    return;
-  }
-
-  if (bellState.scriptLoading) return;
-  bellState.scriptLoading = true;
-  const script = document.createElement("script");
-  script.src = "https://w.soundcloud.com/player/api.js";
-  script.async = true;
-  script.onload = () => {
-    bellState.scriptLoading = false;
-    initializeCompletionBellWidget();
-  };
-  script.onerror = () => {
-    bellState.scriptLoading = false;
-  };
-  document.head.appendChild(script);
+  ensureSoundCloudWidgetApi(initializeCompletionBellWidget);
 }
 
 function initializeCompletionBellWidget() {
@@ -2460,6 +2493,61 @@ function playCompletionBell(fromPending = false) {
   bellState.widget.seekTo(0);
   bellState.widget.play();
   stopCompletionBellLater();
+}
+
+function ensureShiftTickWidget() {
+  if (!shiftTickState.iframe) {
+    const iframe = document.createElement("iframe");
+    iframe.className = "youtube-player-host";
+    iframe.id = "shiftTickPlayer";
+    iframe.src = SHIFT_TICK_EMBED_URL;
+    iframe.title = "Shift ticking";
+    iframe.allow = "autoplay";
+    iframe.referrerPolicy = "strict-origin-when-cross-origin";
+    iframe.tabIndex = -1;
+    iframe.setAttribute("aria-hidden", "true");
+    document.body.appendChild(iframe);
+    shiftTickState.iframe = iframe;
+  }
+
+  if (shiftTickState.widget || shiftTickState.widgetReady) return;
+  ensureSoundCloudWidgetApi(initializeShiftTickWidget);
+}
+
+function initializeShiftTickWidget() {
+  if (!shiftTickState.iframe || shiftTickState.widget || !window.SC || typeof window.SC.Widget !== "function") return;
+  shiftTickState.widget = window.SC.Widget(shiftTickState.iframe);
+  shiftTickState.widget.bind(window.SC.Widget.Events.READY, () => {
+    shiftTickState.widgetReady = true;
+    applySfxVolume();
+    if (shiftTickState.pendingPlay || shiftTickState.active) {
+      shiftTickState.pendingPlay = false;
+      startShiftTicking(true);
+    }
+  });
+}
+
+function startShiftTicking(fromPending = false) {
+  shiftTickState.active = true;
+  ensureShiftTickWidget();
+  if (!shiftTickState.widgetReady || !shiftTickState.widget) {
+    shiftTickState.pendingPlay = true;
+    return;
+  }
+
+  shiftTickState.pendingPlay = false;
+  if (!fromPending) {
+    shiftTickState.widget.seekTo(0);
+  }
+  shiftTickState.widget.play();
+}
+
+function stopShiftTicking() {
+  shiftTickState.active = false;
+  shiftTickState.pendingPlay = false;
+  if (!shiftTickState.widgetReady || !shiftTickState.widget) return;
+  shiftTickState.widget.pause();
+  shiftTickState.widget.seekTo(0);
 }
 
 function buildLocalSavePayload() {

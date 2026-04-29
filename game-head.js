@@ -327,6 +327,7 @@ const ASSET_PATHS = {
   paintRippleSheet: "./assets/paint_ripple_sheet.png",
   paintYellowOverlay: "./assets/paint_yellow_overlay.png",
   crucibleEmpty: "./assets/crucible_1.png",
+  cruciblePowder: "./assets/crucible_2.png",
   cruciblePowderTar: "./assets/crucible_3.png",
   cruciblePaint: "./assets/crucible_4.png",
   hemDressSheet: "./assets/hemming-blue-dress-sheet.png",

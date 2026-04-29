@@ -2045,6 +2045,7 @@ function loadGameFromLocal(slotIndex = selectedSaveSlotIndex) {
   paintState.draggedPieceIndex = -1;
   paintState.tutorial = null;
   paintState.autoSubmitTimer = -1;
+  paintState.watchSubmissionPending = false;
   paintState.thoughtPopup = null;
   paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS.includes(loadedPaint.watchNumeralStyle)
     ? loadedPaint.watchNumeralStyle
@@ -4247,6 +4248,8 @@ function resetWeek() {
   paintState.active = false;
   paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS[0];
   paintState.restHandOnSide = false;
+  paintState.autoSubmitTimer = -1;
+  paintState.watchSubmissionPending = false;
   paintState.groceryTiming.active = false;
   paintState.groceryTiming.itemId = "";
   paintState.groceryTiming.rowIndex = -1;
@@ -4783,7 +4786,7 @@ function refreshMixPhase() {
 
 function mixStageLabel() {
   const phase = mixStageFromState();
-  if (phase === "empty") return "Empty glass";
+  if (phase === "empty") return "Empty crucible";
   if (phase === "ingredient") return "Measures queued";
   if (phase === "stirring") return "Actively stirring";
   if (phase === "ready") return "Ready to settle";
@@ -4803,6 +4806,36 @@ function mixReadinessPercent() {
   if (paintState.mixQuality > 0) return Math.round(paintState.mixQuality * 100);
   if (totalMixMeasures() <= 0) return 0;
   return Math.round(paintState.stirProgress * 100);
+}
+
+const CRUCIBLE_SOURCE_CROPS = {
+  1: { x: 330, y: 36, w: 420, h: 470 },
+  2: { x: 72, y: 62, w: 448, h: 446 },
+  3: { x: 328, y: 42, w: 426, h: 466 },
+  4: { x: 72, y: 44, w: 448, h: 430 },
+};
+
+function currentCrucibleStage() {
+  const phase = mixStageFromState();
+  const total = totalMixMeasures();
+  if (phase === "ready" || phase === "settled" || paintState.mixQuality > 0) {
+    return 4;
+  }
+  if (paintState.mix[1] > 0 || total >= 2) {
+    return 3;
+  }
+  if (total > 0) {
+    return 2;
+  }
+  return 1;
+}
+
+function currentCrucibleAsset() {
+  const stage = currentCrucibleStage();
+  if (stage === 4) return assetImages.cruciblePaint;
+  if (stage === 3) return assetImages.cruciblePowderTar;
+  if (stage === 2) return assetImages.cruciblePowder;
+  return assetImages.crucibleEmpty;
 }
 
 function registerMixRippleFeedback() {
@@ -4836,9 +4869,9 @@ function computeMixQuality() {
 function mixTextureFeedback() {
   const total = totalMixMeasures();
   const phase = mixStageFromState();
-  if (total === 0) return "The bottles stand ready. Nothing has been poured into the glass yet.";
+  if (total === 0) return "The bottles stand ready. Nothing has been poured into the crucible yet.";
   if (phase === "ingredient") {
-    return `The measures are sitting apart in the bowl. Stir them together before you settle the batch. ${currentMixRecipeText()}.`;
+    return `The measures are sitting apart in the crucible. Stir them together before you settle the batch. ${currentMixRecipeText()}.`;
   }
   if (phase === "stirring") {
     return `The spoon is pulling the batch together. Stir until the surface smooths out, or settle early and risk a weaker paint. ${currentMixRecipeText()}.`;
@@ -4855,7 +4888,7 @@ function mixTextureFeedback() {
 function settleMixBatch() {
   const total = totalMixMeasures();
   if (total <= 0) {
-    paintPrompt.textContent = "The mixing glass is empty. Queue powder, tar, and water before you try to settle the batch.";
+    paintPrompt.textContent = "The crucible is empty. Queue powder, tar, and water before you try to settle the batch.";
     updatePaintStats();
     drawWatchMinigame();
     return;
@@ -4871,13 +4904,13 @@ function settleMixBatch() {
   let message = "";
 
   if (paintState.mixQuality > 0.88) {
-    message = "You work the glass until the batch turns heavy and obedient under the lamp.";
+    message = "You work the crucible until the batch turns heavy and obedient under the lamp.";
   } else if (paintState.mixQuality > 0.65) {
     message = "You settle the batch, but one part of it still looks slightly reluctant.";
   } else if (paintState.mixQuality > 0.4) {
     message = "You settle the batch and watch it come together, though the surface still wants to separate.";
   } else {
-    message = "You settle the batch, but it still looks wrong in the glass: thin, grainy, and hard to trust.";
+    message = "You settle the batch, but it still looks wrong in the crucible: thin, grainy, and hard to trust.";
   }
 
   advanceTutorialStep("mix");
@@ -4888,7 +4921,7 @@ function settleMixBatch() {
 function startMixStir(x, y) {
   const total = totalMixMeasures();
   if (total <= 0) {
-    paintPrompt.textContent = "Queue powder, tar, and water into the bowl before you start stirring.";
+    paintPrompt.textContent = "Queue powder, tar, and water into the crucible before you start stirring.";
     updatePaintStats();
     drawWatchMinigame();
     return;
@@ -5280,6 +5313,7 @@ function openMinigame(label) {
   paintState.thoughtPopup = null;
   paintState.tutorial = null;
   paintState.autoSubmitTimer = -1;
+  paintState.watchSubmissionPending = false;
   paintState.nextThoughtTimer = nextThoughtDelay();
   const restored = restoreBenchWork(label);
   if (!restored) {
@@ -5323,6 +5357,7 @@ function closeMinigame() {
   paintState.thoughtPopup = null;
   paintState.tutorial = null;
   paintState.autoSubmitTimer = -1;
+  paintState.watchSubmissionPending = false;
   paintState.fracturePieces = [];
   paintState.draggedPieceIndex = -1;
   paintState.groceryTiming.active = false;
@@ -5451,6 +5486,46 @@ function correctionHotspotsForDial(dial, limit = 6) {
   return hotspots.slice(0, limit);
 }
 
+function buildPointNeighborLists(points, radius) {
+  const count = points.length;
+  const radiusSq = radius * radius;
+  const cellSize = Math.max(1, radius);
+  const buckets = new Map();
+  const neighbors = Array.from({ length: count }, () => []);
+
+  for (let i = 0; i < count; i += 1) {
+    const point = points[i];
+    const cellX = Math.floor(point.x / cellSize);
+    const cellY = Math.floor(point.y / cellSize);
+    const key = `${cellX},${cellY}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(i);
+  }
+
+  for (let i = 0; i < count; i += 1) {
+    const point = points[i];
+    const cellX = Math.floor(point.x / cellSize);
+    const cellY = Math.floor(point.y / cellSize);
+    for (let oy = -1; oy <= 1; oy += 1) {
+      for (let ox = -1; ox <= 1; ox += 1) {
+        const bucket = buckets.get(`${cellX + ox},${cellY + oy}`);
+        if (!bucket) continue;
+        for (const j of bucket) {
+          if (j <= i) continue;
+          const other = points[j];
+          const dx = point.x - other.x;
+          const dy = point.y - other.y;
+          if ((dx * dx) + (dy * dy) > radiusSq) continue;
+          neighbors[i].push(j);
+          neighbors[j].push(i);
+        }
+      }
+    }
+  }
+
+  return neighbors;
+}
+
 function smoothDialShapeOnLock(dial) {
   ensureDialPaintLevel(dial);
   const points = dial.targetPoints;
@@ -5461,21 +5536,7 @@ function smoothDialShapeOnLock(dial) {
   const span = Math.max(1, Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY));
   const spacing = Math.max(3.2, Math.sqrt((span * span) / Math.max(1, count)));
   const neighborRadius = Math.max(7, spacing * 2.05);
-  const neighborRadiusSq = neighborRadius * neighborRadius;
-  const neighbors = Array.from({ length: count }, () => []);
-
-  for (let i = 0; i < count; i += 1) {
-    const pi = points[i];
-    for (let j = i + 1; j < count; j += 1) {
-      const pj = points[j];
-      const dx = pi.x - pj.x;
-      const dy = pi.y - pj.y;
-      if ((dx * dx) + (dy * dy) <= neighborRadiusSq) {
-        neighbors[i].push(j);
-        neighbors[j].push(i);
-      }
-    }
-  }
+  const neighbors = buildPointNeighborLists(points, neighborRadius);
 
   let levels = dial.paintLevel.slice();
   for (let pass = 0; pass < 2; pass += 1) {
@@ -5787,6 +5848,7 @@ function prepareNextWatch(message) {
   paintState.paintLoaded = 0;
   paintState.thoughtPopup = null;
   paintState.autoSubmitTimer = -1;
+  paintState.watchSubmissionPending = false;
   paintState.nextThoughtTimer = nextThoughtDelay();
   paintPrompt.textContent = message;
   hideWorkspaceBanner(true);
@@ -5886,7 +5948,7 @@ function stationHoverTargetAt(x, y) {
         ? "Settled batch"
         : totalMixMeasures() > 0
           ? (paintState.stirProgress >= 0.86 ? "Settle the batch" : "Stir the batch")
-          : "Mixing bowl",
+          : "Mixing crucible",
       centerX: STATION_LAYOUT.dish.x,
       topY: STATION_LAYOUT.dish.y - STATION_LAYOUT.dish.h / 2 + 10,
     };
@@ -5938,11 +6000,11 @@ function addIngredient(region) {
   registerMixRippleFeedback();
 
   if (region.index === 0) {
-    paintPrompt.textContent = `You tap powder into the bowl. The surface goes chalky at once. ${currentMixRecipeText()}.`;
+    paintPrompt.textContent = `You tap powder into the crucible. The surface goes chalky at once. ${currentMixRecipeText()}.`;
   } else if (region.index === 1) {
     paintPrompt.textContent = `You pull in a thicker streak of tar. It darkens the center of the batch. ${currentMixRecipeText()}.`;
   } else {
-    paintPrompt.textContent = `You thin the bowl with water. The color loosens and starts to move. ${currentMixRecipeText()}.`;
+    paintPrompt.textContent = `You thin the crucible with water. The color loosens and starts to move. ${currentMixRecipeText()}.`;
   }
 
   updatePaintStats();
@@ -6521,6 +6583,7 @@ function updateCoverage() {
 function updateAutoSubmit(dt) {
   if (!paintState.active || paintState.mode !== "watch") {
     paintState.autoSubmitTimer = -1;
+    paintState.watchSubmissionPending = false;
     return;
   }
 
@@ -6532,6 +6595,10 @@ function updateAutoSubmit(dt) {
         "\"Good. You know the process now. Clock in at the wall clock and begin your day.\"",
       );
     }
+    return;
+  }
+
+  if (paintState.watchSubmissionPending) {
     return;
   }
 
@@ -6559,6 +6626,7 @@ function updateAutoSubmit(dt) {
   }
 }
 function sendCurrentWatch() {
+  if (paintState.watchSubmissionPending) return;
   if (paintState.tutorial) {
     paintPrompt.textContent = "This is only the practice bench. Leave the tutorial and clock in when you are ready for the real shift.";
     return;
@@ -6571,6 +6639,8 @@ function sendCurrentWatch() {
   const paidNow = paintState.dials.filter((dial) => dial.credited).length;
   const usedCorrections = paintState.dials.some((dial) => dial.corrected);
   const correctionFine = usedCorrections ? IGNORE_CORRECTION_FINE_CENTS : 0;
+  paintState.watchSubmissionPending = true;
+  paintState.isPainting = false;
   gameState.watchesSubmittedToday += 1;
   if (correctionFine > 0) {
     gameState.dayPayDeductionsCents += correctionFine;
@@ -6781,7 +6851,7 @@ function drawMixConsolePanel() {
   paintCtx.fillText("MIXING BOARD", panel.x + 22, panel.y + 35);
   paintCtx.font = "12px Georgia";
   paintCtx.fillStyle = "rgba(232, 218, 193, 0.78)";
-  paintCtx.fillText("Measure the batch, stir it smooth, then send it on to the watch face.", panel.x + 22, panel.y + 58);
+  paintCtx.fillText("Measure into the crucible, stir it smooth, then send it on to the watch face.", panel.x + 22, panel.y + 58);
 
   paintCtx.strokeStyle = "rgba(237, 217, 180, 0.12)";
   for (let row = 1; row < 6; row += 1) {
@@ -6815,6 +6885,26 @@ function drawHorizontalSpriteFrame(image, frameCount, frameIndex, x, y, w, h, al
   return true;
 }
 
+function drawCrucibleFrame(image, stage, x, y, w, h, alpha = 1) {
+  if (!imageReady(image)) return false;
+  const crop = CRUCIBLE_SOURCE_CROPS[stage] || CRUCIBLE_SOURCE_CROPS[1];
+  paintCtx.save();
+  paintCtx.globalAlpha = alpha;
+  paintCtx.drawImage(
+    image,
+    crop.x,
+    crop.y,
+    crop.w,
+    crop.h,
+    x,
+    y,
+    w,
+    h,
+  );
+  paintCtx.restore();
+  return true;
+}
+
 function drawMixDish(centerX, centerY, hovered = false) {
   const total = totalMixMeasures();
   const dish = STATION_LAYOUT.dish;
@@ -6824,31 +6914,12 @@ function drawMixDish(centerX, centerY, hovered = false) {
   const cardY = centerY - dish.h / 2 - 10;
   const cardW = dish.w + 32;
   const cardH = dish.h + 20;
-  const bowlCx = centerX;
-  const bowlCy = centerY + 8;
-  const bowlOuterRx = dish.w * 0.33;
-  const bowlOuterRy = dish.h * 0.16;
-  const bowlInnerRx = bowlOuterRx - 8;
-  const bowlInnerRy = bowlOuterRy - 7;
-  const mixBox = {
-    x: bowlCx - bowlInnerRx - 8,
-    y: bowlCy - bowlInnerRy - 16,
-    w: bowlInnerRx * 2 + 16,
-    h: bowlInnerRy * 2 + 32,
-  };
-  let mixFrameIndex = 0;
-
-  if (total > 0) {
-    if (phase === "ingredient") {
-      mixFrameIndex = Math.min(2, total - 1);
-    } else if (phase === "stirring") {
-      mixFrameIndex = Math.max(2, Math.min(6, 2 + Math.round(paintState.stirProgress * 4)));
-    } else if (phase === "ready") {
-      mixFrameIndex = 6;
-    } else {
-      mixFrameIndex = 7;
-    }
-  }
+  const crucibleStage = currentCrucibleStage();
+  const crucibleImage = currentCrucibleAsset();
+  const imageX = cardX + 14;
+  const imageY = cardY + 18;
+  const imageW = cardW - 28;
+  const imageH = cardH - 54;
 
   paintCtx.save();
   paintCtx.fillStyle = hovered ? "rgba(27, 20, 16, 0.9)" : "rgba(18, 14, 11, 0.78)";
@@ -6858,64 +6929,28 @@ function drawMixDish(centerX, centerY, hovered = false) {
   paintCtx.strokeRect(cardX, cardY, cardW, cardH);
 
   paintCtx.shadowColor = "rgba(0, 0, 0, 0.34)";
-  paintCtx.shadowBlur = 22;
+  paintCtx.shadowBlur = 20;
   paintCtx.shadowOffsetY = 10;
-  paintCtx.fillStyle = "rgba(36, 28, 24, 0.96)";
-  paintCtx.beginPath();
-  paintCtx.ellipse(bowlCx, bowlCy + 22, bowlOuterRx * 0.9, bowlOuterRy * 0.58, 0, 0, Math.PI * 2);
-  paintCtx.fill();
+  const drewCrucible = drawCrucibleFrame(crucibleImage, crucibleStage, imageX, imageY, imageW, imageH, hovered ? 1 : 0.95);
   paintCtx.shadowColor = "transparent";
-
-  paintCtx.fillStyle = "rgba(64, 48, 38, 0.98)";
-  paintCtx.beginPath();
-  paintCtx.ellipse(bowlCx, bowlCy, bowlOuterRx, bowlOuterRy, 0, 0, Math.PI * 2);
-  paintCtx.fill();
-  paintCtx.strokeStyle = "rgba(204, 182, 140, 0.26)";
-  paintCtx.lineWidth = 2.2;
-  paintCtx.stroke();
-
-  paintCtx.fillStyle = "rgba(14, 10, 8, 0.9)";
-  paintCtx.beginPath();
-  paintCtx.ellipse(bowlCx, bowlCy + 2, bowlInnerRx, bowlInnerRy, 0, 0, Math.PI * 2);
-  paintCtx.fill();
-
-  paintCtx.save();
-  paintCtx.beginPath();
-  paintCtx.ellipse(bowlCx, bowlCy + 2, bowlInnerRx, bowlInnerRy, 0, 0, Math.PI * 2);
-  paintCtx.clip();
-
-  if (total > 0) {
-    drawHorizontalSpriteFrame(assetImages.paintMixSheet, 8, mixFrameIndex, mixBox.x, mixBox.y, mixBox.w, mixBox.h, phase === "settled" ? 0.98 : 0.92);
-    if (now - paintState.mixDripStartedAt < 380) {
-      const dripFrame = Math.min(3, Math.floor(((now - paintState.mixDripStartedAt) / 380) * 4));
-      drawHorizontalSpriteFrame(assetImages.paintDripSheet, 4, dripFrame, bowlCx - 40, bowlCy - 70, 80, 80, 0.9);
-    }
-    if (phase === "stirring" || phase === "ready" || now - paintState.mixRippleStartedAt < 560) {
-      const rippleFrame = Math.min(5, Math.floor((((now - paintState.mixRippleStartedAt) % 560) / 560) * 6));
-      drawHorizontalSpriteFrame(assetImages.paintRippleSheet, 6, rippleFrame, mixBox.x + 4, mixBox.y - 6, mixBox.w - 8, mixBox.h + 12, 0.72);
-    }
-    if (phase === "settled") {
-      drawAssetContained(assetImages.paintYellowOverlay, bowlCx, bowlCy - 2, bowlInnerRx * 2.1, bowlInnerRy * 2.2, 0.94);
-    }
+  if (!drewCrucible) {
+    paintCtx.fillStyle = "rgba(86, 63, 40, 0.94)";
+    paintCtx.fillRect(imageX, imageY, imageW, imageH);
   }
-  paintCtx.restore();
 
   if (total > 0 && phase !== "settled") {
     const spoonActive = paintState.mixStirring || now - paintState.mixRippleStartedAt < 540;
+    if (now - paintState.mixDripStartedAt < 380) {
+      const dripFrame = Math.min(3, Math.floor(((now - paintState.mixDripStartedAt) / 380) * 4));
+      drawHorizontalSpriteFrame(assetImages.paintDripSheet, 4, dripFrame, imageX + imageW * 0.31, imageY - 4, 74, 74, 0.82);
+    }
+    if (phase === "stirring" || phase === "ready" || now - paintState.mixRippleStartedAt < 560) {
+      const rippleFrame = Math.min(5, Math.floor((((now - paintState.mixRippleStartedAt) % 560) / 560) * 6));
+      drawHorizontalSpriteFrame(assetImages.paintRippleSheet, 6, rippleFrame, imageX + imageW * 0.28, imageY + imageH * 0.18, imageW * 0.46, imageH * 0.32, 0.58);
+    }
     if (spoonActive || hovered) {
-      const spoonFrame = spoonActive
-        ? Math.floor(((now - paintState.mixRippleStartedAt) / 70) % 6)
-        : 0;
-      drawHorizontalSpriteFrame(
-        assetImages.stirSpoonSheet,
-        6,
-        spoonFrame,
-        bowlCx - bowlOuterRx - 12,
-        bowlCy - bowlOuterRy - 34,
-        bowlOuterRx * 2.25,
-        bowlOuterRy * 2.4,
-        spoonActive ? 0.94 : 0.55,
-      );
+      const spoonFrame = spoonActive ? Math.floor(((now - paintState.mixRippleStartedAt) / 70) % 6) : 0;
+      drawHorizontalSpriteFrame(assetImages.stirSpoonSheet, 6, spoonFrame, imageX + imageW * 0.2, imageY + imageH * 0.05, imageW * 0.72, imageH * 0.64, spoonActive ? 0.82 : 0.42);
     }
   }
 
@@ -6924,7 +6959,7 @@ function drawMixDish(centerX, centerY, hovered = false) {
   paintCtx.fillStyle = "rgba(244, 236, 218, 0.82)";
   paintCtx.font = "12px Georgia";
   paintCtx.fillText(
-    total === 0 ? "empty bowl" : phase === "settled" ? "settled paint" : phase === "ready" ? "ready to settle" : "drag through the bowl to stir",
+    total === 0 ? "empty crucible" : phase === "settled" ? "settled paint" : phase === "ready" ? "ready to settle" : "drag through the crucible to stir",
     centerX,
     centerY + dish.h / 2 + 20,
   );
@@ -6962,7 +6997,7 @@ function drawMixingView() {
   paintCtx.fillText("BOTTLES AND GLASS", 48, 38);
   paintCtx.font = "13px Georgia";
   paintCtx.fillStyle = "rgba(238, 226, 206, 0.74)";
-  paintCtx.fillText("Add the measures, drag through the bowl to stir, then settle the batch.", 48, 60);
+  paintCtx.fillText("Add the measures, drag through the crucible to stir, then settle the batch.", 48, 60);
   paintCtx.restore();
 
   if (hoveredStationTarget) {
@@ -8645,7 +8680,7 @@ function handlePaintCanvasPress(event) {
   if (mixingBoardOpen()) {
     paintPrompt.textContent = paintState.mixQuality > 0
       ? "The batch is settled. The watch face is ready on the next screen."
-      : "Queue the measures, then drag through the bowl to stir before you settle the batch.";
+      : "Queue the measures, then drag through the crucible to stir before you settle the batch.";
     updatePaintStats();
     drawWatchMinigame();
     return;

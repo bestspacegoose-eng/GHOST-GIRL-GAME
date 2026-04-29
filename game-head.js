@@ -326,6 +326,9 @@ const ASSET_PATHS = {
   paintDripSheet: "./assets/paint_drip_sheet.png",
   paintRippleSheet: "./assets/paint_ripple_sheet.png",
   paintYellowOverlay: "./assets/paint_yellow_overlay.png",
+  crucibleEmpty: "./assets/crucible_1.png",
+  cruciblePowderTar: "./assets/crucible_3.png",
+  cruciblePaint: "./assets/crucible_4.png",
   hemDressSheet: "./assets/hemming-blue-dress-sheet.png",
   hemSkirtSheet: "./assets/hemming-school-skirt-sheet.png",
   hemShirtSheet: "./assets/hemming-shirt-hem-sheet.png",
@@ -448,6 +451,7 @@ const paintState = {
   watchNumeralStyle: NUMERAL_STYLE_KEYS[0],
   showCoverageAssist: false,
   restHandOnSide: false,
+  watchSubmissionPending: false,
   groceryTiming: {
     active: false,
     itemId: "",

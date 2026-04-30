@@ -552,7 +552,7 @@ const TUTORIAL_STEPS = [
   {
     title: "Center Bench Tutorial",
     body:
-      "\"That is the heart of it. If the paint strays, use Clean edges with nails for a small correction. If you lose the weak spots, Check numeral will show them back to you. Use Sharpen brush when the tip starts to spread. Press Escape to pull back from the numeral.\"",
+      "\"That is the heart of it. If the paint strays, Clean edges with nails for a small correction. If you lose the weak spots, Check numeral will show them back to you. Sharpen brush when the tip starts to spread. Press Escape to pull back from the numeral.\"",
   },
   {
     title: "Center Bench Tutorial",

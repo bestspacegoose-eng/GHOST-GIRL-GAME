@@ -317,9 +317,9 @@ const ASSET_PATHS = {
   gumArabic: "./assets/gum-arabic.png",
   waterPlate: "./assets/water-plate.png",
   mixedPaint: "./assets/mixed-paint.png",
-  mixPowderPhoto: "./assets/mix-powder-photo.jpg",
-  mixBottle: "./assets/mix-tar-bottle.jpg",
-  mixWaterDropper: "./assets/mix-water-dropper.jpg",
+  mixPowderPhoto: "./assets/Powderspoon.png",
+  mixBottle: "./assets/TransparentTarBottle.png",
+  mixWaterDropper: "./assets/Vial.png",
   mixBeaker: "./assets/mix-beaker-photo.jpg",
   paintMixSheet: "./assets/paint_mix_sheet.png",
   stirSpoonSheet: "./assets/stir_spoon_sheet.png",
@@ -518,13 +518,13 @@ const bellState = {
   stopTimer: 0,
 };
 
-const shiftTickState = {
+/*const shiftTickState = {
   iframe: null,
   widget: null,
   widgetReady: false,
   pendingPlay: false,
   active: false,
-};
+};*/
 
 const soundCloudApiState = {
   scriptLoading: false,
@@ -576,7 +576,7 @@ const TUTORIAL_STEPS = [
   {
     title: "Center Bench Tutorial",
     body:
-      "\"That is the heart of it. If the paint strays, use Clean edges with nails for a small correction. If you lose the weak spots, Check numeral will show them back to you. Use Sharpen brush when the tip starts to spread. Press Escape to pull back from the numeral.\"",
+      "\"That is the heart of it. If the paint strays, Clean edges with nails for a small correction. If you lose the weak spots, Check numeral will show them back to you. Sharpen brush when the tip starts to spread. Press Escape to pull back from the numeral.\"",
   },
   {
     title: "Center Bench Tutorial",

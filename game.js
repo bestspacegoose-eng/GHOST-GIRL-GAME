@@ -1576,7 +1576,7 @@ function hideWorkspaceBanner(immediate = false) {
 
 function showWorkspaceMemoryBanner() {
   if (!workspaceBanner || !workspaceBannerTitle || !workspaceBannerBody) return;
-  if (!gameState.shiftActive || paintState.mode !== "watch" || paintState.tutorial) {
+  if (!gameState.shiftActive || !paintingBoardOpen() || paintState.tutorial) {
     hideWorkspaceBanner(true);
     return;
   }
@@ -1885,6 +1885,8 @@ function buildLocalSavePayload() {
       brushSize: paintState.brushSize,
       mix: clonePlain(paintState.mix),
       mixQuality: paintState.mixQuality,
+      mixPhase: paintState.mixPhase,
+      stirProgress: paintState.stirProgress,
       paintLoaded: paintState.paintLoaded,
       watchNumeralStyle: paintState.watchNumeralStyle,
       activeDialIndex: paintState.activeDialIndex,
@@ -2025,6 +2027,14 @@ function loadGameFromLocal(slotIndex = selectedSaveSlotIndex) {
     ? loadedPaint.mix.map((value) => Math.max(0, Number(value || 0)))
     : [0, 0, 0];
   paintState.mixQuality = Math.max(0, Math.min(1, Number(loadedPaint.mixQuality ?? 0)));
+  paintState.mixPhase = String(loadedPaint.mixPhase || "empty");
+  paintState.stirProgress = Math.max(0, Math.min(1, Number(loadedPaint.stirProgress ?? 0)));
+  paintState.mixStirring = false;
+  paintState.mixLastStirX = 0;
+  paintState.mixLastStirY = 0;
+  paintState.mixRippleStartedAt = 0;
+  paintState.mixDripStartedAt = 0;
+  paintState.mixSettledAt = 0;
   paintState.activeDialIndex = Math.max(0, Number(loadedPaint.activeDialIndex ?? 0));
   paintState.zoomedDialIndex = -1;
   paintState.paintLoaded = Math.max(0, Math.min(1, Number(loadedPaint.paintLoaded ?? 0)));
@@ -2035,6 +2045,7 @@ function loadGameFromLocal(slotIndex = selectedSaveSlotIndex) {
   paintState.draggedPieceIndex = -1;
   paintState.tutorial = null;
   paintState.autoSubmitTimer = -1;
+  paintState.watchSubmissionPending = false;
   paintState.thoughtPopup = null;
   paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS.includes(loadedPaint.watchNumeralStyle)
     ? loadedPaint.watchNumeralStyle
@@ -2148,6 +2159,23 @@ function wrapThoughtText(text, maxWidth) {
 
   if (line) lines.push(line);
   return lines;
+}
+
+function drawWrappedCanvasText(text, x, y, maxWidth, lineHeight, maxLines = Infinity) {
+  const lines = wrapThoughtText(text, maxWidth).slice(0, maxLines);
+  lines.forEach((line, index) => {
+    paintCtx.fillText(line, x, y + index * lineHeight);
+  });
+  return lines.length;
+}
+
+function fitCanvasText(text, maxWidth) {
+  if (paintCtx.measureText(text).width <= maxWidth) return text;
+  let trimmed = text;
+  while (trimmed.length > 1 && paintCtx.measureText(`${trimmed}...`).width > maxWidth) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return `${trimmed}...`;
 }
 
 function fitThoughtText(text, frame) {
@@ -2566,8 +2594,14 @@ function setStationControlsHidden(hidden) {
   lickButton.classList.toggle("hidden", hidden);
   checkNumeralButton.classList.toggle("hidden", hidden);
   restHandButton.classList.toggle("hidden", hidden || !canUseRestHandSupport());
+  if (paintBackToMixButton) {
+    paintBackToMixButton.classList.toggle("hidden", hidden);
+  }
   mixSettleButton.classList.toggle("hidden", hidden);
   mixResetButton.classList.toggle("hidden", hidden);
+  if (!hidden) {
+    syncWatchScreenButtons();
+  }
   syncStationButtonHighlights();
 }
 
@@ -3096,10 +3130,10 @@ function groceryBargainRect() {
 function groceryControlsRect(index) {
   const rect = groceryRowRect(index);
   return {
-    minus: { x: rect.x + rect.w - 66, y: rect.y + 9, w: 20, h: rect.h - 18 },
-    plus: { x: rect.x + rect.w - 22, y: rect.y + 9, w: 20, h: rect.h - 18 },
-    countX: rect.x + rect.w - 34,
-    priceX: rect.x + rect.w - 78,
+    minus: { x: rect.x + rect.w - 82, y: rect.y + 8, w: 24, h: rect.h - 16 },
+    plus: { x: rect.x + rect.w - 28, y: rect.y + 8, w: 24, h: rect.h - 16 },
+    countX: rect.x + rect.w - 43,
+    priceX: rect.x + rect.w - 110,
   };
 }
 
@@ -4214,6 +4248,8 @@ function resetWeek() {
   paintState.active = false;
   paintState.watchNumeralStyle = NUMERAL_STYLE_KEYS[0];
   paintState.restHandOnSide = false;
+  paintState.autoSubmitTimer = -1;
+  paintState.watchSubmissionPending = false;
   paintState.groceryTiming.active = false;
   paintState.groceryTiming.itemId = "";
   paintState.groceryTiming.rowIndex = -1;
@@ -4505,6 +4541,8 @@ function saveCurrentBenchWork() {
     dials: cloneDials(paintState.dials),
     mix: [...paintState.mix],
     mixQuality: paintState.mixQuality,
+    mixPhase: paintState.mixPhase,
+    stirProgress: paintState.stirProgress,
     brushSize: paintState.brushSize,
     watchNumeralStyle: paintState.watchNumeralStyle,
     watchIndex: paintState.watchIndex,
@@ -4513,6 +4551,7 @@ function saveCurrentBenchWork() {
     paintLoaded: paintState.paintLoaded,
     readyToSubmit: paintState.readyToSubmit,
     restHandOnSide: paintState.restHandOnSide,
+    watchScreen: paintState.watchScreen,
   };
 }
 
@@ -4522,6 +4561,14 @@ function restoreBenchWork(label) {
   paintState.dials = cloneDials(saved.dials);
   paintState.mix = [...saved.mix];
   paintState.mixQuality = saved.mixQuality;
+  paintState.mixPhase = String(saved.mixPhase || "empty");
+  paintState.stirProgress = Math.max(0, Math.min(1, Number(saved.stirProgress ?? 0)));
+  paintState.mixStirring = false;
+  paintState.mixLastStirX = 0;
+  paintState.mixLastStirY = 0;
+  paintState.mixRippleStartedAt = 0;
+  paintState.mixDripStartedAt = 0;
+  paintState.mixSettledAt = 0;
   paintState.brushSize = saved.brushSize;
   paintState.watchNumeralStyle = saved.watchNumeralStyle || NUMERAL_STYLE_KEYS[0];
   paintState.watchIndex = saved.watchIndex;
@@ -4530,6 +4577,7 @@ function restoreBenchWork(label) {
   paintState.paintLoaded = saved.paintLoaded;
   paintState.readyToSubmit = saved.readyToSubmit;
   paintState.restHandOnSide = Boolean(saved.restHandOnSide) && gameState.handRestUnlocked;
+  paintState.watchScreen = saved.watchScreen || (saved.mixQuality > 0 ? WATCH_SCREEN_PAINTING : WATCH_SCREEN_MIXING);
   if (paintState.zoomedDialIndex !== -1) {
     zoomCursorToDial(paintState.zoomedDialIndex);
   } else {
@@ -4693,10 +4741,109 @@ function pointBounds(points) {
 function resetMix() {
   paintState.mix = [0, 0, 0];
   paintState.mixQuality = 0;
+  paintState.mixPhase = "empty";
+  paintState.stirProgress = 0;
+  paintState.mixStirring = false;
+  paintState.mixLastStirX = 0;
+  paintState.mixLastStirY = 0;
+  paintState.mixRippleStartedAt = 0;
+  paintState.mixDripStartedAt = 0;
+  paintState.mixSettledAt = 0;
 }
 
 function totalMixMeasures() {
   return paintState.mix[0] + paintState.mix[1] + paintState.mix[2];
+}
+
+function mixDishRect() {
+  return {
+    x: STATION_LAYOUT.dish.x - STATION_LAYOUT.dish.w / 2,
+    y: STATION_LAYOUT.dish.y - STATION_LAYOUT.dish.h / 2,
+    w: STATION_LAYOUT.dish.w,
+    h: STATION_LAYOUT.dish.h,
+  };
+}
+
+function pointInsideMixDish(x, y) {
+  const rect = mixDishRect();
+  const nx = (x - (rect.x + rect.w / 2)) / (rect.w * 0.36);
+  const ny = (y - (rect.y + rect.h * 0.46)) / (rect.h * 0.21);
+  return nx * nx + ny * ny <= 1;
+}
+
+function mixStageFromState() {
+  const total = totalMixMeasures();
+  if (paintState.mixQuality > 0) return "settled";
+  if (total <= 0) return "empty";
+  if (paintState.stirProgress >= 0.86) return "ready";
+  if (paintState.stirProgress > 0.08) return "stirring";
+  return "ingredient";
+}
+
+function refreshMixPhase() {
+  paintState.mixPhase = mixStageFromState();
+}
+
+function mixStageLabel() {
+  const phase = mixStageFromState();
+  if (phase === "empty") return "Empty crucible";
+  if (phase === "ingredient") return "Measures queued";
+  if (phase === "stirring") return "Actively stirring";
+  if (phase === "ready") return "Ready to settle";
+  return "Batch settled";
+}
+
+function mixStageShortLabel() {
+  const phase = mixStageFromState();
+  if (phase === "empty") return "Batch empty";
+  if (phase === "ingredient") return "Batch queued";
+  if (phase === "stirring") return `Stir ${Math.round(paintState.stirProgress * 100)}%`;
+  if (phase === "ready") return "Ready to settle";
+  return `Mix quality ${Math.round(paintState.mixQuality * 100)}%`;
+}
+
+function mixReadinessPercent() {
+  if (paintState.mixQuality > 0) return Math.round(paintState.mixQuality * 100);
+  if (totalMixMeasures() <= 0) return 0;
+  return Math.round(paintState.stirProgress * 100);
+}
+
+const CRUCIBLE_SOURCE_CROPS = {
+  1: { x: 330, y: 36, w: 420, h: 470 },
+  2: { x: 72, y: 62, w: 448, h: 446 },
+  3: { x: 328, y: 42, w: 426, h: 466 },
+  4: { x: 72, y: 44, w: 448, h: 430 },
+};
+
+function currentCrucibleStage() {
+  const phase = mixStageFromState();
+  const total = totalMixMeasures();
+  if (phase === "ready" || phase === "settled" || paintState.mixQuality > 0) {
+    return 4;
+  }
+  if (paintState.mix[1] > 0 || total >= 2) {
+    return 3;
+  }
+  if (total > 0) {
+    return 2;
+  }
+  return 1;
+}
+
+function currentCrucibleAsset() {
+  const stage = currentCrucibleStage();
+  if (stage === 4) return assetImages.cruciblePaint;
+  if (stage === 3) return assetImages.cruciblePowderTar;
+  if (stage === 2) return assetImages.cruciblePowder;
+  return assetImages.crucibleEmpty;
+}
+
+function registerMixRippleFeedback() {
+  paintState.mixRippleStartedAt = performance.now();
+}
+
+function registerMixDripFeedback() {
+  paintState.mixDripStartedAt = performance.now();
 }
 
 function currentMixRecipeText() {
@@ -4714,14 +4861,24 @@ function computeMixQuality() {
     ratios[1] - target[1],
     ratios[2] - target[2],
   );
-
-  return Math.max(0.16, Math.min(1, 1 - distance * 1.65));
+  const ratioQuality = Math.max(0.16, Math.min(1, 1 - distance * 1.65));
+  const stirFactor = 0.38 + Math.min(1, paintState.stirProgress) * 0.62;
+  return Math.max(0.12, Math.min(1, ratioQuality * stirFactor));
 }
 
 function mixTextureFeedback() {
   const total = totalMixMeasures();
-  if (total === 0) return "The bottles stand ready. Nothing has been poured into the glass yet.";
-  if (paintState.mixQuality <= 0) return `The measures are sitting in the mixing glass. Settle the batch before you load the brush. ${currentMixRecipeText()}.`;
+  const phase = mixStageFromState();
+  if (total === 0) return "The bottles stand ready. Nothing has been poured into the crucible yet.";
+  if (phase === "ingredient") {
+    return `The measures are sitting apart in the crucible. Stir them together before you settle the batch. ${currentMixRecipeText()}.`;
+  }
+  if (phase === "stirring") {
+    return `The spoon is pulling the batch together. Stir until the surface smooths out, or settle early and risk a weaker paint. ${currentMixRecipeText()}.`;
+  }
+  if (phase === "ready") {
+    return "The color has nearly evened out. Settle the batch now, or keep stirring for a steadier paint.";
+  }
   if (paintState.mixQuality > 0.88) return "The mixture settles into a dense, even glow.";
   if (paintState.mixQuality > 0.65) return "The mixture almost holds together. One ingredient still feels slightly off.";
   if (paintState.mixQuality > 0.4) return "The paint looks usable, but it separates quickly under the lamp.";
@@ -4731,35 +4888,163 @@ function mixTextureFeedback() {
 function settleMixBatch() {
   const total = totalMixMeasures();
   if (total <= 0) {
-    paintPrompt.textContent = "The mixing glass is empty. Queue powder, tar, and water before you try to settle the batch.";
+    paintPrompt.textContent = "The crucible is empty. Queue powder, tar, and water before you try to settle the batch.";
     updatePaintStats();
     drawWatchMinigame();
     return;
   }
 
   paintState.mixQuality = computeMixQuality();
+  paintState.mixStirring = false;
+  paintState.mixSettledAt = performance.now();
   paintState.tool = "mix";
   paintState.correcting = false;
+  paintState.restHandOnSide = false;
+  paintState.mixPhase = "settled";
+  let message = "";
 
   if (paintState.mixQuality > 0.88) {
-    paintPrompt.textContent = "You work the glass until the batch turns heavy and obedient under the lamp.";
+    message = "You work the crucible until the batch turns heavy and obedient under the lamp.";
   } else if (paintState.mixQuality > 0.65) {
-    paintPrompt.textContent = "You settle the batch, but one part of it still looks slightly reluctant.";
+    message = "You settle the batch, but one part of it still looks slightly reluctant.";
   } else if (paintState.mixQuality > 0.4) {
-    paintPrompt.textContent = "You settle the batch and watch it come together, though the surface still wants to separate.";
+    message = "You settle the batch and watch it come together, though the surface still wants to separate.";
   } else {
-    paintPrompt.textContent = "You settle the batch, but it still looks wrong in the glass: thin, grainy, and hard to trust.";
+    message = "You settle the batch, but it still looks wrong in the crucible: thin, grainy, and hard to trust.";
   }
 
   advanceTutorialStep("mix");
   updatePaintStats();
+  switchToPaintingBoard(`${message} The watch face waits on the next screen.`);
+}
+
+function startMixStir(x, y) {
+  const total = totalMixMeasures();
+  if (total <= 0) {
+    paintPrompt.textContent = "Queue powder, tar, and water into the crucible before you start stirring.";
+    updatePaintStats();
+    drawWatchMinigame();
+    return;
+  }
+  if (paintState.mixQuality > 0) {
+    paintPrompt.textContent = "The batch is already settled. Clear it or return to the watch face.";
+    updatePaintStats();
+    drawWatchMinigame();
+    return;
+  }
+
+  paintState.mixStirring = true;
+  paintState.mixLastStirX = x;
+  paintState.mixLastStirY = y;
+  paintState.mixPhase = paintState.stirProgress >= 0.86 ? "ready" : "stirring";
+  registerMixRippleFeedback();
+  paintPrompt.textContent = paintState.stirProgress >= 0.86
+    ? "The surface is finally smoothing out. Settle the batch when it looks right."
+    : "Keep the spoon moving through the bowl until the grit gives way.";
+  updatePaintStats();
   drawWatchMinigame();
+}
+
+function continueMixStir(x, y) {
+  if (!paintState.mixStirring || paintState.mixQuality > 0 || totalMixMeasures() <= 0) return;
+
+  const dx = x - paintState.mixLastStirX;
+  const dy = y - paintState.mixLastStirY;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 4) return;
+
+  paintState.mixLastStirX = x;
+  paintState.mixLastStirY = y;
+  const centerX = STATION_LAYOUT.dish.x;
+  const centerY = STATION_LAYOUT.dish.y;
+  const tangentStrength = Math.min(1, Math.abs((x - centerX) * dy - (y - centerY) * dx) / 1800);
+  const gain = Math.min(0.055, distance / 360) * (0.68 + tangentStrength * 0.7);
+  const previous = paintState.stirProgress;
+  paintState.stirProgress = Math.max(previous, Math.min(1, paintState.stirProgress + gain));
+  paintState.mixPhase = paintState.stirProgress >= 0.86 ? "ready" : "stirring";
+  registerMixRippleFeedback();
+  if (previous < 0.86 && paintState.stirProgress >= 0.86) {
+    paintPrompt.textContent = "The swirl settles into a smoother yellow. The batch looks ready to settle.";
+  }
+  updatePaintStats();
+  drawWatchMinigame();
+}
+
+function stopMixStir() {
+  paintState.mixStirring = false;
 }
 
 function currentStationMode() {
   if (paintState.tool === "nail") return "nail";
   if (paintState.tool === "brush") return "brush";
   return "mix";
+}
+
+function mixingBoardOpen() {
+  return paintState.mode === "watch" && paintState.watchScreen === WATCH_SCREEN_MIXING;
+}
+
+function paintingBoardOpen() {
+  return paintState.mode === "watch" && paintState.watchScreen === WATCH_SCREEN_PAINTING;
+}
+
+function syncWatchScreenHeading() {
+  if (!minigameHeading || paintState.mode !== "watch") return;
+  minigameHeading.textContent = mixingBoardOpen() ? "Paint Mixing" : "Watch Painting";
+}
+
+function syncWatchScreenButtons() {
+  if (paintState.mode !== "watch") return;
+  const mixing = mixingBoardOpen();
+  correctButton.classList.toggle("hidden", mixing);
+  lickButton.classList.toggle("hidden", mixing);
+  checkNumeralButton.classList.toggle("hidden", mixing);
+  mixSettleButton.classList.toggle("hidden", !mixing);
+  mixResetButton.classList.toggle("hidden", !mixing);
+  if (paintBackToMixButton) {
+    paintBackToMixButton.classList.toggle("hidden", mixing);
+  }
+  if (restHandButton) {
+    restHandButton.classList.toggle("hidden", mixing || !canUseRestHandSupport());
+  }
+}
+
+function switchToMixingBoard(
+  message = "You step back from the watch face and return to the mixing board.",
+) {
+  paintState.isPainting = false;
+  paintState.watchScreen = WATCH_SCREEN_MIXING;
+  paintState.zoomedDialIndex = -1;
+  paintState.showCoverageAssist = false;
+  paintState.tool = "mix";
+  paintState.correcting = false;
+  paintState.restHandOnSide = false;
+  paintPrompt.textContent = message;
+  hideWorkspaceBanner(true);
+  moveCursorToActiveDial();
+  updatePaintStats();
+  drawWatchMinigame();
+}
+
+function switchToPaintingBoard(message = "") {
+  if (paintState.mixQuality <= 0) {
+    paintPrompt.textContent = "Settle the batch at the mixing board before you move to the watch face.";
+    updatePaintStats();
+    drawWatchMinigame();
+    return;
+  }
+  paintState.isPainting = false;
+  paintState.watchScreen = WATCH_SCREEN_PAINTING;
+  paintState.zoomedDialIndex = -1;
+  paintState.showCoverageAssist = false;
+  paintState.tool = "brush";
+  paintState.correcting = false;
+  paintState.restHandOnSide = false;
+  moveCursorToActiveDial();
+  paintPrompt.textContent = message || "The settled batch is ready. Click one of the gray numeral markers to open it on the watch face.";
+  updatePaintStats();
+  drawWatchMinigame();
+  showWorkspaceMemoryBanner();
 }
 
 function activeDial() {
@@ -5019,6 +5304,7 @@ function safeExitPointerLock() {
 function openMinigame(label) {
   paintState.active = true;
   paintState.mode = "watch";
+  paintState.watchScreen = WATCH_SCREEN_MIXING;
   paintState.tableLabel = label;
   paintState.isPainting = false;
   paintState.correcting = false;
@@ -5027,8 +5313,10 @@ function openMinigame(label) {
   paintState.thoughtPopup = null;
   paintState.tutorial = null;
   paintState.autoSubmitTimer = -1;
+  paintState.watchSubmissionPending = false;
   paintState.nextThoughtTimer = nextThoughtDelay();
-  if (!restoreBenchWork(label)) {
+  const restored = restoreBenchWork(label);
+  if (!restored) {
     paintState.watchIndex += 1;
     paintState.brushSize = DEFAULT_BRUSH_SIZE;
     paintState.watchNumeralStyle = chooseRandomNumeralStyle(paintState.watchNumeralStyle);
@@ -5040,17 +5328,18 @@ function openMinigame(label) {
     buildDialState();
     moveCursorToActiveDial();
   }
-  minigameHeading.textContent = "Watch Painting";
   setStationControlsHidden(false);
   minigameOverlay.classList.remove("hidden");
   safeExitPointerLock();
 
-  paintPrompt.textContent =
-    "Queue powder, tar, and water into the glass, settle the batch, then click one of the gray numeral markers to open that spot in close view.";
+  paintPrompt.textContent = restored
+    ? (mixingBoardOpen()
+        ? "The half-built batch is still waiting at the mixing board. Settle it before you move back to the watch face."
+        : "The settled batch and watch face are still where you left them. Click one of the gray numeral markers to open it up close.")
+    : "Queue powder, tar, and water at the mixing board. Once the batch settles, the watch face will take over on its own screen.";
   mixPrompt.textContent = mixTextureFeedback();
   updatePaintStats();
   drawWatchMinigame();
-  showWorkspaceMemoryBanner();
 }
 
 function closeMinigame() {
@@ -5061,12 +5350,14 @@ function closeMinigame() {
   paintState.tool = "mix";
   paintState.showCoverageAssist = false;
   paintState.mode = "watch";
+  paintState.watchScreen = WATCH_SCREEN_MIXING;
   paintState.zoomedDialIndex = -1;
   paintState.paintLoaded = 0;
   paintState.restHandOnSide = false;
   paintState.thoughtPopup = null;
   paintState.tutorial = null;
   paintState.autoSubmitTimer = -1;
+  paintState.watchSubmissionPending = false;
   paintState.fracturePieces = [];
   paintState.draggedPieceIndex = -1;
   paintState.groceryTiming.active = false;
@@ -5075,7 +5366,6 @@ function closeMinigame() {
   paintState.groceryTiming.bestGrade = "";
   paintState.groceryTiming.bestProgress = 0;
   clearTimingFeedback();
-  minigameHeading.textContent = "Watch Painting";
   setStationControlsHidden(false);
   paintCanvas.style.cursor = "none";
   hideInfoCanvas();
@@ -5196,6 +5486,46 @@ function correctionHotspotsForDial(dial, limit = 6) {
   return hotspots.slice(0, limit);
 }
 
+function buildPointNeighborLists(points, radius) {
+  const count = points.length;
+  const radiusSq = radius * radius;
+  const cellSize = Math.max(1, radius);
+  const buckets = new Map();
+  const neighbors = Array.from({ length: count }, () => []);
+
+  for (let i = 0; i < count; i += 1) {
+    const point = points[i];
+    const cellX = Math.floor(point.x / cellSize);
+    const cellY = Math.floor(point.y / cellSize);
+    const key = `${cellX},${cellY}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(i);
+  }
+
+  for (let i = 0; i < count; i += 1) {
+    const point = points[i];
+    const cellX = Math.floor(point.x / cellSize);
+    const cellY = Math.floor(point.y / cellSize);
+    for (let oy = -1; oy <= 1; oy += 1) {
+      for (let ox = -1; ox <= 1; ox += 1) {
+        const bucket = buckets.get(`${cellX + ox},${cellY + oy}`);
+        if (!bucket) continue;
+        for (const j of bucket) {
+          if (j <= i) continue;
+          const other = points[j];
+          const dx = point.x - other.x;
+          const dy = point.y - other.y;
+          if ((dx * dx) + (dy * dy) > radiusSq) continue;
+          neighbors[i].push(j);
+          neighbors[j].push(i);
+        }
+      }
+    }
+  }
+
+  return neighbors;
+}
+
 function smoothDialShapeOnLock(dial) {
   ensureDialPaintLevel(dial);
   const points = dial.targetPoints;
@@ -5206,21 +5536,7 @@ function smoothDialShapeOnLock(dial) {
   const span = Math.max(1, Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY));
   const spacing = Math.max(3.2, Math.sqrt((span * span) / Math.max(1, count)));
   const neighborRadius = Math.max(7, spacing * 2.05);
-  const neighborRadiusSq = neighborRadius * neighborRadius;
-  const neighbors = Array.from({ length: count }, () => []);
-
-  for (let i = 0; i < count; i += 1) {
-    const pi = points[i];
-    for (let j = i + 1; j < count; j += 1) {
-      const pj = points[j];
-      const dx = pi.x - pj.x;
-      const dy = pi.y - pj.y;
-      if ((dx * dx) + (dy * dy) <= neighborRadiusSq) {
-        neighbors[i].push(j);
-        neighbors[j].push(i);
-      }
-    }
-  }
+  const neighbors = buildPointNeighborLists(points, neighborRadius);
 
   let levels = dial.paintLevel.slice();
   for (let pass = 0; pass < 2; pass += 1) {
@@ -5419,16 +5735,14 @@ function updatePaintStats() {
   const finished = paintState.dials.filter((dial) => dial.locked || dialCountsAsPainted(dial)).length;
   const correctionNeeded = correctionCount();
   const totalMix = totalMixMeasures();
-  const mixPercent = Math.round(paintState.mixQuality * 100);
-  const mixText = totalMix > 0 && paintState.mixQuality <= 0
-    ? "Mix quality pending"
-    : `Mix quality ${mixPercent}%`;
+  refreshMixPhase();
+  const mixText = mixStageShortLabel();
   const brushState =
     paintState.brushSize <= BRUSH_ROUGH_THRESHOLD * 0.7 ? "fine tip" :
     paintState.brushSize < BRUSH_ROUGH_THRESHOLD ? "slightly soft" :
     paintState.brushSize < BRUSH_FANNED_THRESHOLD ? "roughening" :
     "fully fanned";
-  const currentDial = activeDial();
+  const currentDial = paintingBoardOpen() ? activeDial() : null;
   const currentDialText = currentDial
     ? ` Numeral ${currentDial.label} coverage ${Math.round(currentDial.coverage * 100)}%.`
     : "";
@@ -5438,14 +5752,15 @@ function updatePaintStats() {
   const reliefRate = !paintState.tutorial && gameState.shiftActive ? familiarityHealthDiscountRate() : 0;
   const reliefText = reliefRate > 0 ? ` Bench relief ${Math.round(reliefRate * 100)}%.` : "";
   paintStats.textContent =
-    `${mixText}. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}${handText}${reliefText}`;
+    `${mixText}. Batch progress ${mixReadinessPercent()}%. Paid dials today ${gameState.dialsPaintedToday}. Corrections needed ${correctionNeeded}. Tool ${paintState.tool}. Brush ${brushState}.${currentDialText}${handText}${reliefText}`;
   mixPrompt.textContent = mixTextureFeedback();
+  syncWatchScreenHeading();
   correctButton.classList.toggle("active", paintState.tool === "nail");
   if (restHandButton) {
-    restHandButton.classList.toggle("hidden", !canUseRestHandSupport());
     restHandButton.classList.toggle("active", canUseRestHandSupport() && paintState.restHandOnSide);
   }
   updateCheckNumeralButton();
+  syncWatchScreenButtons();
   syncStationButtonHighlights();
 }
 
@@ -5522,6 +5837,7 @@ function prepareNextWatch(message) {
   clearBenchWork();
   paintState.correcting = false;
   paintState.tool = "mix";
+  paintState.watchScreen = WATCH_SCREEN_MIXING;
   paintState.showCoverageAssist = false;
   paintState.zoomedDialIndex = -1;
   paintState.readyToSubmit = false;
@@ -5532,11 +5848,12 @@ function prepareNextWatch(message) {
   paintState.paintLoaded = 0;
   paintState.thoughtPopup = null;
   paintState.autoSubmitTimer = -1;
+  paintState.watchSubmissionPending = false;
   paintState.nextThoughtTimer = nextThoughtDelay();
   paintPrompt.textContent = message;
+  hideWorkspaceBanner(true);
   updatePaintStats();
   drawWatchMinigame();
-  showWorkspaceMemoryBanner();
 }
 
 function findNearestDial(x, y) {
@@ -5584,7 +5901,7 @@ function findNearestTracePoint(x, y) {
 
 function bowlUnderCursor(x, y) {
   const regions = paintState.zoomedDialIndex === -1
-    ? componentRegions
+    ? (mixingBoardOpen() ? componentRegions : [])
     : [{ index: 3, label: "Paint dish", x: STATION_LAYOUT.zoomPaint.x, y: STATION_LAYOUT.zoomPaint.y, w: STATION_LAYOUT.zoomPaint.w, h: STATION_LAYOUT.zoomPaint.h }];
 
   for (const region of regions) {
@@ -5624,7 +5941,20 @@ function pointInsideRect(x, y, rect) {
 function stationHoverTargetAt(x, y) {
   if (paintState.mode !== "watch") return null;
 
-  if (paintState.zoomedDialIndex === -1) {
+  if (mixingBoardOpen() && pointInsideMixDish(x, y)) {
+    return {
+      type: "dish",
+      label: paintState.mixQuality > 0
+        ? "Settled batch"
+        : totalMixMeasures() > 0
+          ? (paintState.stirProgress >= 0.86 ? "Settle the batch" : "Stir the batch")
+          : "Mixing crucible",
+      centerX: STATION_LAYOUT.dish.x,
+      topY: STATION_LAYOUT.dish.y - STATION_LAYOUT.dish.h / 2 + 10,
+    };
+  }
+
+  if (paintState.zoomedDialIndex === -1 && paintingBoardOpen()) {
     const brushBounds = brushPropBounds();
     if (pointInsideRect(x, y, brushBounds)) {
       return { type: "brush", label: "Pick up brush", centerX: STATION_LAYOUT.brushProp.x, topY: brushBounds.y };
@@ -5662,13 +5992,19 @@ function addIngredient(region) {
 
   paintState.mix[region.index] += 1;
   paintState.mixQuality = 0;
+  paintState.mixSettledAt = 0;
+  paintState.stirProgress = Math.max(0, Math.min(0.22, paintState.stirProgress * 0.25));
+  paintState.mixPhase = "ingredient";
+  paintState.mixStirring = false;
+  registerMixDripFeedback();
+  registerMixRippleFeedback();
 
   if (region.index === 0) {
-    paintPrompt.textContent = `You tap a measure of powder into the glass. ${currentMixRecipeText()}.`;
+    paintPrompt.textContent = `You tap powder into the crucible. The surface goes chalky at once. ${currentMixRecipeText()}.`;
   } else if (region.index === 1) {
-    paintPrompt.textContent = `You add a thicker pull of tar to the glass. ${currentMixRecipeText()}.`;
+    paintPrompt.textContent = `You pull in a thicker streak of tar. It darkens the center of the batch. ${currentMixRecipeText()}.`;
   } else {
-    paintPrompt.textContent = `You cut the batch with water. ${currentMixRecipeText()}.`;
+    paintPrompt.textContent = `You thin the crucible with water. The color loosens and starts to move. ${currentMixRecipeText()}.`;
   }
 
   updatePaintStats();
@@ -6247,6 +6583,7 @@ function updateCoverage() {
 function updateAutoSubmit(dt) {
   if (!paintState.active || paintState.mode !== "watch") {
     paintState.autoSubmitTimer = -1;
+    paintState.watchSubmissionPending = false;
     return;
   }
 
@@ -6258,6 +6595,10 @@ function updateAutoSubmit(dt) {
         "\"Good. You know the process now. Clock in at the wall clock and begin your day.\"",
       );
     }
+    return;
+  }
+
+  if (paintState.watchSubmissionPending) {
     return;
   }
 
@@ -6285,6 +6626,7 @@ function updateAutoSubmit(dt) {
   }
 }
 function sendCurrentWatch() {
+  if (paintState.watchSubmissionPending) return;
   if (paintState.tutorial) {
     paintPrompt.textContent = "This is only the practice bench. Leave the tutorial and clock in when you are ready for the real shift.";
     return;
@@ -6297,6 +6639,8 @@ function sendCurrentWatch() {
   const paidNow = paintState.dials.filter((dial) => dial.credited).length;
   const usedCorrections = paintState.dials.some((dial) => dial.corrected);
   const correctionFine = usedCorrections ? IGNORE_CORRECTION_FINE_CENTS : 0;
+  paintState.watchSubmissionPending = true;
+  paintState.isPainting = false;
   gameState.watchesSubmittedToday += 1;
   if (correctionFine > 0) {
     gameState.dayPayDeductionsCents += correctionFine;
@@ -6363,44 +6707,56 @@ function drawMosaicCrucible(cx, cy, rx, ry, palette, fillLevel, materialTint) {
 }
 
 function mixRegionTint(index) {
-  if (index === 0) return "rgba(219, 186, 64, 0.32)";
-  if (index === 1) return "rgba(134, 78, 48, 0.34)";
-  return "rgba(112, 174, 217, 0.28)";
+  if (index === 0) return "rgba(219, 186, 64, 0.24)";
+  if (index === 1) return "rgba(120, 72, 44, 0.28)";
+  return "rgba(122, 164, 196, 0.22)";
+}
+
+function mixIngredientImageForIndex(index) {
+  if (index === 0) return assetImages.mixPowderPhoto;
+  if (index === 1) return assetImages.mixBottle;
+  return assetImages.mixWaterDropper;
 }
 
 function drawMixBottleCard(region, hovered) {
-  const left = region.x - region.w / 2 - 10;
-  const top = region.y - region.h / 2 - 22;
-  const cardW = region.w + 20;
-  const cardH = region.h + 52;
+  const left = region.x - region.w / 2 - 16;
+  const top = region.y - region.h / 2 - 24;
+  const cardW = region.w + 32;
+  const cardH = region.h + 74;
   const count = paintState.mix[region.index] || 0;
   const tint = mixRegionTint(region.index);
-  const image = region.index === 2 ? assetImages.mixWaterDropper : assetImages.mixBottle;
+  const image = mixIngredientImageForIndex(region.index);
 
   paintCtx.save();
-  paintCtx.fillStyle = hovered ? "rgba(16, 35, 58, 0.92)" : "rgba(8, 18, 31, 0.84)";
+  paintCtx.shadowColor = "rgba(0, 0, 0, 0.28)";
+  paintCtx.shadowBlur = hovered ? 24 : 18;
+  paintCtx.shadowOffsetY = 8;
+  paintCtx.fillStyle = hovered ? "rgba(45, 34, 25, 0.98)" : "rgba(25, 19, 15, 0.95)";
   paintCtx.fillRect(left, top, cardW, cardH);
-  paintCtx.strokeStyle = hovered ? "rgba(152, 233, 255, 0.76)" : "rgba(88, 139, 173, 0.36)";
-  paintCtx.lineWidth = hovered ? 2.6 : 1.6;
+  paintCtx.shadowColor = "transparent";
+  paintCtx.strokeStyle = hovered ? "rgba(230, 205, 151, 0.82)" : "rgba(147, 119, 84, 0.42)";
+  paintCtx.lineWidth = hovered ? 2.4 : 1.6;
   paintCtx.strokeRect(left, top, cardW, cardH);
+  paintCtx.fillStyle = "rgba(243, 233, 210, 0.06)";
+  paintCtx.fillRect(left + 8, top + 8, cardW - 16, cardH - 16);
   paintCtx.fillStyle = tint;
-  paintCtx.fillRect(left + 6, top + 6, cardW - 12, cardH - 12);
+  paintCtx.fillRect(left + 10, top + 42, cardW - 20, cardH - 54);
 
   if (imageReady(image)) {
-    drawAssetContained(image, region.x, region.y + 2, region.w, region.h, hovered ? 0.98 : 0.86);
+    drawAssetContained(image, region.x, region.y + 4, region.w, region.h, hovered ? 0.99 : 0.92);
   } else {
     paintCtx.fillStyle = "rgba(255,255,255,0.16)";
     paintCtx.fillRect(region.x - region.w / 2, region.y - region.h / 2, region.w, region.h);
   }
 
-  paintCtx.fillStyle = "#f0f6ff";
+  paintCtx.fillStyle = "#f7f2e6";
   paintCtx.textAlign = "center";
   paintCtx.textBaseline = "middle";
-  paintCtx.font = "bold 13px 'Courier New'";
-  paintCtx.fillText(region.label.toUpperCase(), region.x, top + cardH - 18);
-  paintCtx.font = "12px 'Courier New'";
-  paintCtx.fillStyle = count > 0 ? "#f6e8a7" : "rgba(240,246,255,0.55)";
-  paintCtx.fillText(`x${count}`, region.x, top + 16);
+  paintCtx.font = "bold 15px Georgia";
+  paintCtx.fillText(region.label, region.x, top + cardH - 18);
+  paintCtx.font = "12px Georgia";
+  paintCtx.fillStyle = count > 0 ? "#f2e0a5" : "rgba(247,242,230,0.56)";
+  paintCtx.fillText(count > 0 ? `${count} measure${count === 1 ? "" : "s"}` : "not added", region.x, top + 24);
   paintCtx.restore();
 }
 
@@ -6408,35 +6764,65 @@ function drawMixRecipeBoard() {
   const panel = STATION_LAYOUT.recipePanel;
   const total = totalMixMeasures();
   const mixReady = paintState.mixQuality > 0;
-  const qualityPercent = Math.round(paintState.mixQuality * 100);
+  const phaseLabel = mixStageLabel();
+  const recipeCounts = [
+    { label: "Powder", count: paintState.mix[0], goal: 3 },
+    { label: "Tar", count: paintState.mix[1], goal: 2 },
+    { label: "Water", count: paintState.mix[2], goal: 1 },
+  ];
+  const readinessPercent = mixReadinessPercent();
 
   paintCtx.save();
-  paintCtx.fillStyle = "rgba(7, 18, 29, 0.94)";
+  paintCtx.fillStyle = "rgba(242, 231, 205, 0.96)";
   paintCtx.fillRect(panel.x, panel.y, panel.w, panel.h);
-  paintCtx.strokeStyle = "rgba(118, 184, 222, 0.44)";
+  paintCtx.strokeStyle = "rgba(87, 65, 45, 0.54)";
   paintCtx.lineWidth = 1.6;
   paintCtx.strokeRect(panel.x, panel.y, panel.w, panel.h);
   paintCtx.textAlign = "left";
   paintCtx.textBaseline = "middle";
-  paintCtx.fillStyle = "rgba(241, 247, 255, 0.96)";
-  paintCtx.font = "bold 12px 'Courier New'";
-  paintCtx.fillText("MIX BOARD", panel.x + 10, panel.y + 16);
-  paintCtx.font = "11px 'Courier New'";
-  paintCtx.fillStyle = "rgba(222, 233, 246, 0.86)";
-  paintCtx.fillText(`Powder  ${paintState.mix[0]}`, panel.x + 10, panel.y + 40);
-  paintCtx.fillText(`Tar     ${paintState.mix[1]}`, panel.x + 10, panel.y + 58);
-  paintCtx.fillText(`Water   ${paintState.mix[2]}`, panel.x + 10, panel.y + 76);
-  paintCtx.fillStyle = "rgba(180, 223, 241, 0.86)";
-  paintCtx.fillText("Target  3 : 2 : 1", panel.x + 10, panel.y + 96);
-  paintCtx.fillStyle = mixReady ? "#f6e8a7" : "rgba(241, 247, 255, 0.72)";
+  paintCtx.fillStyle = "rgba(59, 42, 28, 0.98)";
+  paintCtx.font = "bold 13px Georgia";
+  paintCtx.fillText("Bench note", panel.x + 12, panel.y + 18);
+  paintCtx.font = "11px Georgia";
+  paintCtx.fillStyle = "rgba(74, 56, 37, 0.88)";
+  paintCtx.fillText("Recipe  3 : 2 : 1", panel.x + 12, panel.y + 36);
+
+  paintCtx.font = "11px Georgia";
+  recipeCounts.forEach((item, index) => {
+    const y = panel.y + 58 + index * 20;
+    paintCtx.fillStyle = "rgba(74, 56, 37, 0.88)";
+    paintCtx.fillText(`${item.label}`, panel.x + 12, y);
+    paintCtx.textAlign = "right";
+    paintCtx.fillStyle = item.count === item.goal ? "#74611d" : "rgba(74, 56, 37, 0.76)";
+    paintCtx.fillText(`${item.count} / ${item.goal}`, panel.x + panel.w - 14, y);
+    paintCtx.textAlign = "left";
+  });
+
+  paintCtx.fillStyle = "rgba(59, 42, 28, 0.98)";
+  paintCtx.font = "bold 11px Georgia";
+  paintCtx.fillText(phaseLabel, panel.x + 12, panel.y + 124);
+
+  const barX = panel.x + 12;
+  const barY = panel.y + 134;
+  const barW = panel.w - 24;
+  const barH = 12;
+  paintCtx.fillStyle = "rgba(88, 69, 48, 0.22)";
+  paintCtx.fillRect(barX, barY, barW, barH);
+  paintCtx.fillStyle = mixReady ? "rgba(188, 152, 56, 0.86)" : "rgba(159, 126, 42, 0.72)";
+  paintCtx.fillRect(barX, barY, barW * (readinessPercent / 100), barH);
+  paintCtx.strokeStyle = "rgba(87, 65, 45, 0.32)";
+  paintCtx.strokeRect(barX, barY, barW, barH);
+
+  paintCtx.font = "10px Georgia";
+  paintCtx.fillStyle = "rgba(74, 56, 37, 0.82)";
   paintCtx.fillText(
     total === 0
-      ? "Status  empty"
+      ? "Nothing in the bowl yet."
       : mixReady
-        ? `Status  settled ${qualityPercent}%`
-        : "Status  waiting",
-    panel.x + 10,
-    panel.y + 114,
+        ? "Settled for the watch face."
+        : "Stir further for a steadier paint.",
+    panel.x + 12,
+    panel.y + 152,
   );
   paintCtx.restore();
 }
@@ -6444,94 +6830,182 @@ function drawMixRecipeBoard() {
 function drawMixConsolePanel() {
   const panel = STATION_LAYOUT.mixPanel;
   paintCtx.save();
-  const gradient = paintCtx.createLinearGradient(panel.x, panel.y, panel.x, panel.y + panel.h);
-  gradient.addColorStop(0, "rgba(6, 18, 28, 0.96)");
-  gradient.addColorStop(0.48, "rgba(10, 24, 38, 0.94)");
-  gradient.addColorStop(1, "rgba(3, 10, 18, 0.98)");
+  const gradient = paintCtx.createLinearGradient(panel.x, panel.y, panel.x + panel.w, panel.y + panel.h);
+  gradient.addColorStop(0, "rgba(56, 42, 31, 0.98)");
+  gradient.addColorStop(0.55, "rgba(80, 59, 42, 0.98)");
+  gradient.addColorStop(1, "rgba(41, 28, 20, 0.98)");
   paintCtx.fillStyle = gradient;
   paintCtx.fillRect(panel.x, panel.y, panel.w, panel.h);
 
-  paintCtx.strokeStyle = "rgba(110, 184, 228, 0.34)";
+  paintCtx.strokeStyle = "rgba(188, 156, 112, 0.42)";
   paintCtx.lineWidth = 1.8;
   paintCtx.strokeRect(panel.x, panel.y, panel.w, panel.h);
 
-  paintCtx.fillStyle = "rgba(124, 206, 255, 0.08)";
-  paintCtx.fillRect(panel.x + 10, panel.y + 10, panel.w - 20, 30);
+  paintCtx.fillStyle = "rgba(236, 218, 180, 0.08)";
+  paintCtx.fillRect(panel.x + 16, panel.y + 16, panel.w - 32, 38);
 
   paintCtx.textAlign = "left";
   paintCtx.textBaseline = "middle";
-  paintCtx.fillStyle = "rgba(236, 245, 255, 0.96)";
-  paintCtx.font = "bold 14px 'Courier New'";
-  paintCtx.fillText("MIXING BOARD", panel.x + 16, panel.y + 25);
-  paintCtx.font = "11px 'Courier New'";
-  paintCtx.fillStyle = "rgba(177, 210, 230, 0.8)";
-  paintCtx.fillText("QUEUE  |  SETTLE  |  LOAD", panel.x + 16, panel.y + 48);
+  paintCtx.fillStyle = "rgba(246, 237, 219, 0.96)";
+  paintCtx.font = "bold 16px Georgia";
+  paintCtx.fillText("MIXING BOARD", panel.x + 22, panel.y + 35);
+  paintCtx.font = "12px Georgia";
+  paintCtx.fillStyle = "rgba(232, 218, 193, 0.78)";
+  paintCtx.fillText("Measure into the crucible, stir it smooth, then send it on to the watch face.", panel.x + 22, panel.y + 58);
 
-  paintCtx.strokeStyle = "rgba(84, 140, 180, 0.22)";
-  for (let row = 1; row < 5; row += 1) {
-    const y = panel.y + 76 + row * 78;
+  paintCtx.strokeStyle = "rgba(237, 217, 180, 0.12)";
+  for (let row = 1; row < 6; row += 1) {
+    const y = panel.y + 76 + row * 72;
     paintCtx.beginPath();
-    paintCtx.moveTo(panel.x + 12, y);
-    paintCtx.lineTo(panel.x + panel.w - 12, y);
+    paintCtx.moveTo(panel.x + 18, y);
+    paintCtx.lineTo(panel.x + panel.w - 18, y);
     paintCtx.stroke();
   }
   paintCtx.restore();
 }
 
+function drawHorizontalSpriteFrame(image, frameCount, frameIndex, x, y, w, h, alpha = 1) {
+  if (!imageReady(image) || frameCount <= 0) return false;
+  const normalizedIndex = Math.max(0, Math.min(frameCount - 1, frameIndex));
+  const frameWidth = image.naturalWidth / frameCount;
+  paintCtx.save();
+  paintCtx.globalAlpha = alpha;
+  paintCtx.drawImage(
+    image,
+    frameWidth * normalizedIndex,
+    0,
+    frameWidth,
+    image.naturalHeight,
+    x,
+    y,
+    w,
+    h,
+  );
+  paintCtx.restore();
+  return true;
+}
+
+function drawCrucibleFrame(image, stage, x, y, w, h, alpha = 1) {
+  if (!imageReady(image)) return false;
+  const crop = CRUCIBLE_SOURCE_CROPS[stage] || CRUCIBLE_SOURCE_CROPS[1];
+  paintCtx.save();
+  paintCtx.globalAlpha = alpha;
+  paintCtx.drawImage(
+    image,
+    crop.x,
+    crop.y,
+    crop.w,
+    crop.h,
+    x,
+    y,
+    w,
+    h,
+  );
+  paintCtx.restore();
+  return true;
+}
+
 function drawMixDish(centerX, centerY, hovered = false) {
   const total = totalMixMeasures();
   const dish = STATION_LAYOUT.dish;
-  const drawBounds = {
-    x: centerX - dish.w / 2,
-    y: centerY - dish.h / 2,
-    w: dish.w,
-    h: dish.h,
-  };
+  const phase = mixStageFromState();
+  const now = performance.now();
+  const cardX = centerX - dish.w / 2 - 16;
+  const cardY = centerY - dish.h / 2 - 10;
+  const cardW = dish.w + 32;
+  const cardH = dish.h + 20;
+  const crucibleStage = currentCrucibleStage();
+  const crucibleImage = currentCrucibleAsset();
+  const imageX = cardX + 14;
+  const imageY = cardY + 18;
+  const imageW = cardW - 28;
+  const imageH = cardH - 54;
 
   paintCtx.save();
-  paintCtx.fillStyle = hovered ? "rgba(18, 37, 56, 0.78)" : "rgba(6, 14, 24, 0.72)";
-  paintCtx.fillRect(drawBounds.x - 8, drawBounds.y - 8, drawBounds.w + 16, drawBounds.h + 16);
-  paintCtx.strokeStyle = hovered ? "rgba(158, 229, 255, 0.74)" : "rgba(92, 138, 176, 0.3)";
+  paintCtx.fillStyle = hovered ? "rgba(27, 20, 16, 0.9)" : "rgba(18, 14, 11, 0.78)";
+  paintCtx.fillRect(cardX, cardY, cardW, cardH);
+  paintCtx.strokeStyle = hovered ? "rgba(230, 205, 151, 0.74)" : "rgba(126, 101, 70, 0.34)";
   paintCtx.lineWidth = hovered ? 2.2 : 1.4;
-  paintCtx.strokeRect(drawBounds.x - 8, drawBounds.y - 8, drawBounds.w + 16, drawBounds.h + 16);
+  paintCtx.strokeRect(cardX, cardY, cardW, cardH);
 
-  if (imageReady(assetImages.mixBeaker)) {
-    drawAssetContained(assetImages.mixBeaker, centerX, centerY, dish.w, dish.h, 0.96);
-  } else {
-    paintCtx.fillStyle = "rgba(255,255,255,0.08)";
-    paintCtx.fillRect(drawBounds.x, drawBounds.y, drawBounds.w, drawBounds.h);
-    paintCtx.strokeStyle = "rgba(255,255,255,0.2)";
-    paintCtx.strokeRect(drawBounds.x, drawBounds.y, drawBounds.w, drawBounds.h);
+  paintCtx.shadowColor = "rgba(0, 0, 0, 0.34)";
+  paintCtx.shadowBlur = 20;
+  paintCtx.shadowOffsetY = 10;
+  const drewCrucible = drawCrucibleFrame(crucibleImage, crucibleStage, imageX, imageY, imageW, imageH, hovered ? 1 : 0.95);
+  paintCtx.shadowColor = "transparent";
+  if (!drewCrucible) {
+    paintCtx.fillStyle = "rgba(86, 63, 40, 0.94)";
+    paintCtx.fillRect(imageX, imageY, imageW, imageH);
   }
 
-  if (total > 0) {
-    const fillRatio = Math.min(0.86, 0.24 + total * 0.08);
-    const liquidHeight = drawBounds.h * fillRatio;
-    const liquidY = drawBounds.y + drawBounds.h - liquidHeight - 8;
-    const fillAlpha = paintState.mixQuality > 0 ? 0.4 + paintState.mixQuality * 0.42 : 0.3;
-    paintCtx.save();
-    paintCtx.beginPath();
-    paintCtx.rect(drawBounds.x + 14, drawBounds.y + 14, drawBounds.w - 28, drawBounds.h - 28);
-    paintCtx.clip();
-    paintCtx.fillStyle = `rgba(223, 199, 104, ${fillAlpha})`;
-    paintCtx.fillRect(drawBounds.x + 16, liquidY, drawBounds.w - 32, liquidHeight);
-    paintCtx.fillStyle = paintState.mixQuality > 0
-      ? `rgba(255, 236, 158, ${0.16 + paintState.mixQuality * 0.24})`
-      : "rgba(150, 190, 220, 0.14)";
-    paintCtx.fillRect(drawBounds.x + 16, liquidY - 4, drawBounds.w - 32, 8);
-    paintCtx.restore();
+  if (total > 0 && phase !== "settled") {
+    const spoonActive = paintState.mixStirring || now - paintState.mixRippleStartedAt < 540;
+    if (now - paintState.mixDripStartedAt < 380) {
+      const dripFrame = Math.min(3, Math.floor(((now - paintState.mixDripStartedAt) / 380) * 4));
+      drawHorizontalSpriteFrame(assetImages.paintDripSheet, 4, dripFrame, imageX + imageW * 0.31, imageY - 4, 74, 74, 0.82);
+    }
+    if (phase === "stirring" || phase === "ready" || now - paintState.mixRippleStartedAt < 560) {
+      const rippleFrame = Math.min(5, Math.floor((((now - paintState.mixRippleStartedAt) % 560) / 560) * 6));
+      drawHorizontalSpriteFrame(assetImages.paintRippleSheet, 6, rippleFrame, imageX + imageW * 0.28, imageY + imageH * 0.18, imageW * 0.46, imageH * 0.32, 0.58);
+    }
+    if (spoonActive || hovered) {
+      const spoonFrame = spoonActive ? Math.floor(((now - paintState.mixRippleStartedAt) / 70) % 6) : 0;
+      drawHorizontalSpriteFrame(assetImages.stirSpoonSheet, 6, spoonFrame, imageX + imageW * 0.2, imageY + imageH * 0.05, imageW * 0.72, imageH * 0.64, spoonActive ? 0.82 : 0.42);
+    }
   }
 
   paintCtx.textAlign = "center";
   paintCtx.textBaseline = "middle";
-  paintCtx.fillStyle = "rgba(236, 245, 255, 0.78)";
-  paintCtx.font = "12px 'Courier New'";
+  paintCtx.fillStyle = "rgba(244, 236, 218, 0.82)";
+  paintCtx.font = "12px Georgia";
   paintCtx.fillText(
-    total === 0 ? "glass empty" : paintState.mixQuality > 0 ? "batch settled" : "ready to settle",
+    total === 0 ? "empty crucible" : phase === "settled" ? "settled paint" : phase === "ready" ? "ready to settle" : "drag through the crucible to stir",
     centerX,
     centerY + dish.h / 2 + 20,
   );
   paintCtx.restore();
+}
+
+function drawMixingView() {
+  const w = paintCanvas.width;
+  const h = paintCanvas.height;
+  const hoveredStationTarget = stationHoverTargetAt(paintState.pointerX, paintState.pointerY);
+
+  paintCtx.clearRect(0, 0, w, h);
+  const backdrop = paintCtx.createLinearGradient(0, 0, 0, h);
+  backdrop.addColorStop(0, "#19120f");
+  backdrop.addColorStop(0.55, "#2e2219");
+  backdrop.addColorStop(1, "#0d0908");
+  paintCtx.fillStyle = backdrop;
+  paintCtx.fillRect(0, 0, w, h);
+
+  paintCtx.fillStyle = "rgba(0, 0, 0, 0.22)";
+  paintCtx.fillRect(0, 0, w, 108);
+
+  drawMixConsolePanel();
+  for (const region of componentRegions) {
+    drawMixBottleCard(region, hoveredStationTarget?.label === region.label);
+  }
+  drawMixRecipeBoard();
+  drawMixDish(STATION_LAYOUT.dish.x, STATION_LAYOUT.dish.y, false);
+
+  paintCtx.save();
+  paintCtx.textAlign = "left";
+  paintCtx.textBaseline = "middle";
+  paintCtx.fillStyle = "rgba(246, 236, 216, 0.92)";
+  paintCtx.font = "bold 18px Georgia";
+  paintCtx.fillText("BOTTLES AND GLASS", 48, 38);
+  paintCtx.font = "13px Georgia";
+  paintCtx.fillStyle = "rgba(238, 226, 206, 0.74)";
+  paintCtx.fillText("Add the measures, drag through the crucible to stir, then settle the batch.", 48, 60);
+  paintCtx.restore();
+
+  if (hoveredStationTarget) {
+    drawHoverLabel(paintCtx, hoveredStationTarget.centerX, hoveredStationTarget.topY, hoveredStationTarget.label);
+  }
+
+  drawTutorialPanel();
+  drawImageCursor("mix");
 }
 
 function fanBrush(messageBase) {
@@ -6758,6 +7232,18 @@ function drawGroceriesView() {
   const checkoutActive = paintState.groceryTiming.checkoutActive;
   const cartTotal = groceryCartBaseTotalTenths();
   const projectedSavings = groceryCurrentSavingsTenths();
+  const basketPanel = GROCERY_LAYOUT.basket;
+  const footerPanel = GROCERY_LAYOUT.footer;
+  const walletText = `Wallet: ${formatGroceryAmount(gameState.groceryFundsTenths)}`;
+  const basketSummary = `Basket: ${groceryCartSummary()}`;
+  const footerText = groceryTiming && groceryTiming.active
+    ? `Bargain attempt ${paintState.groceryTiming.attemptsUsed + 1} of 3. Click when the pulsing ring crosses the middle guide.`
+    : checkoutActive
+      ? `Checkout is open. ${groceryCheckoutStatusText()}`
+      : "Add items at the marked price. Bargaining only happens after you choose checkout.";
+  const footerSubtext = checkoutActive
+    ? `Best saved result: ${bargainGradeLabel(paintState.groceryTiming.bestGrade) || "none yet"}.`
+    : "Removing items will not restore bargain attempts.";
 
   paintCtx.clearRect(0, 0, w, h);
   if (!drawAssetCover(assetImages.groceries, 0, 0, w, h, 1)) {
@@ -6780,7 +7266,7 @@ function drawGroceriesView() {
   paintCtx.font = "24px Georgia";
   paintCtx.fillText("GROCER", GROCERY_LAYOUT.panel.x + 16, 76);
 
-  paintCtx.font = "14px Georgia";
+  paintCtx.font = "13px Georgia";
   for (let i = 0; i < GROCERY_ITEMS.length; i += 1) {
     const item = GROCERY_ITEMS[i];
     const rect = groceryRowRect(i);
@@ -6803,7 +7289,9 @@ function drawGroceriesView() {
     paintCtx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
     paintCtx.fillStyle = "#f5f5f5";
-    paintCtx.fillText(`${item.label} (${item.unit})`, rect.x + 68, rect.y + rect.h / 2);
+    paintCtx.textAlign = "left";
+    const labelText = fitCanvasText(`${item.label} (${item.unit})`, controls.priceX - (rect.x + 14) - 18);
+    paintCtx.fillText(labelText, rect.x + 14, rect.y + rect.h / 2);
     paintCtx.textAlign = "right";
     paintCtx.fillStyle = affordable ? "#d9f57a" : "#f0a0a0";
     paintCtx.fillText(formatTenthsCents(item.priceTenths), controls.priceX, rect.y + rect.h / 2);
@@ -6830,25 +7318,25 @@ function drawGroceriesView() {
   const circle = groceryTimingCircle();
   paintCtx.save();
   paintCtx.fillStyle = "rgba(8, 8, 8, 0.54)";
-  paintCtx.fillRect(26, 204, 244, 250);
+  paintCtx.fillRect(basketPanel.x, basketPanel.y, basketPanel.w, basketPanel.h);
   paintCtx.strokeStyle = "rgba(255,255,255,0.14)";
-  paintCtx.strokeRect(26, 204, 244, 250);
+  paintCtx.strokeRect(basketPanel.x, basketPanel.y, basketPanel.w, basketPanel.h);
   paintCtx.textAlign = "center";
   paintCtx.textBaseline = "middle";
   paintCtx.fillStyle = "rgba(255,255,255,0.9)";
   paintCtx.font = "22px Georgia";
-  paintCtx.fillText(checkoutActive ? "CHECKOUT" : "BASKET", 148, 232);
+  paintCtx.fillText(checkoutActive ? "CHECKOUT" : "BASKET", basketPanel.x + basketPanel.w / 2, basketPanel.y + 28);
   paintCtx.font = "14px Georgia";
   paintCtx.fillStyle = "rgba(255,255,255,0.8)";
-  paintCtx.fillText(`Marked total: ${formatGroceryAmount(cartTotal)}`, 148, 266);
+  paintCtx.fillText(`Marked total: ${formatGroceryAmount(cartTotal)}`, basketPanel.x + basketPanel.w / 2, basketPanel.y + 72);
   if (checkoutActive) {
-    paintCtx.fillText(groceryCheckoutStatusText(), 148, 292);
+    paintCtx.fillText(groceryCheckoutStatusText(), basketPanel.x + basketPanel.w / 2, basketPanel.y + 98);
     if (paintState.groceryTiming.bestGrade) {
-      paintCtx.fillText(`Projected savings: ${formatTenthsCents(projectedSavings)}`, 148, 318);
-      paintCtx.fillText(`Pay after bargain: ${formatGroceryAmount(Math.max(0, cartTotal - projectedSavings))}`, 148, 344);
+      paintCtx.fillText(`Projected savings: ${formatTenthsCents(projectedSavings)}`, basketPanel.x + basketPanel.w / 2, basketPanel.y + 124);
+      paintCtx.fillText(`Pay after bargain: ${formatGroceryAmount(Math.max(0, cartTotal - projectedSavings))}`, basketPanel.x + basketPanel.w / 2, basketPanel.y + 150);
     } else {
-      paintCtx.fillText("No bargain saved yet.", 148, 318);
-      paintCtx.fillText("Pay now to accept the marked total.", 148, 344);
+      paintCtx.fillText("No bargain saved yet.", basketPanel.x + basketPanel.w / 2, basketPanel.y + 124);
+      paintCtx.fillText("Pay now to accept the marked total.", basketPanel.x + basketPanel.w / 2, basketPanel.y + 150);
     }
 
     paintCtx.strokeStyle = "rgba(255,255,255,0.1)";
@@ -6881,14 +7369,11 @@ function drawGroceriesView() {
       paintCtx.stroke();
       paintCtx.setLineDash([]);
       paintCtx.fillStyle = "rgba(255,255,255,0.8)";
-      paintCtx.fillText("hit the middle ring", 148, 416);
+      paintCtx.fillText("hit the middle ring", basketPanel.x + basketPanel.w / 2, basketPanel.y + basketPanel.h - 24);
     } else {
       paintCtx.fillStyle = "rgba(255,255,255,0.76)";
-      paintCtx.fillText("Best result sticks. You can try up to three times.", 148, 416);
+      paintCtx.fillText("Best result sticks. You can try up to three times.", basketPanel.x + basketPanel.w / 2, basketPanel.y + basketPanel.h - 24);
     }
-  } else {
-    paintCtx.fillText("Build the basket first, then decide whether to bargain at checkout.", 148, 306);
-    paintCtx.fillText("Removing items will not restore spent bargain attempts.", 148, 334);
   }
   paintCtx.restore();
 
@@ -6929,22 +7414,26 @@ function drawGroceriesView() {
     paintCtx.fillText(bargainLabel, bargain.x + bargain.w / 2, bargain.y + bargain.h / 2);
   }
 
+  paintCtx.save();
+  paintCtx.fillStyle = "rgba(8, 8, 8, 0.68)";
+  paintCtx.fillRect(footerPanel.x, footerPanel.y, footerPanel.w, footerPanel.h);
+  paintCtx.strokeStyle = "rgba(255,255,255,0.14)";
+  paintCtx.strokeRect(footerPanel.x, footerPanel.y, footerPanel.w, footerPanel.h);
   paintCtx.textAlign = "left";
-  paintCtx.fillStyle = "rgba(255,255,255,0.92)";
-  paintCtx.font = "18px Georgia";
-  paintCtx.fillText(`Wallet: ${formatGroceryAmount(gameState.groceryFundsTenths)}`, 36, 74);
-  paintCtx.font = "14px Georgia";
-  if (groceryTiming && groceryTiming.active) {
-    paintCtx.fillText(`Bargain attempt ${paintState.groceryTiming.attemptsUsed + 1} of 3`, 36, 102);
-    paintCtx.fillText("Click when the pulsing ring crosses the middle guide.", 36, 128);
-  } else if (checkoutActive) {
-    paintCtx.fillText("Checkout is open. Choose whether to bargain again, pay now, or step back to the basket.", 36, 102);
-    paintCtx.fillText(`Best saved result: ${bargainGradeLabel(paintState.groceryTiming.bestGrade) || "none yet"}.`, 36, 128);
-  } else {
-    paintCtx.fillText("Click + to add at the marked price. Bargaining happens later, when you choose checkout.", 36, 102);
-    paintCtx.fillText("You only get three bargain attempts for the whole trip, even if you go back and change the basket.", 36, 128);
+  paintCtx.textBaseline = "top";
+  paintCtx.fillStyle = "rgba(255,255,255,0.94)";
+  paintCtx.font = "bold 16px Georgia";
+  paintCtx.fillText(walletText, footerPanel.x + 14, footerPanel.y + 12);
+  paintCtx.font = "13px Georgia";
+  paintCtx.fillStyle = "rgba(255,255,255,0.88)";
+  paintCtx.fillText(basketSummary, footerPanel.x + 14, footerPanel.y + 36);
+  paintCtx.fillStyle = "rgba(255,255,255,0.78)";
+  const wrappedLines = drawWrappedCanvasText(footerText, footerPanel.x + 14, footerPanel.y + 56, footerPanel.w - 28, 16, 2);
+  if (wrappedLines < 2 && footerSubtext) {
+    paintCtx.fillStyle = "rgba(255,255,255,0.62)";
+    drawWrappedCanvasText(footerSubtext, footerPanel.x + 14, footerPanel.y + 72, footerPanel.w - 28, 15, 1);
   }
-  paintCtx.fillText(`Basket: ${groceryCartSummary()}`, 36, 154);
+  paintCtx.restore();
   drawTimingFeedback();
 
   drawImageCursor("mix");
@@ -7013,18 +7502,29 @@ function drawHemmingTimingWidget(timing) {
   paintCtx.restore();
 }
 
-function hemmingTaskPhotoKey(task) {
+function hemmingTaskSpriteKey(task) {
   const key = hemmingTaskNarrativeKey(task);
-  if (key === "dress") return "hemDressPhoto";
-  if (key === "elly") return "hemSkirtPhoto";
-  if (key === "denny") return "hemShirtPhoto";
-  if (key === "maggie") return "hemApronPhoto";
+  if (key === "dress") return "hemDressSheet";
+  if (key === "elly") return "hemSkirtSheet";
+  if (key === "denny") return "hemShirtSheet";
+  if (key === "maggie") return "hemApronSheet";
   return "";
 }
 
-function drawPixelatedGarmentPhoto(task) {
+function currentHemmingSpriteFrame(task, taskIndex) {
+  if (!task) return 0;
+  const timing = currentHemmingTimingState();
+  if (timing && timing.active && timing.taskIndex === taskIndex) {
+    return Math.max(0, Math.min(5, Math.floor(timing.phase * 6)));
+  }
+  if (task.stitchesDone >= task.stitchesNeeded) return 5;
+  const progress = Math.max(0, Math.min(1, task.stitchesDone / Math.max(1, task.stitchesNeeded)));
+  return Math.max(0, Math.min(4, Math.floor(progress * 5)));
+}
+
+function drawHemmingSpritesheet(task, taskIndex) {
   const frame = hemmingGarmentFrameRect();
-  const imageKey = hemmingTaskPhotoKey(task);
+  const imageKey = hemmingTaskSpriteKey(task);
   const image = assetImages[imageKey];
 
   paintCtx.save();
@@ -7041,58 +7541,43 @@ function drawPixelatedGarmentPhoto(task) {
     return;
   }
 
-  const cacheKey = `${imageKey}:${frame.w}x${frame.h}`;
-  let tempCanvas = garmentPhotoCache[cacheKey];
-  if (!tempCanvas) {
-    tempCanvas = document.createElement("canvas");
-    tempCanvas.width = Math.max(34, Math.round(frame.w / 12));
-    tempCanvas.height = Math.max(26, Math.round(frame.h / 12));
-    const tempCtx = tempCanvas.getContext("2d");
-    if (!tempCtx) {
-      paintCtx.restore();
-      return;
-    }
+  const frameIndex = currentHemmingSpriteFrame(task, taskIndex);
+  const sheetCols = 3;
+  const sheetRows = 2;
+  const sourceW = Math.floor(image.naturalWidth / sheetCols);
+  const sourceH = Math.floor(image.naturalHeight / sheetRows);
+  const sourceCol = frameIndex % sheetCols;
+  const sourceRow = Math.floor(frameIndex / sheetCols);
+  const sourceX = sourceCol * sourceW;
+  const sourceY = sourceRow * sourceH;
+  const targetX = frame.x + 8;
+  const targetY = frame.y + 8;
+  const targetW = frame.w - 16;
+  const targetH = frame.h - 16;
 
-    tempCtx.imageSmoothingEnabled = true;
-    tempCtx.fillStyle = "#111";
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-    tempCtx.filter = "grayscale(1) contrast(1.45) brightness(0.92)";
+  paintCtx.fillStyle = "rgba(6, 8, 10, 0.5)";
+  paintCtx.fillRect(targetX, targetY, targetW, targetH);
 
-    const imgRatio = image.naturalWidth / image.naturalHeight;
-    const boxRatio = tempCanvas.width / tempCanvas.height;
-    let drawW = tempCanvas.width;
-    let drawH = tempCanvas.height;
-    if (imgRatio > boxRatio) {
-      drawH = tempCanvas.width / imgRatio;
-    } else {
-      drawW = tempCanvas.height * imgRatio;
-    }
-    const drawX = (tempCanvas.width - drawW) / 2;
-    const drawY = (tempCanvas.height - drawH) / 2;
-    tempCtx.drawImage(image, drawX, drawY, drawW, drawH);
-    tempCtx.filter = "none";
-    garmentPhotoCache[cacheKey] = tempCanvas;
-  }
-
-  paintCtx.imageSmoothingEnabled = false;
-  paintCtx.drawImage(tempCanvas, frame.x + 10, frame.y + 10, frame.w - 20, frame.h - 20);
+  paintCtx.save();
+  paintCtx.shadowColor = "rgba(0,0,0,0.34)";
+  paintCtx.shadowBlur = 10;
+  paintCtx.shadowOffsetY = 3;
   paintCtx.imageSmoothingEnabled = true;
+  paintCtx.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceW,
+    sourceH,
+    targetX,
+    targetY,
+    targetW,
+    targetH,
+  );
+  paintCtx.restore();
 
-  paintCtx.fillStyle = "rgba(0,0,0,0.24)";
-  paintCtx.fillRect(frame.x + 10, frame.y + 10, frame.w - 20, frame.h - 20);
   paintCtx.strokeStyle = "rgba(255,255,255,0.08)";
-  for (let x = frame.x + 10; x < frame.x + frame.w - 10; x += 12) {
-    paintCtx.beginPath();
-    paintCtx.moveTo(x, frame.y + 10);
-    paintCtx.lineTo(x, frame.y + frame.h - 10);
-    paintCtx.stroke();
-  }
-  for (let y = frame.y + 10; y < frame.y + frame.h - 10; y += 12) {
-    paintCtx.beginPath();
-    paintCtx.moveTo(frame.x + 10, y);
-    paintCtx.lineTo(frame.x + frame.w - 10, y);
-    paintCtx.stroke();
-  }
+  paintCtx.strokeRect(targetX, targetY, targetW, targetH);
 
   paintCtx.restore();
 }
@@ -7152,7 +7637,7 @@ function drawHemmingView() {
     paintCtx.fillText(taskHemmingQualityLabel(task), frame.x + frame.w, frame.y - 26);
     paintCtx.textAlign = "left";
 
-    drawPixelatedGarmentPhoto(task);
+    drawHemmingSpritesheet(task, taskIndex);
 
     paintCtx.strokeStyle = "rgba(205, 184, 156, 0.5)";
     paintCtx.lineWidth = 2;
@@ -7208,6 +7693,7 @@ function drawHemmingView() {
 
 function drawWatchMinigame() {
   minigameOverlay.classList.toggle("hemming-mode", paintState.mode === "hemming");
+  minigameOverlay.classList.toggle("groceries-mode", paintState.mode === "groceries");
   paintCanvas.style.cursor = paintState.mode === "hemming" ? "pointer" : "none";
   if (paintState.mode !== "hemming") {
     hideInfoCanvas();
@@ -7228,6 +7714,11 @@ function drawWatchMinigame() {
     return;
   }
 
+  if (mixingBoardOpen()) {
+    drawMixingView();
+    return;
+  }
+
   if (paintState.zoomedDialIndex !== -1) {
     drawZoomedDialView();
     return;
@@ -7243,13 +7734,6 @@ function drawWatchMinigame() {
   paintCtx.clearRect(0, 0, w, h);
   paintCtx.fillStyle = "#000";
   paintCtx.fillRect(0, 0, w, h);
-
-  drawMixConsolePanel();
-  for (const region of componentRegions) {
-    drawMixBottleCard(region, hoveredStationTarget?.label === region.label);
-  }
-  drawMixRecipeBoard();
-  drawMixDish(STATION_LAYOUT.dish.x, STATION_LAYOUT.dish.y, false);
   drawWorkbenchBrush(hoveredStationTarget?.type === "brush");
 
   paintCtx.save();
@@ -7957,6 +8441,10 @@ bindPress(restHandButton, () => {
   drawWatchMinigame();
 });
 
+bindPress(paintBackToMixButton, () => {
+  switchToMixingBoard();
+});
+
 bindPress(mixResetButton, () => {
   resetMix();
   paintPrompt.textContent = "You clear the glass and start the batch again from nothing.";
@@ -8060,6 +8548,14 @@ paintCanvas.addEventListener("mousemove", (event) => {
   }
 
   const driftedPosition = refreshPaintCursor();
+
+  if (paintState.active && mixingBoardOpen() && paintState.mixStirring) {
+    if (pointInsideMixDish(position.x, position.y)) {
+      continueMixStir(position.x, position.y);
+    } else {
+      stopMixStir();
+    }
+  }
 
   if (paintState.active && paintState.isPainting) {
     if (paintState.tool === "brush") {
@@ -8176,6 +8672,20 @@ function handlePaintCanvasPress(event) {
     return;
   }
 
+  if (mixingBoardOpen() && pointInsideMixDish(position.x, position.y)) {
+    startMixStir(position.x, position.y);
+    return;
+  }
+
+  if (mixingBoardOpen()) {
+    paintPrompt.textContent = paintState.mixQuality > 0
+      ? "The batch is settled. The watch face is ready on the next screen."
+      : "Queue the measures, then drag through the crucible to stir before you settle the batch.";
+    updatePaintStats();
+    drawWatchMinigame();
+    return;
+  }
+
   if (paintState.zoomedDialIndex !== -1 && pointInsideRect(position.x, position.y, zoomWipeBounds())) {
     wipeNearestDial();
     drawWatchMinigame();
@@ -8197,7 +8707,7 @@ function handlePaintCanvasPress(event) {
 
   if (paintState.zoomedDialIndex === -1) {
     if (paintState.mixQuality <= 0) {
-      paintPrompt.textContent = "Queue the bottles into the glass, settle the batch, then click one of the gray numeral markers to work on it up close.";
+      paintPrompt.textContent = "Return to the mixing board and settle the batch before you try to work on the watch face.";
       drawWatchMinigame();
       return;
     }
@@ -8250,6 +8760,7 @@ function releasePaintOrDrag() {
     endFractureDrag();
   }
   paintState.isPainting = false;
+  stopMixStir();
 }
 
 function primeCompletionBell() {

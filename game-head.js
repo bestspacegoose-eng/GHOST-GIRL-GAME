@@ -716,4 +716,7 @@ const ROOM_REMOVAL_PATCHES = [
   { id: "worker-7", source: { x: 196, y: 72, w: 26, h: 60 }, dest: { x: 180, y: 76, w: 36, h: 60 } },
   { id: "worker-3", source: { x: 154, y: 70, w: 20, h: 84 }, dest: { x: 132, y: 72, w: 44, h: 86 } },
   { id: "worker-6", source: { x: 140, y: 74, w: 18, h: 46 }, dest: { x: 120, y: 74, w: 28, h: 46 } },
-  { id: "worker-5", source: { x: 102, y: 74, w: 16, h: 48 }, dest: { x: 92, y: 76, w: 28,
+  { id: "worker-5", source: { x: 102, y: 74, w: 16, h: 48 }, dest: { x: 92, y: 76, w: 28, h: 48 } },
+  { id: "worker-2", source: { x: 58, y: 80, w: 16, h: 50 }, dest: { x: 50, y: 82, w: 28, h: 48 } },
+  { id: "worker-1", source: { x: 18, y: 80, w: 12, h: 56 }, dest: { x: 0, y: 82, w: 28, h: 56 } },
+];

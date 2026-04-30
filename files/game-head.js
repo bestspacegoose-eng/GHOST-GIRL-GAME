@@ -317,9 +317,9 @@ const ASSET_PATHS = {
   gumArabic: "./assets/gum-arabic.png",
   waterPlate: "./assets/water-plate.png",
   mixedPaint: "./assets/mixed-paint.png",
-  mixPowderPhoto: "./assets/mix-powder-photo.jpg",
-  mixBottle: "./assets/mix-tar-bottle.jpg",
-  mixWaterDropper: "./assets/mix-water-dropper.jpg",
+  mixPowderPhoto: "./Powderspoon.png",
+  mixBottle: "./Vial.png",
+  mixWaterDropper: "./Vial.png",
   mixBeaker: "./assets/mix-beaker-photo.jpg",
   paintMixSheet: "./assets/paint_mix_sheet.png",
   stirSpoonSheet: "./assets/stir_spoon_sheet.png",
@@ -347,6 +347,7 @@ const keys = new Set();
 let lastTime = performance.now();
 let activeMessageTimer = 0;
 let titleFadeTimer = 0;
+let currentFrameNumber = 0;
 
 const player = {
   x: 7.5,
@@ -453,6 +454,9 @@ const paintState = {
   showCoverageAssist: false,
   restHandOnSide: false,
   watchSubmissionPending: false,
+  lastCorrectionCountFrame: -1,
+  cachedCorrectionCount: 0,
+  lastCoverageUpdateFrame: -1,
   groceryTiming: {
     active: false,
     itemId: "",

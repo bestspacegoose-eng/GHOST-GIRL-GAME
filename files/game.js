@@ -5668,7 +5668,13 @@ function wipeHealthCostForDial(dial) {
 }
 
 function correctionCount() {
-  return paintState.dials.filter(dialNeedsCorrection).length;
+  if (paintState.lastCorrectionCountFrame === currentFrameNumber) {
+    return paintState.cachedCorrectionCount;
+  }
+  const count = paintState.dials.filter(dialNeedsCorrection).length;
+  paintState.lastCorrectionCountFrame = currentFrameNumber;
+  paintState.cachedCorrectionCount = count;
+  return count;
 }
 
 function coverageHotspotsForDial(dial, limit = 8) {
@@ -6378,7 +6384,6 @@ function paintAt(x, y) {
 
   paintState.paintLoaded = Math.max(0, paintState.paintLoaded - PAINT_DRAIN_PER_STROKE);
   updateCoverage();
-  creditCompletedDials();
 
   if (paintedPoints === 0 && partialPoints > 0 && offGuidePoints === 0) {
     paintPrompt.textContent = "The paint is building, but this mix needs more passes to fully take.";
@@ -6507,7 +6512,6 @@ function correctAt(x, y) {
   }
 
   updateCoverage();
-  creditCompletedDials();
 
   if (allDialsReady() && correctionCount() === 0) {
     paintPrompt.textContent = "The ragged edges are cleaned away. This watch can go in at full pay.";
@@ -6548,7 +6552,6 @@ function wipeNearestDial() {
   paintState.tool = preservedTool;
   paintState.correcting = preservedCorrecting;
   updateCoverage();
-  creditCompletedDials();
   if (paintState.tutorial) {
     const tutorialDial = activeDial();
     if (tutorialDial && tutorialDial.coverage >= 0.96 && !dialNeedsCorrection(tutorialDial)) {
@@ -6560,6 +6563,11 @@ function wipeNearestDial() {
 }
 
 function updateCoverage() {
+  if (paintState.lastCoverageUpdateFrame === currentFrameNumber) {
+    return;
+  }
+  paintState.lastCoverageUpdateFrame = currentFrameNumber;
+  
   for (const [dialIndex, dial] of paintState.dials.entries()) {
     ensureDialPaintLevel(dial);
     trimDialEdgeNoise(dial);
@@ -6578,6 +6586,7 @@ function updateCoverage() {
     }
   }
   updateActiveDialIndex();
+  creditCompletedDials();
 }
 
 function updateAutoSubmit(dt) {

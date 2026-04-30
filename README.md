@@ -6,7 +6,7 @@ A narrative browser game about watch-dial painting, survival, labor, and the slo
 
 Once GitHub Pages is enabled for this repository, the game is playable at:
 
-[https://bestspacegoose-eng.github.io/radium-codex-game/](https://bestspacegoose-eng.github.io/radium-codex-game/)
+[https://bestspacegoose-eng.github.io/radium-codex-game/]([https://bestspacegoose-eng.github.io/GHOST-GIRL-GAME/](https://bestspacegoose-eng.github.io/GHOST-GIRL-GAME/))
 
 The game is deployed as a static site, so it no longer depends on opening `index.html` from your local filesystem.
 

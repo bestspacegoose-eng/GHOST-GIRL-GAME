@@ -665,6 +665,19 @@ canvas {
   gap: 8px;
 }
 
+.minigame-overlay.groceries-mode .minigame-panel {
+  grid-template-columns: minmax(0, 1fr);
+  width: min(98%, 1260px);
+}
+
+.minigame-overlay.groceries-mode .minigame-copy {
+  display: none;
+}
+
+.minigame-overlay.groceries-mode .watch-stage {
+  min-height: min(92vh, 720px);
+}
+
 .minigame-overlay.hemming-mode #infoCanvas {
   order: 2;
   width: min(100%, 176px);

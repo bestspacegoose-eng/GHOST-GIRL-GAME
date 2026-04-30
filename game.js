@@ -8899,4 +8899,38 @@ function handleRoomCanvasPress(event) {
   if (target) {
     target.item.interact();
   } else {
-  
+    setMessage(
+      "Nothing useful there.",
+      "Click the wall clock, a worker, or the workbench in the workshop photo.",
+    );
+  }
+}
+
+canvas.addEventListener("click", handleRoomCanvasPress);
+canvas.addEventListener("pointerup", (event) => {
+  if (typeof event.button === "number" && event.button > 0) return;
+  handleRoomCanvasPress(event);
+});
+canvas.addEventListener("touchstart", (event) => {
+  event.preventDefault();
+  handleRoomCanvasPress(event);
+}, { passive: false });
+
+canvas.addEventListener("mousemove", (event) => {
+  const rect = canvas.getBoundingClientRect();
+  const client = eventClientPoint(event);
+  const rectWidth = rect.width || canvas.width || 1;
+  const rectHeight = rect.height || canvas.height || 1;
+  roomState.cursorX = ((client.x - rect.left) / rectWidth) * WIDTH;
+  roomState.cursorY = ((client.y - rect.top) / rectHeight) * HEIGHT;
+});
+
+showTitleCard();
+initializeAudioSettings();
+selectedSaveSlotIndex = loadSelectedSaveSlotIndex();
+ensureSaveSlotsMigrated();
+updateHud();
+drawWatchMinigame();
+renderSaveSlotGrid();
+updateMenuStatus();
+requestAnimationFrame(frame);
